@@ -112,7 +112,7 @@ pub struct SessionDetailsQuery {
 
 pub async fn get_available_dates(Path(assistant): Path<String>) -> impl IntoResponse {
     let assistant = normalize_assistant_name(&assistant);
-    if !is_supported_assistant(&assistant) {
+    if !is_supported_report_assistant(&assistant) {
         return (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": "不支援的助理類型" })),
@@ -327,7 +327,7 @@ pub async fn get_usage_details(
     Path((assistant, date)): Path<(String, String)>,
 ) -> impl IntoResponse {
     let assistant = normalize_assistant_name(&assistant);
-    if !is_supported_assistant(&assistant) {
+    if !is_supported_report_assistant(&assistant) {
         return (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": "不支援的助理類型" })),
@@ -401,7 +401,7 @@ pub async fn search_sessions_by_user_prompt(
     Query(params): Query<SessionSearchQuery>,
 ) -> impl IntoResponse {
     let assistant = normalize_assistant_name(&assistant);
-    if !is_supported_assistant(&assistant) {
+    if !is_supported_report_assistant(&assistant) {
         return (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": "不支援的助理類型" })),

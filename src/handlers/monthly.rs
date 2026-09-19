@@ -204,7 +204,7 @@ pub async fn get_model_sessions(
     Query(query): Query<ModelSessionsQuery>,
 ) -> impl IntoResponse {
     let assistant = normalize_assistant_name(&assistant);
-    if !is_supported_assistant(&assistant) {
+    if !is_supported_report_assistant(&assistant) {
         return (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": "不支援的助理類型" })),
@@ -284,7 +284,7 @@ pub async fn get_model_sessions(
 /// API 5: 獲取可用的有使用記錄月份
 pub async fn get_available_months(Path(assistant): Path<String>) -> impl IntoResponse {
     let assistant = normalize_assistant_name(&assistant);
-    if !is_supported_assistant(&assistant) {
+    if !is_supported_report_assistant(&assistant) {
         return (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": "不支援的助理類型" })),
@@ -314,7 +314,7 @@ pub async fn get_monthly_details(
     Path((assistant, year_month)): Path<(String, String)>,
 ) -> impl IntoResponse {
     let assistant = normalize_assistant_name(&assistant);
-    if !is_supported_assistant(&assistant) {
+    if !is_supported_report_assistant(&assistant) {
         return (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": "不支援的助理類型" })),

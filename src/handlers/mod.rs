@@ -40,6 +40,10 @@ pub fn is_supported_assistant(assistant: &str) -> bool {
     )
 }
 
+pub fn is_supported_report_assistant(assistant: &str) -> bool {
+    normalize_assistant_name(assistant) == "all" || is_supported_assistant(assistant)
+}
+
 #[derive(Serialize)]
 pub struct DateListResponse {
     pub dates: Vec<String>,
@@ -230,6 +234,12 @@ mod tests {
 
     async fn lock_test_env() -> MutexGuard<'static, ()> {
         TEST_ENV_LOCK.get_or_init(|| Mutex::new(())).lock().await
+    }
+
+    #[test]
+    fn overview_is_allowed_only_for_report_routes() {
+        assert!(super::is_supported_report_assistant("all"));
+        assert!(!super::is_supported_assistant("all"));
     }
 
     #[tokio::test]

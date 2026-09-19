@@ -101,6 +101,16 @@ const assistantAliasMap = {
 };
 
 const assistantMeta = {
+  all: {
+    logo: '/static/favicon-v2.png',
+    label: '總覽',
+    shortLabel: '總覽',
+    alt: '總覽',
+    badgeStyle: 'background: rgba(148, 163, 184, 0.15); color: #cbd5e1; border: 1px solid rgba(148, 163, 184, 0.3); display: inline-flex; align-items: center;',
+    senderName: 'ALL HARNESSES',
+    highlightColor: '#cbd5e1',
+    nameHighlights: ['總覽'],
+  },
   antigravity: {
     logo: '/static/antigravity.webp',
     label: 'Antigravity CLI',
@@ -193,6 +203,13 @@ const assistantMeta = {
   },
 };
 
+
+function updateOverviewControls() {
+  const isOverview = currentAssistant === 'all';
+  for (const id of ['btn-export-usage-day', 'btn-import-usage-day', 'btn-setup-guide', 'btn-sync-db']) {
+    document.getElementById(id)?.classList.toggle('hidden', isOverview);
+  }
+}
 function normalizeAssistant(rawValue) {
   const normalized = String(rawValue || '').trim().toLowerCase();
   return assistantAliasMap[normalized] || normalized;
@@ -853,6 +870,7 @@ function initApp() {
 
   // 監聽助理切換 (單選 Badge)
   const badgeButtons = document.querySelectorAll('.assistant-badge-btn');
+    updateOverviewControls();
   if (badgeButtons.length > 0) {
     // 初始化：找到第一個符合 currentAssistant 的按鈕，或預設第一個
     badgeButtons.forEach(btn => {
@@ -880,6 +898,7 @@ function initApp() {
         const newAssistant = normalizeAssistant(btn.getAttribute('data-value'));
         const assistantChanged = newAssistant !== currentAssistant;
         currentAssistant = newAssistant;
+        updateOverviewControls();
         setCookie('selected_agent', currentAssistant);
         updateUrlParams();
         
@@ -2066,13 +2085,14 @@ function updateUsageImportValidation() {
 
 function activateAssistantWithoutReload(assistant) {
   const normalizedAssistant = normalizeAssistant(assistant);
+  currentAssistant = normalizedAssistant;
+  updateOverviewControls();
   document.querySelectorAll('.assistant-badge-btn').forEach((button) => {
     button.classList.toggle(
       'active',
       normalizeAssistant(button.getAttribute('data-value')) === normalizedAssistant
     );
   });
-  currentAssistant = normalizedAssistant;
   setCookie('selected_agent', currentAssistant);
   updateUrlParams();
   updateLanguageUI();

@@ -6792,6 +6792,48 @@ mod tests {
     }
 
     #[test]
+    fn all_usage_queries_combine_assistants_without_losing_source_identity() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        init_db(&conn).unwrap();
+        let codex = sample_import_record();
+        let mut claude = sample_import_record();
+        claude.entry.session_id = "claude-overview-session".to_string();
+        claude.import_source_id = Some("claude-overview-record".to_string());
+        claude.entry.source_kind = Some("claude-profile:work".to_string());
+
+        import_usage_day_entries(
+            &mut conn,
+            "codex",
+            "2026-07-10",
+            vec![codex],
+            UsageImportMetadata::default(),
+        )
+        .unwrap();
+        import_usage_day_entries(
+            &mut conn,
+            "claude",
+            "2026-07-10",
+            vec![claude],
+            UsageImportMetadata::default(),
+        )
+        .unwrap();
+
+        let entries = get_usage_entries_by_date(&conn, "2026-07-10", "all").unwrap();
+        assert_eq!(entries.len(), 2);
+        assert!(entries.iter().any(|row| row.assistant_type == "codex"));
+        assert!(entries.iter().any(|row| {
+            row.assistant_type == "claude"
+                && row.record.entry.source_kind.as_deref() == Some("claude-profile:work")
+        }));
+        assert_eq!(
+            get_available_dates(&conn, "all").unwrap(),
+            vec!["2026-07-10"]
+        );
+        assert_eq!(get_available_months(&conn, "all").unwrap(), vec!["2026-07"]);
+        assert_eq!(get_available_years(&conn, "all").unwrap(), vec!["2026"]);
+    }
+
+    #[test]
     fn import_batches_track_source_and_rollback_only_imported_rows() {
         let mut conn = Connection::open_in_memory().unwrap();
         init_db(&conn).unwrap();
