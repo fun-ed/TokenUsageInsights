@@ -116,13 +116,7 @@ fn session_id_from_file(path: &Path) -> Option<String> {
 fn session_id_from_path(value: &str, source_kind: &str) -> Option<String> {
     let path = Path::new(value);
     if is_omp_session(source_kind) {
-        return session_id_from_file(path).or_else(|| {
-            path.file_stem()
-                .and_then(|name| name.to_str())
-                .and_then(|name| name.rsplit_once('_').map_or(Some(name), |(_, id)| Some(id)))
-                .filter(|name| !name.is_empty())
-                .map(str::to_string)
-        });
+        return session_id_from_file(path);
     }
     path.file_stem()
         .and_then(|name| name.to_str())
@@ -137,22 +131,32 @@ fn is_omp_session(source_kind: &str) -> bool {
 fn is_advisor_transcript(path: &Path) -> bool {
     path.file_name()
         .and_then(|name| name.to_str())
-        .is_some_and(|name| name.starts_with("__advisor") && name.ends_with(".jsonl"))
+        .is_some_and(|name| {
+            name == "__advisor.jsonl"
+                || (name.starts_with("__advisor.") && name.ends_with(".jsonl"))
+        })
+}
+
+fn advisor_nickname(path: &Path) -> Option<String> {
+    let name = path.file_name()?.to_str()?;
+    if name == "__advisor.jsonl" {
+        return Some("advisor".to_string());
+    }
+    name.strip_prefix("__advisor.")
+        .and_then(|name| name.strip_suffix(".jsonl"))
+        .filter(|name| !name.is_empty())
+        .map(|name| format!("advisor:{name}"))
 }
 
 fn artifact_parent_session_id(path: &Path, source_kind: &str) -> Option<String> {
+    let artifact_dir = path.parent()?;
+    if is_omp_session(source_kind) {
+        // OMP stores agent transcripts in `<parent-stem>/<agent>.jsonl` and
+        // advisor transcripts in `<parent-stem>/<agent>/__advisor*.jsonl`.
+        // In both shapes, `<artifact-dir>.jsonl` is the owning session file.
+        return session_id_from_file(&artifact_dir.with_extension("jsonl"));
+    }
     is_advisor_transcript(path).then(|| {
-        let artifact_dir = path.parent()?;
-        if is_omp_session(source_kind) {
-            return session_id_from_file(&artifact_dir.with_extension("jsonl")).or_else(|| {
-                artifact_dir
-                    .file_name()
-                    .and_then(|name| name.to_str())
-                    .and_then(|name| name.rsplit_once('_').map_or(Some(name), |(_, id)| Some(id)))
-                    .filter(|name| !name.is_empty())
-                    .map(str::to_string)
-            });
-        }
         artifact_dir
             .file_name()
             .and_then(|name| name.to_str())
@@ -309,7 +313,7 @@ fn read_session_header(path: &Path, source_kind: &str) -> SessionHeaderInfo {
                 .and_then(Value::as_str)
                 .map(str::to_string);
             let session_name =
-                trimmed_session_name(header.get("title").and_then(Value::as_str)).or(title);
+                title.or_else(|| trimmed_session_name(header.get("title").and_then(Value::as_str)));
             let parent_session_id = header
                 .get("parentSession")
                 .and_then(Value::as_str)
@@ -349,10 +353,13 @@ pub(crate) fn parse_session_usage_file(
     let mut turn_no = 1u32;
     let mut session_name = header.session_name.clone();
     let is_advisor = is_advisor_transcript(path);
-    let mut agent_nickname =
-        (is_omp_session(source_kind) && header.parent_session_id.is_some() && !is_advisor)
+    let mut agent_nickname = if is_advisor {
+        advisor_nickname(path)
+    } else {
+        (is_omp_session(source_kind) && header.parent_session_id.is_some())
             .then(|| trimmed_session_name(path.file_stem().and_then(|name| name.to_str())))
-            .flatten();
+            .flatten()
+    };
     let mut agent_role = if is_advisor {
         Some("advisor".to_string())
     } else {

@@ -82,7 +82,7 @@ mod tests {
 
         let advisor_dir = root.join(parent_stem);
         fs::create_dir_all(&advisor_dir).unwrap();
-        let advisor_path = advisor_dir.join("__advisor.review.jsonl");
+        let advisor_path = advisor_dir.join("__advisor.jsonl");
         fs::write(
             &advisor_path,
             r#"{"type":"message","id":"advisor","parentId":null,"timestamp":"2024-12-03T14:00:04.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Advisory result"}],"provider":"openai-codex","model":"gpt-5.6-terra","usage":{"input":3,"output":2,"totalTokens":5}}}"#,
@@ -94,16 +94,17 @@ mod tests {
             advisor_entries[0].parent_session_id.as_deref(),
             Some("parent-id")
         );
+        assert_eq!(
+            advisor_entries[0].agent_nickname.as_deref(),
+            Some("advisor")
+        );
         assert_eq!(advisor_entries[0].agent_role.as_deref(), Some("advisor"));
 
-        let agent_path = root.join("CoreSourceResearch.jsonl");
+        let agent_path = advisor_dir.join("CoreSourceResearch.jsonl");
         fs::write(
             &agent_path,
-            format!(
-                r#"{{"type":"session","version":3,"id":"agent-id","parentSession":"{}","timestamp":"2024-12-03T14:00:00.000Z","cwd":"/tmp/project"}}
-{{"type":"message","id":"agent","parentId":null,"timestamp":"2024-12-03T14:00:05.000Z","message":{{"role":"assistant","provider":"openai-codex","model":"gpt-5.6-terra","usage":{{"input":3,"output":2,"totalTokens":5}}}}}}"#,
-                parent_path.display()
-            ),
+            r#"{"type":"session","version":3,"id":"agent-id","timestamp":"2024-12-03T14:00:00.000Z","cwd":"/tmp/project"}
+{"type":"message","id":"agent","parentId":null,"timestamp":"2024-12-03T14:00:05.000Z","message":{"role":"assistant","provider":"openai-codex","model":"gpt-5.6-terra","usage":{"input":3,"output":2,"totalTokens":5}}}"#,
         )
         .unwrap();
         let agent_entries = parse_session_usage_file(&agent_path).unwrap();
@@ -117,6 +118,45 @@ mod tests {
         );
         assert_eq!(agent_entries[0].agent_role.as_deref(), Some("subagent"));
 
+        let nested_advisor_dir = advisor_dir.join("CoreSourceResearch");
+        fs::create_dir_all(&nested_advisor_dir).unwrap();
+        let nested_advisor_path = nested_advisor_dir.join("__advisor.arch.jsonl");
+        fs::write(
+            &nested_advisor_path,
+            r#"{"type":"message","id":"nested-advisor","parentId":null,"timestamp":"2024-12-03T14:00:05.500Z","message":{"role":"assistant","provider":"openai-codex","model":"gpt-5.6-terra","usage":{"input":3,"output":2,"totalTokens":5}}}"#,
+        )
+        .unwrap();
+        let nested_advisor_entries = parse_session_usage_file(&nested_advisor_path).unwrap();
+        assert_eq!(
+            nested_advisor_entries[0].parent_session_id.as_deref(),
+            Some("agent-id")
+        );
+        assert_eq!(
+            nested_advisor_entries[0].agent_nickname.as_deref(),
+            Some("advisor:arch")
+        );
+        assert_eq!(
+            nested_advisor_entries[0].agent_role.as_deref(),
+            Some("advisor")
+        );
+
+        let reserved_name_path = advisor_dir.join("__advisor-2.jsonl");
+        fs::write(
+            &reserved_name_path,
+            r#"{"type":"session","version":3,"id":"reserved-agent","timestamp":"2024-12-03T14:00:05.750Z","cwd":"/tmp/project"}
+{"type":"message","id":"reserved","parentId":null,"timestamp":"2024-12-03T14:00:05.900Z","message":{"role":"assistant","provider":"openai-codex","model":"gpt-5.6-terra","usage":{"input":3,"output":2,"totalTokens":5}}}"#,
+        )
+        .unwrap();
+        let reserved_name_entries = parse_session_usage_file(&reserved_name_path).unwrap();
+        assert_eq!(
+            reserved_name_entries[0].agent_nickname.as_deref(),
+            Some("__advisor-2")
+        );
+        assert_eq!(
+            reserved_name_entries[0].agent_role.as_deref(),
+            Some("subagent")
+        );
+
         let main_path = root.join("main.jsonl");
         fs::write(
             &main_path,
@@ -126,10 +166,7 @@ mod tests {
         )
         .unwrap();
         let main_entries = parse_session_usage_file(&main_path).unwrap();
-        assert_eq!(
-            main_entries[0].session_name.as_deref(),
-            Some("Header title")
-        );
+        assert_eq!(main_entries[0].session_name.as_deref(), Some("Main title"));
 
         fs::remove_dir_all(&root).ok();
     }

@@ -188,7 +188,7 @@ const CURSOR_CACHE_TOKENS_UNKNOWN_MIGRATION_KEY: &str = "migration:cursor_cache_
 const CURSOR_AGENT_SOURCE_KIND: &str = "cursor-agent";
 const CURSOR_IDE_SOURCE_KIND: &str = "cursor-ide";
 const GROK_PARSER_MIGRATION_KEY: &str = "migration:grok_parser_v7";
-const OMP_PARSER_MIGRATION_KEY: &str = "migration:omp_parser_v3";
+const OMP_PARSER_MIGRATION_KEY: &str = "migration:omp_parser_v4";
 const LEGACY_GROK_PARSER_MIGRATION_KEYS: &[&str] = &[
     "migration:grok_parser_v1",
     "migration:grok_model_normalization_v2",
@@ -14918,13 +14918,23 @@ mod tests {
             .join("sessions")
             .join("--tmp--omp-project");
         fs::create_dir_all(&session_dir).unwrap();
+        let parent_path = session_dir.join("2024-12-03T14-00-00_parent-id.jsonl");
+        fs::write(
+            &parent_path,
+            r#"{"type":"session","version":3,"id":"parent-id","timestamp":"2024-12-03T14:00:00.000Z","cwd":"/tmp/omp-project"}"#,
+        )
+        .unwrap();
+        let child_header = format!(
+            r#"{{"type":"session","version":3,"id":"omp-sess-1","parentSession":"{}","timestamp":"2024-12-03T14:00:00.000Z","cwd":"/tmp/omp-project"}}"#,
+            parent_path.display()
+        );
         fs::write(
             session_dir.join("2024-12-03T14-00-00_def.jsonl"),
-            concat!(
-                r#"{"type":"session","version":3,"id":"omp-sess-1","parentSession":"/tmp/parent-session.jsonl","timestamp":"2024-12-03T14:00:00.000Z","cwd":"/tmp/omp-project"}"#, "\n",
-                r#"{"type":"session_init","id":"init","parentId":null,"timestamp":"2024-12-03T14:00:01.000Z","systemPrompt":"Review code.","task":"Inspect code","tools":["read"],"agent":"reviewer","resolvedModel":"openai-codex/gpt-5.6-terra"}"#, "\n",
-                r#"{"type":"message","id":"m2","parentId":"init","timestamp":"2024-12-03T14:00:02.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Hi!"}],"provider":"openai-codex","model":"gpt-5.6-terra","usage":{"input":10,"output":5,"totalTokens":15,"cost":{"total":0.0005}},"stopReason":"stop"}}"#, "\n",
-                r#"{"type":"model_usage","id":"m3","parentId":"m2","timestamp":"2024-12-03T14:00:03.000Z","purpose":"preflight","provider":"openai-codex","model":"gpt-5.6-terra","usage":{"input":4,"output":1,"totalTokens":5,"cost":{"total":0.0002}}}"#, "\n"
+            format!(
+                "{child_header}\n{}\n{}\n{}\n",
+                r#"{"type":"session_init","id":"init","parentId":null,"timestamp":"2024-12-03T14:00:01.000Z","systemPrompt":"Review code.","task":"Inspect code","tools":["read"],"agent":"reviewer","resolvedModel":"openai-codex/gpt-5.6-terra"}"#,
+                r#"{"type":"message","id":"m2","parentId":"init","timestamp":"2024-12-03T14:00:02.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Hi!"}],"provider":"openai-codex","model":"gpt-5.6-terra","usage":{"input":10,"output":5,"totalTokens":15,"cost":{"total":0.0005}},"stopReason":"stop"}}"#,
+                r#"{"type":"model_usage","id":"m3","parentId":"m2","timestamp":"2024-12-03T14:00:03.000Z","purpose":"preflight","provider":"openai-codex","model":"gpt-5.6-terra","usage":{"input":4,"output":1,"totalTokens":5,"cost":{"total":0.0002}}}"#
             ),
         )
         .unwrap();
@@ -14936,7 +14946,8 @@ mod tests {
         let rows: Vec<(String, String, String, String, String)> = conn
             .prepare(
                 "SELECT model, source_kind, parent_session_id, agent_nickname, agent_role
-                 FROM usage_entries WHERE assistant_type = 'omp' ORDER BY turn_no",
+                 FROM usage_entries
+                 WHERE assistant_type = 'omp' AND session_id = 'omp-sess-1' ORDER BY turn_no",
             )
             .unwrap()
             .query_map([], |row| {
@@ -14957,14 +14968,14 @@ mod tests {
                 (
                     "openai/gpt-5.6-terra".to_string(),
                     crate::omp::SOURCE_KIND.to_string(),
-                    "parent-session".to_string(),
+                    "parent-id".to_string(),
                     "reviewer".to_string(),
                     "subagent".to_string(),
                 ),
                 (
                     "openai/gpt-5.6-terra".to_string(),
                     crate::omp::SOURCE_KIND.to_string(),
-                    "parent-session".to_string(),
+                    "parent-id".to_string(),
                     "reviewer".to_string(),
                     "subagent:preflight".to_string(),
                 ),
