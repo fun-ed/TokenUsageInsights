@@ -267,6 +267,9 @@ async fn main() {
 
     // 啟動背景非阻塞自動更新檢查（若非標準安裝或檢查間隔未滿將自動略過）
     updater::spawn_background_auto_update(shutdown_reason_tx.clone());
+    // Refresh model prices asynchronously; current data remains available from
+    // the local cache (or bundled CSV) while models.dev is unreachable.
+    pricing::spawn_models_dev_pricing_refresh();
 
     // 服務 runner 可透過 .service_stop_requested 要求看板優雅停機：
     // 讓進程完成進行中的資料庫寫入後自行退出，避免以強制終止中斷 SQLite 寫入

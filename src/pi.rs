@@ -93,6 +93,138 @@ fn parse_reported_cost(usage: &Value) -> Option<f64> {
 struct SessionHeaderInfo {
     session_id: String,
     cwd: Option<String>,
+    parent_session_id: Option<String>,
+}
+
+fn session_id_from_path(value: &str) -> Option<String> {
+    Path::new(value)
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.is_empty())
+        .map(str::to_string)
+}
+
+fn is_omp_session(source_kind: &str) -> bool {
+    source_kind == crate::omp::SOURCE_KIND
+}
+
+fn is_advisor_transcript(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.starts_with("__advisor") && name.ends_with(".jsonl"))
+}
+
+fn artifact_parent_session_id(path: &Path) -> Option<String> {
+    is_advisor_transcript(path).then(|| {
+        path.parent()
+            .and_then(Path::file_name)
+            .and_then(|name| name.to_str())
+            .filter(|name| !name.is_empty())
+            .map(str::to_string)
+    })?
+}
+
+fn canonical_omp_provider(provider: &str) -> &str {
+    match provider {
+        // OMP's ChatGPT OAuth transport bills at OpenAI's public API rates.
+        "openai-codex" => "openai",
+        "google-gemini-cli" | "google-antigravity" => "google",
+        other => other,
+    }
+}
+
+fn omp_model_id(provider: Option<&str>, model: Option<&str>) -> Option<String> {
+    let model = model?.trim();
+    if model.is_empty() {
+        return None;
+    }
+    if let Some((model_provider, model_id)) = model.split_once('/') {
+        return Some(format!(
+            "{}/{}",
+            canonical_omp_provider(model_provider),
+            model_id
+        ));
+    }
+    let provider = provider?.trim();
+    if provider.is_empty() {
+        return Some(model.to_string());
+    }
+    Some(format!("{}/{}", canonical_omp_provider(provider), model))
+}
+
+fn model_id(source_kind: &str, provider: Option<&str>, model: Option<&str>) -> Option<String> {
+    if is_omp_session(source_kind) {
+        omp_model_id(provider, model)
+    } else {
+        model.map(str::to_string)
+    }
+}
+
+fn trimmed_session_name(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.chars().take(100).collect())
+}
+
+fn execution_role(base_role: Option<&str>, purpose: Option<&str>) -> Option<String> {
+    let purpose = purpose.map(str::trim).filter(|value| !value.is_empty());
+    match (base_role, purpose) {
+        (Some(base), Some(purpose)) => Some(format!("{base}:{purpose}")),
+        (Some(base), None) => Some(base.to_string()),
+        (None, Some(purpose)) => Some(purpose.to_string()),
+        (None, None) => None,
+    }
+}
+
+struct UsageEntryContext<'a> {
+    header: &'a SessionHeaderInfo,
+    transcript_path: &'a str,
+    session_name: &'a Option<String>,
+    source_kind: &'a str,
+    agent_nickname: &'a Option<String>,
+    agent_role: &'a Option<String>,
+}
+
+fn append_usage_entry(
+    entries: &mut Vec<UsageEntry>,
+    turn_no: &mut u32,
+    timestamp: String,
+    model: Option<String>,
+    usage: &Value,
+    context: UsageEntryContext<'_>,
+) {
+    let Some(tokens) = parse_token_stats(usage) else {
+        return;
+    };
+    let reported_cost_usd = parse_reported_cost(usage);
+    entries.push(UsageEntry {
+        timestamp,
+        session_id: context.header.session_id.clone(),
+        session_name: context.session_name.clone(),
+        transcript_path: Some(context.transcript_path.to_string()),
+        cwd: context.header.cwd.clone(),
+        version: None,
+        turn_no: *turn_no,
+        model: model.clone(),
+        model_id: model,
+        tokens: Some(tokens.clone()),
+        delta_tokens: Some(tokens),
+        context: None,
+        cost: reported_cost_usd.map(|reported_cost_usd| CostStats {
+            total_api_duration_ms: None,
+            total_duration_ms: None,
+            total_premium_requests: None,
+            reported_cost_usd: Some(reported_cost_usd),
+        }),
+        source_kind: Some(context.source_kind.to_string()),
+        source_dir_key: None,
+        parent_session_id: context.header.parent_session_id.clone(),
+        agent_nickname: context.agent_nickname.clone(),
+        agent_role: context.agent_role.clone(),
+        reasoning_effort: None,
+    });
+    *turn_no += 1;
 }
 
 fn read_session_header(path: &Path) -> SessionHeaderInfo {
@@ -106,6 +238,7 @@ fn read_session_header(path: &Path) -> SessionHeaderInfo {
         return SessionHeaderInfo {
             session_id: fallback_id,
             cwd: None,
+            parent_session_id: artifact_parent_session_id(path),
         };
     };
     let reader = BufReader::new(file);
@@ -134,21 +267,30 @@ fn read_session_header(path: &Path) -> SessionHeaderInfo {
                 .get("cwd")
                 .and_then(Value::as_str)
                 .map(str::to_string);
-            return SessionHeaderInfo { session_id, cwd };
+            let parent_session_id = header
+                .get("parentSession")
+                .and_then(Value::as_str)
+                .and_then(session_id_from_path)
+                .or_else(|| artifact_parent_session_id(path));
+            return SessionHeaderInfo {
+                session_id,
+                cwd,
+                parent_session_id,
+            };
         }
     }
 
     SessionHeaderInfo {
         session_id: fallback_id,
         cwd: None,
+        parent_session_id: artifact_parent_session_id(path),
     }
 }
 
 /// Parses one Pi/OMP session JSONL file into per-turn [`UsageEntry`] rows.
-/// Each assistant message that carries a `usage` object is treated as a
-/// complete, self-contained turn (Pi/OMP already report token counts and
-/// cost per assistant turn, unlike providers that require delta accumulation
-/// across streaming chunks).
+/// OMP v18 additionally persists `model_usage` calls (auto-thinking,
+/// preflight, and other non-conversation work), which are collected with their
+/// purpose preserved in `agent_role`.
 pub(crate) fn parse_session_usage_file(
     path: &Path,
     source_kind: &str,
@@ -161,6 +303,8 @@ pub(crate) fn parse_session_usage_file(
     let mut entries = Vec::new();
     let mut turn_no = 1u32;
     let mut session_name: Option<String> = None;
+    let mut agent_nickname = None;
+    let mut agent_role = is_advisor_transcript(path).then(|| "advisor".to_string());
 
     for line in reader.lines() {
         let Ok(line) = line else {
@@ -179,8 +323,53 @@ pub(crate) fn parse_session_usage_file(
 
         if entry_type == "session_info" {
             if let Some(name) = entry_value.get("name").and_then(Value::as_str) {
-                session_name = Some(name.to_string());
+                session_name = trimmed_session_name(Some(name));
             }
+            continue;
+        }
+
+        if is_omp_session(source_kind) && entry_type == "session_init" {
+            session_name = trimmed_session_name(entry_value.get("task").and_then(Value::as_str));
+            agent_nickname = entry_value
+                .get("agent")
+                .and_then(Value::as_str)
+                .and_then(|value| trimmed_session_name(Some(value)));
+            if agent_nickname.is_some() {
+                agent_role = Some("subagent".to_string());
+            }
+            continue;
+        }
+
+        let timestamp = entry_value
+            .get("timestamp")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        if is_omp_session(source_kind) && entry_type == "model_usage" {
+            let model = model_id(
+                source_kind,
+                entry_value.get("provider").and_then(Value::as_str),
+                entry_value.get("model").and_then(Value::as_str),
+            );
+            let usage_role = execution_role(
+                agent_role.as_deref(),
+                entry_value.get("purpose").and_then(Value::as_str),
+            );
+            append_usage_entry(
+                &mut entries,
+                &mut turn_no,
+                timestamp,
+                model,
+                entry_value.get("usage").unwrap_or(&Value::Null),
+                UsageEntryContext {
+                    header: &header,
+                    transcript_path: &transcript_path,
+                    session_name: &session_name,
+                    source_kind,
+                    agent_nickname: &agent_nickname,
+                    agent_role: &usage_role,
+                },
+            );
             continue;
         }
 
@@ -193,50 +382,26 @@ pub(crate) fn parse_session_usage_file(
         if message.get("role").and_then(Value::as_str) != Some("assistant") {
             continue;
         }
-        let Some(usage) = message.get("usage") else {
-            continue;
-        };
-        let Some(tokens) = parse_token_stats(usage) else {
-            continue;
-        };
-        let reported_cost_usd = parse_reported_cost(usage);
-        let model = message
-            .get("model")
-            .and_then(Value::as_str)
-            .map(str::to_string);
-        let timestamp = entry_value
-            .get("timestamp")
-            .and_then(Value::as_str)
-            .unwrap_or("")
-            .to_string();
-
-        entries.push(UsageEntry {
+        let model = model_id(
+            source_kind,
+            message.get("provider").and_then(Value::as_str),
+            message.get("model").and_then(Value::as_str),
+        );
+        append_usage_entry(
+            &mut entries,
+            &mut turn_no,
             timestamp,
-            session_id: header.session_id.clone(),
-            session_name: session_name.clone(),
-            transcript_path: Some(transcript_path.clone()),
-            cwd: header.cwd.clone(),
-            version: None,
-            turn_no,
-            model: model.clone(),
-            model_id: model,
-            tokens: Some(tokens.clone()),
-            delta_tokens: Some(tokens),
-            context: None,
-            cost: reported_cost_usd.map(|reported_cost_usd| CostStats {
-                total_api_duration_ms: None,
-                total_duration_ms: None,
-                total_premium_requests: None,
-                reported_cost_usd: Some(reported_cost_usd),
-            }),
-            source_kind: Some(source_kind.to_string()),
-            source_dir_key: None,
-            parent_session_id: None,
-            agent_nickname: None,
-            agent_role: None,
-            reasoning_effort: None,
-        });
-        turn_no += 1;
+            model,
+            message.get("usage").unwrap_or(&Value::Null),
+            UsageEntryContext {
+                header: &header,
+                transcript_path: &transcript_path,
+                session_name: &session_name,
+                source_kind,
+                agent_nickname: &agent_nickname,
+                agent_role: &agent_role,
+            },
+        );
     }
 
     Ok(entries)

@@ -188,6 +188,7 @@ const CURSOR_CACHE_TOKENS_UNKNOWN_MIGRATION_KEY: &str = "migration:cursor_cache_
 const CURSOR_AGENT_SOURCE_KIND: &str = "cursor-agent";
 const CURSOR_IDE_SOURCE_KIND: &str = "cursor-ide";
 const GROK_PARSER_MIGRATION_KEY: &str = "migration:grok_parser_v7";
+const OMP_PARSER_MIGRATION_KEY: &str = "migration:omp_parser_v2";
 const LEGACY_GROK_PARSER_MIGRATION_KEYS: &[&str] = &[
     "migration:grok_parser_v1",
     "migration:grok_model_normalization_v2",
@@ -1774,6 +1775,35 @@ fn run_codex_parser_migration(conn: &mut Connection) -> Result<(), String> {
             .map_err(|e| format!("Codex parser migration COMMIT 失敗: {}", e))?;
     }
     Ok(())
+}
+
+/// Reparse OMP sessions once so existing files gain OMP v18's independent
+/// model-usage calls and subagent metadata without waiting for a new append.
+fn run_omp_parser_migration(conn: &mut Connection) -> Result<(), String> {
+    let migration_done: bool = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM sync_state WHERE filename = ?)",
+            params![OMP_PARSER_MIGRATION_KEY],
+            |row| row.get(0),
+        )
+        .unwrap_or(false);
+    if migration_done {
+        return Ok(());
+    }
+
+    let tx = conn
+        .transaction()
+        .map_err(|error| format!("OMP parser migration BEGIN 失敗: {error}"))?;
+    tx.execute("DELETE FROM sync_state WHERE filename LIKE 'omp:%'", [])
+        .map_err(|error| format!("清除 OMP 同步狀態失敗: {error}"))?;
+    tx.execute(
+        "INSERT OR REPLACE INTO sync_state (filename, last_synced_size, last_synced_time)
+         VALUES (?, 1, 0)",
+        params![OMP_PARSER_MIGRATION_KEY],
+    )
+    .map_err(|error| format!("記錄 OMP parser migration 失敗: {error}"))?;
+    tx.commit()
+        .map_err(|error| format!("OMP parser migration COMMIT 失敗: {error}"))
 }
 
 fn run_codex_source_kind_migration(conn: &mut Connection) -> Result<(), String> {
@@ -4284,12 +4314,12 @@ fn sync_pi_family_usage_logs(
                     assistant_type, source_kind, usage_identity, timestamp, date, session_id, session_name, transcript_path, cwd, version, turn_no, model, model_id,
                     tokens_input, tokens_output, tokens_cache_read, tokens_cache_write, tokens_reasoning, tokens_total,
                     delta_input, delta_output, delta_cache_read, delta_cache_write, delta_reasoning, delta_total,
-                    duration_ms, premium_requests, reported_cost_usd, reasoning_effort
+                    duration_ms, premium_requests, reported_cost_usd, parent_session_id, agent_nickname, agent_role, reasoning_effort
                 ) VALUES (
                     ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                     ?, ?, ?, ?, ?, ?,
                     ?, ?, ?, ?, ?, ?,
-                    ?, ?, ?, ?
+                    ?, ?, ?, ?, ?, ?, ?
                 )",
                 params![
                     assistant_type,
@@ -4320,6 +4350,9 @@ fn sync_pi_family_usage_logs(
                     cost.and_then(|value| value.total_api_duration_ms.map(|v| v as i64)),
                     cost.and_then(|value| value.total_premium_requests.map(|v| v as i64)),
                     cost.and_then(|value| value.reported_cost_usd),
+                    entry.parent_session_id.as_deref(),
+                    entry.agent_nickname.as_deref(),
+                    entry.agent_role.as_deref(),
                     entry.reasoning_effort.as_deref(),
                 ],
             )
@@ -4356,6 +4389,7 @@ pub(crate) fn sync_pi_usage_logs(conn: &mut Connection, pi_dir: &Path) -> Result
 }
 
 pub(crate) fn sync_omp_usage_logs(conn: &mut Connection, omp_dir: &Path) -> Result<(), String> {
+    run_omp_parser_migration(conn)?;
     let session_files = crate::omp::find_session_files(omp_dir);
     sync_pi_family_usage_logs(
         conn,
@@ -14877,7 +14911,7 @@ mod tests {
     }
 
     #[test]
-    fn sync_omp_usage_logs_persists_turn_with_omp_source_kind() {
+    fn sync_omp_usage_logs_persists_latest_usage_and_agent_metadata() {
         let root = temp_jsonl_path("omp-sync");
         let session_dir = root
             .join("agent")
@@ -14887,8 +14921,10 @@ mod tests {
         fs::write(
             session_dir.join("2024-12-03T14-00-00_def.jsonl"),
             concat!(
-                r#"{"type":"session","version":3,"id":"omp-sess-1","timestamp":"2024-12-03T14:00:00.000Z","cwd":"/tmp/omp-project"}"#, "\n",
-                r#"{"type":"message","id":"m2","parentId":null,"timestamp":"2024-12-03T14:00:02.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Hi!"}],"provider":"anthropic","model":"claude-sonnet-4-5","usage":{"input":10,"output":5,"totalTokens":15,"cost":{"total":0.0005}},"stopReason":"stop"}}"#, "\n"
+                r#"{"type":"session","version":3,"id":"omp-sess-1","parentSession":"/tmp/parent-session.jsonl","timestamp":"2024-12-03T14:00:00.000Z","cwd":"/tmp/omp-project"}"#, "\n",
+                r#"{"type":"session_init","id":"init","parentId":null,"timestamp":"2024-12-03T14:00:01.000Z","systemPrompt":"Review code.","task":"Inspect code","tools":["read"],"agent":"reviewer","resolvedModel":"openai-codex/gpt-5.6-terra"}"#, "\n",
+                r#"{"type":"message","id":"m2","parentId":"init","timestamp":"2024-12-03T14:00:02.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Hi!"}],"provider":"openai-codex","model":"gpt-5.6-terra","usage":{"input":10,"output":5,"totalTokens":15,"cost":{"total":0.0005}},"stopReason":"stop"}}"#, "\n",
+                r#"{"type":"model_usage","id":"m3","parentId":"m2","timestamp":"2024-12-03T14:00:03.000Z","purpose":"preflight","provider":"openai-codex","model":"gpt-5.6-terra","usage":{"input":4,"output":1,"totalTokens":5,"cost":{"total":0.0002}}}"#, "\n"
             ),
         )
         .unwrap();
@@ -14897,17 +14933,52 @@ mod tests {
         init_db(&conn).unwrap();
         sync_omp_usage_logs(&mut conn, &root).unwrap();
 
-        let (count, source_kind, reported_cost): (u64, String, f64) = conn
+        let rows: Vec<(String, String, String, String, String)> = conn
+            .prepare(
+                "SELECT model, source_kind, parent_session_id, agent_nickname, agent_role
+                 FROM usage_entries WHERE assistant_type = 'omp' ORDER BY turn_no",
+            )
+            .unwrap()
+            .query_map([], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            })
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(
+            rows,
+            vec![
+                (
+                    "openai/gpt-5.6-terra".to_string(),
+                    crate::omp::SOURCE_KIND.to_string(),
+                    "parent-session".to_string(),
+                    "reviewer".to_string(),
+                    "subagent".to_string(),
+                ),
+                (
+                    "openai/gpt-5.6-terra".to_string(),
+                    crate::omp::SOURCE_KIND.to_string(),
+                    "parent-session".to_string(),
+                    "reviewer".to_string(),
+                    "subagent:preflight".to_string(),
+                ),
+            ]
+        );
+
+        let migration_count: u64 = conn
             .query_row(
-                "SELECT COUNT(*), source_kind, reported_cost_usd
-                 FROM usage_entries WHERE assistant_type = 'omp'",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                "SELECT COUNT(*) FROM sync_state WHERE filename = ?",
+                params![OMP_PARSER_MIGRATION_KEY],
+                |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(count, 1);
-        assert_eq!(source_kind, crate::omp::SOURCE_KIND);
-        assert!((reported_cost - 0.0005).abs() < f64::EPSILON);
+        assert_eq!(migration_count, 1);
 
         let _ = fs::remove_dir_all(root);
     }

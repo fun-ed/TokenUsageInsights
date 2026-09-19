@@ -1,7 +1,10 @@
 use serde::Serialize;
-use std::fs::File;
+use serde_json::Value;
+use std::collections::HashSet;
+use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
+use std::time::{Duration, SystemTime};
 
 #[derive(Debug, Clone)]
 pub struct PricingRule {
@@ -20,6 +23,145 @@ pub struct PricingEntry {
     pub cache_input_price: f64,
     pub output_price: f64,
     pub batch_api_price: String,
+}
+
+const MODELS_DEV_URL: &str = "https://models.dev/api.json";
+const MODELS_DEV_CACHE_FILE: &str = "models-dev-pricing.json";
+const MODELS_DEV_CACHE_TTL: Duration = Duration::from_secs(24 * 60 * 60);
+const MODELS_DEV_MAX_BYTES: u64 = 10 * 1024 * 1024;
+
+fn models_dev_cache_path() -> PathBuf {
+    crate::db::get_insights_dir().join(MODELS_DEV_CACHE_FILE)
+}
+
+fn models_dev_cache_is_stale() -> bool {
+    fs::metadata(models_dev_cache_path())
+        .and_then(|metadata| metadata.modified())
+        .ok()
+        .and_then(|modified| SystemTime::now().duration_since(modified).ok())
+        .is_none_or(|age| age >= MODELS_DEV_CACHE_TTL)
+}
+
+/// Refreshes the local models.dev cache only when it is absent or older than a
+/// day. The dashboard keeps using the last valid cache when the network is
+/// unavailable.
+pub fn spawn_models_dev_pricing_refresh() {
+    if !models_dev_cache_is_stale() {
+        return;
+    }
+    tokio::spawn(async {
+        if let Err(error) = refresh_models_dev_pricing_cache().await {
+            eprintln!("更新 models.dev 模型價格快取失敗：{error}");
+        }
+    });
+}
+
+async fn refresh_models_dev_pricing_cache() -> Result<(), String> {
+    let client = reqwest::Client::builder()
+        .https_only(true)
+        .timeout(Duration::from_secs(15))
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .map_err(|error| format!("建立 models.dev HTTP client 失敗：{error}"))?;
+    let response = client
+        .get(MODELS_DEV_URL)
+        .send()
+        .await
+        .map_err(|error| format!("下載 models.dev 價格資料失敗：{error}"))?
+        .error_for_status()
+        .map_err(|error| format!("models.dev 回應失敗：{error}"))?;
+    if response
+        .content_length()
+        .is_some_and(|length| length > MODELS_DEV_MAX_BYTES)
+    {
+        return Err(format!(
+            "models.dev 價格資料超過 {MODELS_DEV_MAX_BYTES} bytes 安全上限"
+        ));
+    }
+    let body = response
+        .text()
+        .await
+        .map_err(|error| format!("讀取 models.dev 價格資料失敗：{error}"))?;
+    if body.len() as u64 > MODELS_DEV_MAX_BYTES {
+        return Err(format!(
+            "models.dev 價格資料超過 {MODELS_DEV_MAX_BYTES} bytes 安全上限"
+        ));
+    }
+    let value: Value = serde_json::from_str(&body)
+        .map_err(|error| format!("models.dev JSON 格式無效：{error}"))?;
+    if models_dev_pricing_entries(&value).is_empty() {
+        return Err("models.dev 價格資料不含任何可用模型".to_string());
+    }
+
+    let cache_path = models_dev_cache_path();
+    let parent = cache_path
+        .parent()
+        .ok_or_else(|| "models.dev 快取路徑無效".to_string())?;
+    fs::create_dir_all(parent).map_err(|error| format!("建立 models.dev 快取目錄失敗：{error}"))?;
+    let temporary_path = cache_path.with_extension("json.tmp");
+    fs::write(&temporary_path, body)
+        .map_err(|error| format!("寫入 models.dev 快取失敗：{error}"))?;
+    fs::rename(&temporary_path, &cache_path)
+        .map_err(|error| format!("套用 models.dev 快取失敗：{error}"))?;
+    Ok(())
+}
+
+fn models_dev_pricing_entries(value: &Value) -> Vec<PricingEntry> {
+    let mut entries = Vec::new();
+    let Some(providers) = value.as_object() else {
+        return entries;
+    };
+    for (provider_id, provider) in providers {
+        let Some(models) = provider.get("models").and_then(Value::as_object) else {
+            continue;
+        };
+        for (model_key, model) in models {
+            let Some(cost) = model.get("cost") else {
+                continue;
+            };
+            let Some(input_price) = cost.get("input").and_then(Value::as_f64) else {
+                continue;
+            };
+            let Some(output_price) = cost.get("output").and_then(Value::as_f64) else {
+                continue;
+            };
+            if !input_price.is_finite()
+                || !output_price.is_finite()
+                || input_price < 0.0
+                || output_price < 0.0
+            {
+                continue;
+            }
+            let model_id = model
+                .get("id")
+                .and_then(Value::as_str)
+                .filter(|id| !id.trim().is_empty())
+                .unwrap_or(model_key);
+            let cache_input_price = cost
+                .get("cache_read")
+                .and_then(Value::as_f64)
+                .filter(|price| price.is_finite() && *price >= 0.0)
+                .unwrap_or(input_price);
+            entries.push(PricingEntry {
+                model_name: format!("{provider_id}/{model_id}"),
+                deployment_type: format!("models.dev ({provider_id})"),
+                unit: "1M Tokens".to_string(),
+                input_price,
+                cache_input_price,
+                output_price,
+                batch_api_price: "N/A".to_string(),
+            });
+        }
+    }
+    entries
+}
+
+fn load_models_dev_pricing_entries() -> Vec<PricingEntry> {
+    fs::read_to_string(models_dev_cache_path())
+        .ok()
+        .and_then(|body| serde_json::from_str::<Value>(&body).ok())
+        .map(|value| models_dev_pricing_entries(&value))
+        .unwrap_or_default()
 }
 
 fn fallback_pricing_entries() -> Vec<PricingEntry> {
@@ -64,7 +206,13 @@ fn fallback_pricing_entries() -> Vec<PricingEntry> {
 }
 
 pub fn load_pricing_entries() -> Vec<PricingEntry> {
-    let mut entries = Vec::new();
+    // models.dev is the primary source for current provider-qualified model
+    // prices. The bundled CSV remains an offline and legacy-model fallback.
+    let mut entries = load_models_dev_pricing_entries();
+    let mut known_models: HashSet<String> = entries
+        .iter()
+        .map(|entry| entry.model_name.to_ascii_lowercase())
+        .collect();
     let file_path =
         crate::paths::find_resource("pricing.csv").unwrap_or_else(|| PathBuf::from("pricing.csv"));
     if let Ok(file) = File::open(&file_path) {
@@ -74,11 +222,15 @@ pub fn load_pricing_entries() -> Vec<PricingEntry> {
             for line in lines.map_while(Result::ok) {
                 let parts: Vec<&str> = line.split(',').collect();
                 if parts.len() >= 6 {
+                    let model_name = parts[0].trim().to_string();
+                    if !known_models.insert(model_name.to_ascii_lowercase()) {
+                        continue;
+                    }
                     let input_price = parts[3].trim().parse::<f64>().unwrap_or(0.0);
                     let cache_input_price = parts[4].trim().parse::<f64>().unwrap_or(0.0);
                     let output_price = parts[5].trim().parse::<f64>().unwrap_or(0.0);
                     entries.push(PricingEntry {
-                        model_name: parts[0].trim().to_string(),
+                        model_name,
                         deployment_type: parts[1].trim().to_string(),
                         unit: parts[2].trim().to_string(),
                         input_price,
@@ -477,6 +629,46 @@ mod tests {
     fn token_usage_without_model_reports_missing_metadata() {
         let error = calculate_usage_cost(&[], None, 10, 2, 3, 0, 0).unwrap_err();
         assert_eq!(error, "缺少模型名稱，無法估算成本");
+    }
+
+    #[test]
+    fn models_dev_prices_keep_provider_qualified_model_identity() {
+        let source: Value = serde_json::json!({
+            "openai": {
+                "models": {
+                    "gpt-5.6-terra": {
+                        "id": "gpt-5.6-terra",
+                        "cost": { "input": 2.0, "output": 12.0, "cache_read": 0.2 }
+                    }
+                }
+            }
+        });
+
+        let entries = models_dev_pricing_entries(&source);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].model_name, "openai/gpt-5.6-terra");
+
+        let cost = PreparedPricingRules::from_rules(
+            entries
+                .into_iter()
+                .map(|entry| PricingRule {
+                    model_name: entry.model_name,
+                    input_price: entry.input_price,
+                    cache_input_price: entry.cache_input_price,
+                    output_price: entry.output_price,
+                })
+                .collect(),
+        )
+        .calculate_usage_cost(
+            Some("openai/gpt-5.6-terra"),
+            1_000_000,
+            1_000_000,
+            1_000_000,
+            0,
+            0,
+        )
+        .unwrap();
+        assert!((cost - 14.2).abs() < f64::EPSILON);
     }
 
     #[test]

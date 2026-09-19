@@ -2460,6 +2460,7 @@ fn parse_pi_family_timeline(
     metadata: &mut HashMap<String, serde_json::Value>,
     session_label: &str,
 ) {
+    let is_omp_session = session_label == "OMP";
     let mut turn_no = 1u32;
     let mut current_model = UNKNOWN_MODEL.to_string();
     let mut tool_indices: HashMap<String, usize> = HashMap::new();
@@ -2496,6 +2497,59 @@ fn parse_pi_family_timeline(
                     "cwd".to_string(),
                     serde_json::Value::String(cwd.to_string()),
                 );
+            }
+            continue;
+        }
+        if is_omp_session && entry_type == "session_init" {
+            if let Some(agent) = entry.get("agent").and_then(|value| value.as_str()) {
+                metadata.insert(
+                    "agent_nickname".to_string(),
+                    serde_json::Value::String(agent.to_string()),
+                );
+                metadata.insert(
+                    "agent_role".to_string(),
+                    serde_json::Value::String("subagent".to_string()),
+                );
+            }
+            if let Some(model) = entry.get("resolvedModel").and_then(|value| value.as_str()) {
+                current_model = model.to_string();
+            }
+            if let Some(system_prompt) = entry.get("systemPrompt").and_then(|value| value.as_str())
+            {
+                timeline.push(TimelineItem::SystemStatus {
+                    timestamp,
+                    status_type: "system_prompt".to_string(),
+                    message: format!("System prompt:\n{system_prompt}"),
+                });
+            }
+            continue;
+        }
+
+        if is_omp_session && entry_type == "model_usage" {
+            let purpose = entry
+                .get("purpose")
+                .and_then(|value| value.as_str())
+                .unwrap_or("background");
+            let fallback_model = match (
+                entry.get("provider").and_then(|value| value.as_str()),
+                entry.get("model").and_then(|value| value.as_str()),
+            ) {
+                (Some(provider), Some(model)) => format!("{provider}/{model}"),
+                (_, Some(model)) => model.to_string(),
+                _ => current_model.clone(),
+            };
+            if let Some((_, model)) = db_entries.get(&turn_no) {
+                current_model = model.clone();
+            } else {
+                current_model = fallback_model;
+            }
+            timeline.push(TimelineItem::SystemStatus {
+                timestamp,
+                status_type: "model_usage".to_string(),
+                message: format!("{purpose} model call: {current_model}"),
+            });
+            if db_entries.contains_key(&turn_no) {
+                turn_no += 1;
             }
             continue;
         }
@@ -2987,12 +3041,15 @@ pub fn parse_muse_timeline(
 mod pi_family_tests {
     use super::*;
     use std::io::Write;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static NEXT_TEMP_FILE: AtomicUsize = AtomicUsize::new(0);
 
     fn make_reader(lines: &[&str]) -> BufReader<File> {
+        let nonce = NEXT_TEMP_FILE.fetch_add(1, Ordering::Relaxed);
         let path = std::env::temp_dir().join(format!(
-            "token-usage-insights-pi-timeline-test-{}-{}",
-            std::process::id(),
-            lines.len()
+            "token-usage-insights-pi-timeline-test-{}-{nonce}",
+            std::process::id()
         ));
         let mut file = File::create(&path).unwrap();
         for line in lines {
@@ -3078,6 +3135,55 @@ mod pi_family_tests {
                 if status_type == "model_change" && message.contains("ollama/glm-5.3-flash:cloud"))
         });
         assert!(has_model_change);
+    }
+
+    #[test]
+    fn parse_omp_timeline_exposes_system_prompt_and_background_model_usage() {
+        let reader = make_reader(&[
+            r#"{"type":"session","version":3,"id":"omp-sub","timestamp":"2026-09-20T10:00:00Z","cwd":"/tmp/project"}"#,
+            r#"{"type":"session_init","id":"init","parentId":null,"timestamp":"2026-09-20T10:00:01Z","systemPrompt":"Review this project.","task":"Inspect code","tools":["read"],"agent":"reviewer","resolvedModel":"openai-codex/gpt-5.6-terra"}"#,
+            r#"{"type":"model_usage","id":"usage","parentId":"init","timestamp":"2026-09-20T10:00:02Z","purpose":"preflight","provider":"openai-codex","model":"gpt-5.6-terra","usage":{"input":4,"output":1,"totalTokens":5}}"#,
+        ]);
+        let mut db_entries = HashMap::new();
+        db_entries.insert(
+            1u32,
+            (
+                TokenStats {
+                    input: 4,
+                    output: 1,
+                    cache_read: None,
+                    cache_write: None,
+                    cache_write_5m: None,
+                    cache_write_1h: None,
+                    reasoning: None,
+                    total: 5,
+                },
+                "openai/gpt-5.6-terra".to_string(),
+            ),
+        );
+        let mut timeline = Vec::new();
+        let mut metadata = HashMap::new();
+
+        parse_omp_timeline(reader, &db_entries, &mut timeline, &mut metadata);
+
+        assert_eq!(
+            metadata
+                .get("agent_nickname")
+                .and_then(|value| value.as_str()),
+            Some("reviewer")
+        );
+        assert!(timeline.iter().any(|item| matches!(
+            item,
+            TimelineItem::SystemStatus { status_type, message, .. }
+                if status_type == "system_prompt" && message.contains("Review this project.")
+        )));
+        assert!(timeline.iter().any(|item| matches!(
+            item,
+            TimelineItem::SystemStatus { status_type, message, .. }
+                if status_type == "model_usage"
+                    && message.contains("preflight")
+                    && message.contains("openai/gpt-5.6-terra")
+        )));
     }
 }
 

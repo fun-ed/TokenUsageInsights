@@ -203,25 +203,47 @@ fn record_usage(
     let model = entry_model(entry);
     let model_label = model.unwrap_or("Unknown Model");
     let (cache_write_5m, cache_write_1h) = cache_write_breakdown(tokens);
-    let cost_usd =
-        if let Some(reported_cost) = entry.cost.as_ref().and_then(|cost| cost.reported_cost_usd) {
-            reported_cost
-        } else {
-            match pricing_rules.calculate_usage_cost(
-                model,
-                tokens.input,
-                tokens.output,
-                tokens.cache_read.unwrap_or(0),
-                cache_write_5m,
-                cache_write_1h,
-            ) {
-                Ok(cost) => cost,
-                Err(error) => {
+    let cost_usd = if entry.source_kind.as_deref() == Some(crate::omp::SOURCE_KIND) {
+        // OMP records its provider and model separately, so its canonical
+        // `provider/model` identity can use the live models.dev cache. Retain
+        // OMP's reported amount as an offline fallback for unknown providers.
+        match pricing_rules.calculate_usage_cost(
+            model,
+            tokens.input,
+            tokens.output,
+            tokens.cache_read.unwrap_or(0),
+            cache_write_5m,
+            cache_write_1h,
+        ) {
+            Ok(cost) => cost,
+            Err(error) => entry
+                .cost
+                .as_ref()
+                .and_then(|cost| cost.reported_cost_usd)
+                .unwrap_or_else(|| {
                     log_pricing_failure(model_label, &entry.session_id, entry.turn_no, &error);
                     0.0
-                }
+                }),
+        }
+    } else if let Some(reported_cost) = entry.cost.as_ref().and_then(|cost| cost.reported_cost_usd)
+    {
+        reported_cost
+    } else {
+        match pricing_rules.calculate_usage_cost(
+            model,
+            tokens.input,
+            tokens.output,
+            tokens.cache_read.unwrap_or(0),
+            cache_write_5m,
+            cache_write_1h,
+        ) {
+            Ok(cost) => cost,
+            Err(error) => {
+                log_pricing_failure(model_label, &entry.session_id, entry.turn_no, &error);
+                0.0
             }
-        };
+        }
+    };
 
     add_tokens(&mut result.usage, tokens);
     result.usage.cost_usd += cost_usd;
@@ -874,6 +896,35 @@ mod tests {
 
         assert!((result.usage.cost_usd - 0.0123).abs() < 1e-9);
         assert!((result.models[0].usage.cost_usd - 0.0123).abs() < 1e-9);
+    }
+
+    #[test]
+    fn omp_cost_prefers_provider_qualified_pricing_over_reported_cost() {
+        let rules = [PricingRule {
+            model_name: "openai/gpt-5.6-terra".to_string(),
+            input_price: 2.0,
+            cache_input_price: 0.2,
+            output_price: 12.0,
+        }];
+        let mut entry = summary_entry(
+            1,
+            "openai/gpt-5.6-terra",
+            token_stats(1_000_000, 1_000_000, 1_000_000),
+            true,
+        );
+        entry.source_kind = Some(crate::omp::SOURCE_KIND.to_string());
+        entry.cost = Some(CostStats {
+            total_api_duration_ms: None,
+            total_duration_ms: None,
+            total_premium_requests: None,
+            reported_cost_usd: Some(0.0123),
+        });
+
+        let result =
+            summarize_session_usage(&PreparedPricingRules::from_rules(rules.into()), &[entry]);
+
+        assert!((result.usage.cost_usd - 14.2).abs() < 1e-9);
+        assert!((result.models[0].usage.cost_usd - 14.2).abs() < 1e-9);
     }
 
     #[test]
