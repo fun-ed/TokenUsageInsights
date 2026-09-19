@@ -2582,15 +2582,64 @@ function renderMonthlyMetricValue(elementId, getValFn, formatFn, agentBreakdown,
 // =========================================================================
 // 渲染主看板數據
 // =========================================================================
+function renderOverviewHarnessRanking(agentBreakdown) {
+  const section = document.getElementById('overview-harness-ranking');
+  const body = document.getElementById('overview-harness-ranking-body');
+  if (!section || !body) return;
+  if (currentAssistant !== 'all') {
+    section.classList.add('hidden');
+    return;
+  }
+
+  const rankings = Object.entries(agentBreakdown || {})
+    .map(([assistant, stats]) => ({
+      assistant,
+      totalTokens: Number(stats?.total_tokens || 0),
+      sessions: Number(stats?.total_sessions || 0),
+    }))
+    .filter(item => item.totalTokens > 0)
+    .sort((left, right) => right.totalTokens - left.totalTokens || left.assistant.localeCompare(right.assistant));
+
+  if (rankings.length === 0) {
+    section.classList.add('hidden');
+    body.replaceChildren();
+    return;
+  }
+
+  section.classList.remove('hidden');
+  body.innerHTML = rankings.map((item, index) => {
+    const meta = getAssistantMeta(item.assistant);
+    return `
+      <tr>
+        <td>${index + 1}</td>
+        <td><span class="badge" style="${meta.badgeStyle}">${getAssistantLogoHtml(item.assistant)} ${escapeHtml(meta.label)}</span></td>
+        <td>${formatToken(item.totalTokens)}</td>
+        <td>${item.sessions.toLocaleString(currentLang)}</td>
+      </tr>`;
+  }).join('');
+}
+
+function buildDailyAgentBreakdown(sessions) {
+  return sessions.reduce((breakdown, session) => {
+    const assistant = session.assistant_type;
+    if (!assistant) return breakdown;
+    const totals = breakdown[assistant] || { total_tokens: 0, total_sessions: 0 };
+    totals.total_tokens += Number(session.total_tokens || 0);
+    totals.total_sessions += 1;
+    breakdown[assistant] = totals;
+    return breakdown;
+  }, {});
+}
+
 function renderDashboard(data) {
   currentUsageData = data;
   const { date, home_dir: homeDir } = data;
   const allSessions = Array.isArray(data.sessions) ? data.sessions : [];
+  renderOverviewHarnessRanking(buildDailyAgentBreakdown(allSessions));
   currentSessionHomeDir = typeof homeDir === 'string' ? homeDir : currentSessionHomeDir;
   const nextSearchContext = `${currentAssistant}:${date}`;
   if (nextSearchContext !== currentSessionSearchContext) {
     resetSessionPromptSearch();
-    // 從網址帶入的工作目錄篩選需跨日期切換保留，待下方依實際 Session 清單比對
     const urlDirRaw = initialUrlParams.get('dir');
     const pendingUrlDirKey = resolveSessionCwdMatchKeyFromUrl(urlDirRaw, currentSessionHomeDir)?.directKey || null;
     resetSessionCwdFilter();
@@ -5209,6 +5258,7 @@ function renderYearlyDashboard(data) {
   currentYearlyData = data;
   const { year, summary, monthly_breakdown, models, projects, agent_breakdown } = data;
 
+  renderOverviewHarnessRanking(agent_breakdown);
   // 1. 更新標題
   setTitleMarkup('calendar', year);
 
@@ -5991,6 +6041,7 @@ function renderMonthlyDashboard(data) {
   const { year_month, summary, daily_breakdown, models, projects, agent_breakdown } = data;
 
   // 1. 更新標題
+  renderOverviewHarnessRanking(agent_breakdown);
   setTitleMarkup('calendar', year_month);
 
   // 2. 更新指標卡片
