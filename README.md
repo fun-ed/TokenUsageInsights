@@ -1,6 +1,6 @@
 # Token 戰情室
 
-**Token 戰情室是本機優先的 AI Coding Agent Token 使用量與會話還原看板。** 它會讀取本機上的 Google Antigravity CLI、GitHub Copilot CLI、GitHub Copilot App、GitHub Copilot Chat（VS Code）、Codex Desktop、Codex CLI、Claude Code、Cursor、Grok Build、Pi Coding Agent、OMP 與 Muse Code 記錄，集中呈現每日、月度、年度的 Token 消耗、快取使用、推理 Token、估算費用、模型分佈、專案目錄分佈與完整 Session 時間軸。
+**Token 戰情室是本機優先的 AI Coding Agent Token 使用量與會話還原看板。** 它會讀取本機上的 Google Antigravity CLI、GitHub Copilot CLI、GitHub Copilot App、GitHub Copilot Chat（VS Code）、Codex Desktop、Codex CLI、Claude Code、Cursor、Grok Build、Pi Coding Agent、OMP 與 Muse Code 記錄，集中呈現每日、月度、年度的 Token 消耗、快取使用、推理 Token、估算費用、模型分佈、專案目錄分佈與完整 Session 時間軸；側欄「總覽」可混合呈現所有 Harness 與 profile。
 
 本專案不會替你呼叫 AI 供應商 API 查詢資料；核心資料來源是本機日誌、Status Line 收集檔與本機 SQLite。
 
@@ -42,6 +42,7 @@ irm https://raw.githubusercontent.com/doggy8088/TokenUsageInsights/main/scripts/
 http://localhost:3003
 ```
 
+
 ### 2. 依你使用的工具決定是否需要設定
 
 | 工具 | 是否需要額外設定 | 預設資料來源 | 說明 |
@@ -51,7 +52,7 @@ http://localhost:3003
 | GitHub Copilot App | 不需要 | `~/.copilot/data.db`、`~/.copilot/session-store.db` | 看板直接讀取 Copilot 桌面應用程式的本機 SQLite |
 | GitHub Copilot Chat（VS Code） | 不需要 | VS Code `workspaceStorage/chatSessions` | 看板直接掃描 VS Code Stable 與 Insiders 的本機聊天 Session |
 | Codex Desktop / CLI | 不需要 | `~/.codex/sessions`、`~/.codex/archived_sessions` | 看板會直接掃描 Codex 作用中與已封存的本機 Session 記錄 |
-| Claude Code | 不需要 | `~/.claude/projects` | 看板會直接掃描 Claude Code 本機專案 Session 記錄 |
+| Claude Code | 不需要 | `~/.claude/projects`、`~/.claude-profiles/*/projects` | 看板會掃描預設 Claude Code Session 與自動發現的 profile Session，並保留 Default/profile 來源識別 |
 | Cursor | 不需要 | `~/.cursor/projects` | 看板會直接掃描 Cursor 本機 transcript，並唯讀取得可歸因的模型資訊 |
 | Grok Build | 不需要 | `~/.grok/sessions` | 看板會直接掃描 Grok Build 自動保存的 `updates.jsonl` Session stream |
 | Pi Coding Agent | 不需要 | `~/.pi/agent/sessions` | 看板會直接掃描 Pi Coding Agent 自動保存的本機 Session JSONL 檔案 |
@@ -83,6 +84,12 @@ Windows 預設使用下列原生路徑：
 
 磁碟機代號、含空白或非 ASCII 字元的路徑，以及 UNC 路徑都會交由原生路徑 API 處理。SQLite 資料庫仍建議放在本機磁碟，以避免網路分享的 locking 語意差異。
 
+## Fork 版本與上游同步
+
+本 fork 使用獨立的 `v10.x.y` 發布標籤，避免和上游 [`doggy8088/TokenUsageInsights`](https://github.com/doggy8088/TokenUsageInsights) 的 `v1.x.y` 發布混淆。目前 baseline 是 **v10.0.1**，下一個 patch 版本為 **v10.0.2**；Cargo 與 npm 的套件版本使用相同數字但不含 `v` 前綴（例如 `10.0.1`）。
+
+上游更新採受控同步：先取得並檢閱 upstream diff，再將相容修正 merge；可選功能則以獨立 commit 選擇性移植。衝突時保留本 fork 的 `v10.x.y` 版本命名、local-first 行為與 fork 專屬功能。
+
 * * *
 
 ## 支援功能
@@ -93,6 +100,7 @@ Windows 預設使用下列原生路徑：
 - 輸入、輸出、快取讀取、快取寫入、推理 Token 分拆
 - 依 `pricing.csv` 進行本地估算費用
 - Session 數、請求次數與 API 耗時統計
+- Harness 使用排名與側欄總覽，可跨所有助理與 profile 依總 Token 比較用量
 - 模型使用量排名
 - Cursor 可由本機 `state.vscdb` 的 `agentKv` 記錄歸因至具體模型；無法唯一比對時保留為 `Unknown Model`
 - 專案工作目錄統計
@@ -126,7 +134,7 @@ Windows 預設使用下列原生路徑：
 
 | 參數 | 適用視圖 | 可用值 | 說明 |
 | --- | --- | --- | --- |
-| `agent` | 全部 | `antigravity`、`copilot`、`codex`、`claude`、`cursor`、`grok`、`pi`、`omp`、`muse` | 指定要顯示的 Coding Agent。另支援 `claude-code`、`grok-build`、`pi-coding-agent`、`oh-my-pi`、`muse-code` 等別名寫法 |
+| `agent` | 全部 | `all`、`antigravity`、`copilot`、`codex`、`claude`、`cursor`、`grok`、`pi`、`omp`、`muse` | 指定要顯示的 Coding Agent；`all` 為唯讀總覽，混合所有 Harness 與 profile。另支援 `claude-code`、`grok-build`、`pi-coding-agent`、`oh-my-pi`、`muse-code` 等別名寫法 |
 | `tab` | 全部 | `daily`、`monthly`、`yearly` | 指定以日（每日）、月（月度）或年（年度）視圖顯示 |
 | `date` | 全部 | `daily`：`YYYY-MM-DD`；`monthly`：`YYYY-MM`；`yearly`：`YYYY` | 指定要顯示的日期、月份或年份，格式會依 `tab` 自動對應 |
 | `dir` | `daily` | 完整路徑、`~` 開頭的家目錄路徑，或唯一的路徑尾碼（如 `TokenUsageInsights`） | 指定每日視圖的工作目錄篩選。Windows 路徑不分大小寫；找不到符合目錄時會顯示全部 |
@@ -332,6 +340,7 @@ $env:VSCODE_USER_DATA_DIR = "C:\path\to\vscode-user-data"; & "$HOME\bin\token-us
 
 ```text
 ~/.claude/projects
+~/.claude-profiles/*/projects
 ```
 
 使用方式：
@@ -345,7 +354,7 @@ $env:VSCODE_USER_DATA_DIR = "C:\path\to\vscode-user-data"; & "$HOME\bin\token-us
 
 - Claude Code 的身份憑證仍由 Claude Code 自身管理。
 - 看板只讀取本地專案 Session 記錄並做分析。
-- 若 `~/.claude/projects` 不存在，Claude Code 頁面會顯示無資料。
+- 若同時使用 Default 與 profile，設定視窗會列出各自的 Config 與 Sessions 資料夾；Session 清單會標示 Default 或 profile 名稱。
 
 * * *
 
@@ -556,7 +565,7 @@ cargo build --release --bin token-usage-insights
 | `VSCODE_USER_DATA_DIR` | 依平台自動偵測 | VS Code 使用者資料目錄，應包含 `User/workspaceStorage` |
 | `VSCODE_PORTABLE_DATA_DIR` | 未設定 | VS Code Portable Mode 的 `data` 目錄 |
 | `CODEX_DIR` | `~/.codex` | Codex Desktop 與 Codex CLI 共用資料目錄 |
-| `CLAUDE_DIR` | `~/.claude` | Claude Code 資料目錄 |
+| `CLAUDE_DIR` | `~/.claude` | 指定單一自訂 Claude Code 資料根目錄；未設定時另會自動掃描 `~/.claude-profiles/*/projects` |
 | `CURSOR_DIR` | `~/.cursor` | Cursor 資料目錄 |
 | `CURSOR_STATE_DB` | 依平台自動偵測 | Cursor `User/globalStorage/state.vscdb` 路徑，用於唯讀取得 `agentKv` 模型資訊 |
 | `GROK_DIR` | `~/.grok` | Grok Build 資料目錄 |
@@ -780,14 +789,14 @@ token-usage-insights update --check
 # 原地自我更新至最新版本（亦支援 --force 強制覆蓋、--target-version 指定版本）
 token-usage-insights update
 token-usage-insights update --force
-token-usage-insights update --target-version v1.0.1
+token-usage-insights update --target-version v10.0.1
 ```
 
 環境變數可控制版本與安裝路徑（皆為選用）：
 
 | 變數 | 適用平台 | 說明 |
 | --- | --- | --- |
-| `TOKEN_USAGE_INSIGHTS_VERSION` | Linux / macOS / Windows | 指定要安裝的 Release tag，例如 `v1.0.1`。預設 `latest` |
+| `TOKEN_USAGE_INSIGHTS_VERSION` | Linux / macOS / Windows | 指定要安裝的 Release tag，例如 `v10.0.1`。預設 `latest` |
 | `TOKEN_USAGE_INSIGHTS_INSTALL_DIR` | Linux / macOS | 安裝目錄，會轉交給 `install.sh` |
 | `TOKEN_USAGE_INSIGHTS_BIN_DIR` | Linux / macOS | 執行檔連結目錄，會轉交給 `install.sh` |
 

@@ -3,6 +3,10 @@
 ## Project Overview
 TokenUsageInsights is a local-first Rust application that imports token-usage data from Antigravity, Copilot, Codex, Claude, Cursor, Grok, Pi, OMP, and Muse. It provides a CLI plus an Axum-served dashboard/API, normalizing source data into SQLite and calculating costs from `pricing.csv`.
 
+
+## Project Skill
+- For any repository change, read and apply `skills/token-usage-insights/SKILL.md`. It is the shared operational reference for local-data boundaries, Claude profile sources, all-harness reporting, fork versioning, and controlled upstream integration.
+
 ## Architecture & Data Flow
 - **Entry path:** `src/main.rs` runs `cli::run` first. A recognized subcommand (`export`, `export-all`, `import`, `update`, help/version) exits through `src/cli.rs`; otherwise it initializes SQLite, serves Axum routes/static assets, and starts periodic sync.
 - **Read path:** browser (`static/index.html` → `static/app.js`) calls `/api/...` → thin `src/handlers/` endpoint → `spawn_blocking` for synchronous work → `db`, `reporting`, and `pricing` → JSON DTO.
@@ -82,4 +86,5 @@ make all                         # fmt, check, test, release build
 ## Delivery and Release Guardrails
 - After editing and verification, create a detailed Traditional Chinese (zh-TW) Conventional Commit. Include the user impact, file-by-file changes, and commands/results; do not leave completed work uncommitted unless explicitly told otherwise.
 - PRs must state user-visible and schema/environment impacts, list verification, and include screenshots for dashboard changes.
+- **Fork versioning and upstream sync:** This fork reserves the `v10.x.y` release-tag namespace; its baseline is `v10.0.1` and the next patch is `v10.0.2`. Keep Cargo/npm package versions as `10.x.y` (without the tag prefix), use a matching `v10.x.y` tag only for releases, and never reuse upstream `v1.x.y` tags. Treat `https://github.com/doggy8088/TokenUsageInsights` as an upstream source: fetch and review its diff first, then merge compatible changes or selectively port optional features in separate commits. Preserve this fork's versioning, local-first behavior, and fork-specific features when resolving conflicts.
 - For releases, synchronize `CHANGELOG.md`, Cargo/npm versions and lockfiles, README version examples, and release assets. Verify the workflow, a non-draft public GitHub Release, all platform archives plus `SHA256SUMS`, real zh-TW release notes with the compare link, and (when enabled) npm publish/npx smoke-test completion.
