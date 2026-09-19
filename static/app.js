@@ -102,7 +102,7 @@ const assistantAliasMap = {
 
 const assistantMeta = {
   all: {
-    logo: '/static/favicon-v2.png',
+    logo: '/static/overview.svg',
     label: '總覽',
     shortLabel: '總覽',
     alt: '總覽',
@@ -206,7 +206,7 @@ const assistantMeta = {
 
 function updateOverviewControls() {
   const isOverview = currentAssistant === 'all';
-  for (const id of ['btn-export-usage-day', 'btn-import-usage-day', 'btn-setup-guide', 'btn-sync-db']) {
+  for (const id of ['btn-export-usage-day', 'btn-import-usage-day', 'btn-import-history', 'btn-setup-guide', 'btn-sync-db']) {
     document.getElementById(id)?.classList.toggle('hidden', isOverview);
   }
 }
@@ -2348,7 +2348,9 @@ function showNoDataForDate(date, assistant = currentAssistant) {
     `;
 
     const noDataGuideBtn = document.getElementById('btn-no-data-setup-guide');
-    if (noDataGuideBtn) {
+    if (resolvedAssistant === 'all') {
+      noDataGuideBtn?.remove();
+    } else if (noDataGuideBtn) {
       noDataGuideBtn.addEventListener('click', () => openSetupModal(resolvedAssistant));
     }
 
@@ -2412,7 +2414,9 @@ function showNoDataForMonth(month, assistant = currentAssistant) {
     `;
 
     const noDataGuideBtn = document.getElementById('btn-no-data-setup-guide');
-    if (noDataGuideBtn) {
+    if (resolvedAssistant === 'all') {
+      noDataGuideBtn?.remove();
+    } else if (noDataGuideBtn) {
       noDataGuideBtn.addEventListener('click', () => openSetupModal(resolvedAssistant));
     }
 
@@ -2476,7 +2480,9 @@ function showNoDataForYear(year, assistant = currentAssistant) {
     `;
 
     const noDataGuideBtn = document.getElementById('btn-no-data-setup-guide');
-    if (noDataGuideBtn) {
+    if (resolvedAssistant === 'all') {
+      noDataGuideBtn?.remove();
+    } else if (noDataGuideBtn) {
       noDataGuideBtn.addEventListener('click', () => openSetupModal(resolvedAssistant));
     }
 
@@ -6609,7 +6615,7 @@ function openSetupModal(assistant = currentAssistant) {
   if (!modal) return;
 
   const resolvedAssistant = normalizeAssistant(assistant);
-  if (!isSupportedAssistant(resolvedAssistant)) return;
+  if (resolvedAssistant === 'all' || !isSupportedAssistant(resolvedAssistant)) return;
 
   setSetupModalTitle(resolvedAssistant);
   setSetupModalBody(resolvedAssistant);
@@ -6627,7 +6633,7 @@ function closeSetupModal() {
 async function loadSetupInfo(assistant = currentAssistant) {
   try {
     const resolvedAssistant = normalizeAssistant(assistant);
-    if (!isSupportedAssistant(resolvedAssistant)) return;
+    if (resolvedAssistant === 'all' || !isSupportedAssistant(resolvedAssistant)) return;
 
     const res = await fetch(`/api/${resolvedAssistant}/setup-info`);
     const data = await res.json();
@@ -6851,12 +6857,12 @@ function toggleEmptyState(showEmpty, assistant = currentAssistant) {
             </div>
           </div>
         `;
-        
         const emptyGuideBtn = document.getElementById('btn-empty-setup-guide');
-        if (emptyGuideBtn) {
+        if (resolvedAssistant === 'all') {
+          emptyGuideBtn?.remove();
+        } else if (emptyGuideBtn) {
           emptyGuideBtn.addEventListener('click', () => openSetupModal(resolvedAssistant));
         }
-        
         const emptyRefreshBtn = document.getElementById('btn-empty-refresh');
         if (emptyRefreshBtn) {
           emptyRefreshBtn.addEventListener('click', async () => {
