@@ -58,7 +58,8 @@ fn parse_token_stats(usage: &Value) -> Option<TokenStats> {
     let output = value_as_u64(usage.get("output")).unwrap_or(0);
     let cache_read = value_as_u64(usage.get("cacheRead"));
     let cache_write = value_as_u64(usage.get("cacheWrite"));
-    let reasoning = value_as_u64(usage.get("reasoning"));
+    let reasoning =
+        value_as_u64(usage.get("reasoningTokens")).or_else(|| value_as_u64(usage.get("reasoning")));
     let total = value_as_u64(usage.get("totalTokens")).unwrap_or_else(|| {
         input
             .saturating_add(output)
@@ -92,13 +93,38 @@ fn parse_reported_cost(usage: &Value) -> Option<f64> {
 
 struct SessionHeaderInfo {
     session_id: String,
+    session_name: Option<String>,
     cwd: Option<String>,
     parent_session_id: Option<String>,
 }
 
-fn session_id_from_path(value: &str) -> Option<String> {
-    Path::new(value)
-        .file_stem()
+fn session_id_from_file(path: &Path) -> Option<String> {
+    let file = File::open(path).ok()?;
+    for line in BufReader::new(file).lines().take(10).flatten() {
+        let entry = serde_json::from_str::<Value>(&line).ok()?;
+        if entry.get("type").and_then(Value::as_str) == Some("session") {
+            return entry
+                .get("id")
+                .and_then(Value::as_str)
+                .filter(|id| !id.is_empty())
+                .map(str::to_string);
+        }
+    }
+    None
+}
+
+fn session_id_from_path(value: &str, source_kind: &str) -> Option<String> {
+    let path = Path::new(value);
+    if is_omp_session(source_kind) {
+        return session_id_from_file(path).or_else(|| {
+            path.file_stem()
+                .and_then(|name| name.to_str())
+                .and_then(|name| name.rsplit_once('_').map_or(Some(name), |(_, id)| Some(id)))
+                .filter(|name| !name.is_empty())
+                .map(str::to_string)
+        });
+    }
+    path.file_stem()
         .and_then(|name| name.to_str())
         .filter(|name| !name.is_empty())
         .map(str::to_string)
@@ -114,10 +140,21 @@ fn is_advisor_transcript(path: &Path) -> bool {
         .is_some_and(|name| name.starts_with("__advisor") && name.ends_with(".jsonl"))
 }
 
-fn artifact_parent_session_id(path: &Path) -> Option<String> {
+fn artifact_parent_session_id(path: &Path, source_kind: &str) -> Option<String> {
     is_advisor_transcript(path).then(|| {
-        path.parent()
-            .and_then(Path::file_name)
+        let artifact_dir = path.parent()?;
+        if is_omp_session(source_kind) {
+            return session_id_from_file(&artifact_dir.with_extension("jsonl")).or_else(|| {
+                artifact_dir
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .and_then(|name| name.rsplit_once('_').map_or(Some(name), |(_, id)| Some(id)))
+                    .filter(|name| !name.is_empty())
+                    .map(str::to_string)
+            });
+        }
+        artifact_dir
+            .file_name()
             .and_then(|name| name.to_str())
             .filter(|name| !name.is_empty())
             .map(str::to_string)
@@ -227,7 +264,7 @@ fn append_usage_entry(
     *turn_no += 1;
 }
 
-fn read_session_header(path: &Path) -> SessionHeaderInfo {
+fn read_session_header(path: &Path, source_kind: &str) -> SessionHeaderInfo {
     let fallback_id = path
         .file_stem()
         .and_then(|name| name.to_str())
@@ -237,15 +274,15 @@ fn read_session_header(path: &Path) -> SessionHeaderInfo {
     let Ok(file) = File::open(path) else {
         return SessionHeaderInfo {
             session_id: fallback_id,
+            session_name: None,
             cwd: None,
-            parent_session_id: artifact_parent_session_id(path),
+            parent_session_id: artifact_parent_session_id(path, source_kind),
         };
     };
     let reader = BufReader::new(file);
+    let mut title = None;
     // The `session` header entry is usually the first line, but OMP (and
-    // potentially future Pi versions) may prepend metadata lines such as
-    // `{"type":"title",...}` before it, so scan a handful of leading lines
-    // rather than assuming line 1 is always the header.
+    // potentially future Pi versions) may prepend a `title` entry before it.
     for line in reader.lines().take(10) {
         let Ok(line) = line else {
             continue;
@@ -257,6 +294,10 @@ fn read_session_header(path: &Path) -> SessionHeaderInfo {
         let Ok(header) = serde_json::from_str::<Value>(line) else {
             continue;
         };
+        if header.get("type").and_then(Value::as_str) == Some("title") {
+            title = trimmed_session_name(header.get("title").and_then(Value::as_str));
+            continue;
+        }
         if header.get("type").and_then(Value::as_str) == Some("session") {
             let session_id = header
                 .get("id")
@@ -267,13 +308,16 @@ fn read_session_header(path: &Path) -> SessionHeaderInfo {
                 .get("cwd")
                 .and_then(Value::as_str)
                 .map(str::to_string);
+            let session_name =
+                trimmed_session_name(header.get("title").and_then(Value::as_str)).or(title);
             let parent_session_id = header
                 .get("parentSession")
                 .and_then(Value::as_str)
-                .and_then(session_id_from_path)
-                .or_else(|| artifact_parent_session_id(path));
+                .and_then(|value| session_id_from_path(value, source_kind))
+                .or_else(|| artifact_parent_session_id(path, source_kind));
             return SessionHeaderInfo {
                 session_id,
+                session_name,
                 cwd,
                 parent_session_id,
             };
@@ -282,8 +326,9 @@ fn read_session_header(path: &Path) -> SessionHeaderInfo {
 
     SessionHeaderInfo {
         session_id: fallback_id,
+        session_name: title,
         cwd: None,
-        parent_session_id: artifact_parent_session_id(path),
+        parent_session_id: artifact_parent_session_id(path, source_kind),
     }
 }
 
@@ -298,13 +343,21 @@ pub(crate) fn parse_session_usage_file(
     let file =
         File::open(path).map_err(|error| format!("無法開啟 session 檔案 {:?}: {error}", path))?;
     let reader = BufReader::new(file);
-    let header = read_session_header(path);
+    let header = read_session_header(path, source_kind);
     let transcript_path = path.to_string_lossy().into_owned();
     let mut entries = Vec::new();
     let mut turn_no = 1u32;
-    let mut session_name: Option<String> = None;
-    let mut agent_nickname = None;
-    let mut agent_role = is_advisor_transcript(path).then(|| "advisor".to_string());
+    let mut session_name = header.session_name.clone();
+    let is_advisor = is_advisor_transcript(path);
+    let mut agent_nickname =
+        (is_omp_session(source_kind) && header.parent_session_id.is_some() && !is_advisor)
+            .then(|| trimmed_session_name(path.file_stem().and_then(|name| name.to_str())))
+            .flatten();
+    let mut agent_role = if is_advisor {
+        Some("advisor".to_string())
+    } else {
+        agent_nickname.as_ref().map(|_| "subagent".to_string())
+    };
 
     for line in reader.lines() {
         let Ok(line) = line else {

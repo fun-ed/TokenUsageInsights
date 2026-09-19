@@ -207,7 +207,7 @@ fn record_usage(
         // OMP records its provider and model separately, so its canonical
         // `provider/model` identity can use the live models.dev cache. Retain
         // OMP's reported amount as an offline fallback for unknown providers.
-        match pricing_rules.calculate_usage_cost(
+        match pricing_rules.calculate_omp_usage_cost(
             model,
             tokens.input,
             tokens.output,
@@ -901,7 +901,7 @@ mod tests {
     #[test]
     fn omp_cost_prefers_provider_qualified_pricing_over_reported_cost() {
         let rules = [PricingRule {
-            model_name: "openai/gpt-5.6-terra".to_string(),
+            model_name: "models.dev:vivgrid/gpt-5.6-terra".to_string(),
             input_price: 2.0,
             cache_input_price: 0.2,
             output_price: 12.0,

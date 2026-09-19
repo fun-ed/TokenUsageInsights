@@ -188,7 +188,7 @@ const CURSOR_CACHE_TOKENS_UNKNOWN_MIGRATION_KEY: &str = "migration:cursor_cache_
 const CURSOR_AGENT_SOURCE_KIND: &str = "cursor-agent";
 const CURSOR_IDE_SOURCE_KIND: &str = "cursor-ide";
 const GROK_PARSER_MIGRATION_KEY: &str = "migration:grok_parser_v7";
-const OMP_PARSER_MIGRATION_KEY: &str = "migration:omp_parser_v2";
+const OMP_PARSER_MIGRATION_KEY: &str = "migration:omp_parser_v3";
 const LEGACY_GROK_PARSER_MIGRATION_KEYS: &[&str] = &[
     "migration:grok_parser_v1",
     "migration:grok_model_normalization_v2",
@@ -14979,6 +14979,71 @@ mod tests {
             )
             .unwrap();
         assert_eq!(migration_count, 1);
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn sync_omp_usage_logs_links_nested_agent_to_parent_session_id() {
+        let root = temp_jsonl_path("omp-parent-link");
+        let session_dir = root
+            .join("agent")
+            .join("sessions")
+            .join("--tmp--omp-project");
+        fs::create_dir_all(&session_dir).unwrap();
+        let parent_path = session_dir.join("2024-12-03T14-00-00_parent-id.jsonl");
+        fs::write(
+            &parent_path,
+            concat!(
+                r#"{"type":"session","version":3,"id":"parent-id","title":"Parent session","timestamp":"2024-12-03T14:00:00.000Z","cwd":"/tmp/omp-project"}
+{"type":"message","id":"parent-message","parentId":null,"timestamp":"2024-12-03T14:00:01.000Z","message":{"role":"assistant","provider":"openai-codex","model":"gpt-5.6-terra","usage":{"input":3,"output":2,"totalTokens":5}}}"#,
+                "\n"
+            ),
+        )
+        .unwrap();
+        let child_path = session_dir.join("CoreSourceResearch.jsonl");
+        fs::write(
+            &child_path,
+            format!(
+                concat!(
+                    r#"{{"type":"session","version":3,"id":"child-id","parentSession":"{}","timestamp":"2024-12-03T14:00:02.000Z","cwd":"/tmp/omp-project"}}
+{{"type":"message","id":"child-message","parentId":null,"timestamp":"2024-12-03T14:00:03.000Z","message":{{"role":"assistant","provider":"openai-codex","model":"gpt-5.6-terra","usage":{{"input":3,"output":2,"totalTokens":5}}}}}}"#,
+                    "\n"
+                ),
+                parent_path.display()
+            ),
+        )
+        .unwrap();
+
+        let mut conn = Connection::open_in_memory().unwrap();
+        init_db(&conn).unwrap();
+        sync_omp_usage_logs(&mut conn, &root).unwrap();
+
+        let child: (String, String, String) = conn
+            .query_row(
+                "SELECT parent_session_id, agent_nickname, agent_role
+                 FROM usage_entries WHERE assistant_type = 'omp' AND session_id = 'child-id'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            child,
+            (
+                "parent-id".to_string(),
+                "CoreSourceResearch".to_string(),
+                "subagent".to_string(),
+            )
+        );
+        let parent_count: u64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM usage_entries
+                 WHERE assistant_type = 'omp' AND session_id = 'parent-id'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(parent_count, 1);
 
         let _ = fs::remove_dir_all(root);
     }

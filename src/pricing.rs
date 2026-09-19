@@ -1,9 +1,9 @@
 use serde::Serialize;
 use serde_json::Value;
-use std::collections::HashSet;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
+use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, SystemTime};
 
 #[derive(Debug, Clone)]
@@ -29,6 +29,16 @@ const MODELS_DEV_URL: &str = "https://models.dev/api.json";
 const MODELS_DEV_CACHE_FILE: &str = "models-dev-pricing.json";
 const MODELS_DEV_CACHE_TTL: Duration = Duration::from_secs(24 * 60 * 60);
 const MODELS_DEV_MAX_BYTES: u64 = 10 * 1024 * 1024;
+const MODELS_DEV_RULE_PREFIX: &str = "models.dev:";
+
+#[derive(Default)]
+struct ModelsDevPricingCache {
+    modified: Option<SystemTime>,
+    entries: Vec<PricingEntry>,
+}
+
+static MODELS_DEV_PRICING_CACHE: LazyLock<Mutex<ModelsDevPricingCache>> =
+    LazyLock::new(|| Mutex::new(ModelsDevPricingCache::default()));
 
 fn models_dev_cache_path() -> PathBuf {
     crate::db::get_insights_dir().join(MODELS_DEV_CACHE_FILE)
@@ -42,16 +52,18 @@ fn models_dev_cache_is_stale() -> bool {
         .is_none_or(|age| age >= MODELS_DEV_CACHE_TTL)
 }
 
-/// Refreshes the local models.dev cache only when it is absent or older than a
-/// day. The dashboard keeps using the last valid cache when the network is
-/// unavailable.
+/// Refreshes the local models.dev cache when it is absent or stale, then
+/// rechecks hourly for long-running dashboard processes. The dashboard keeps
+/// using the last valid cache when the network is unavailable.
 pub fn spawn_models_dev_pricing_refresh() {
-    if !models_dev_cache_is_stale() {
-        return;
-    }
     tokio::spawn(async {
-        if let Err(error) = refresh_models_dev_pricing_cache().await {
-            eprintln!("更新 models.dev 模型價格快取失敗：{error}");
+        loop {
+            if models_dev_cache_is_stale() {
+                if let Err(error) = refresh_models_dev_pricing_cache().await {
+                    eprintln!("更新 models.dev 模型價格快取失敗：{error}");
+                }
+            }
+            tokio::time::sleep(Duration::from_secs(60 * 60)).await;
         }
     });
 }
@@ -157,11 +169,25 @@ fn models_dev_pricing_entries(value: &Value) -> Vec<PricingEntry> {
 }
 
 fn load_models_dev_pricing_entries() -> Vec<PricingEntry> {
-    fs::read_to_string(models_dev_cache_path())
+    let cache_path = models_dev_cache_path();
+    let modified = fs::metadata(&cache_path)
+        .and_then(|metadata| metadata.modified())
+        .ok();
+    let mut cache = MODELS_DEV_PRICING_CACHE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if cache.modified == modified {
+        return cache.entries.clone();
+    }
+
+    let entries = fs::read_to_string(cache_path)
         .ok()
         .and_then(|body| serde_json::from_str::<Value>(&body).ok())
         .map(|value| models_dev_pricing_entries(&value))
-        .unwrap_or_default()
+        .unwrap_or_default();
+    cache.modified = modified;
+    cache.entries = entries.clone();
+    entries
 }
 
 fn fallback_pricing_entries() -> Vec<PricingEntry> {
@@ -206,13 +232,9 @@ fn fallback_pricing_entries() -> Vec<PricingEntry> {
 }
 
 pub fn load_pricing_entries() -> Vec<PricingEntry> {
-    // models.dev is the primary source for current provider-qualified model
-    // prices. The bundled CSV remains an offline and legacy-model fallback.
+    // models.dev provides current model prices; the bundled CSV remains the
+    // offline fallback and retains every provider-specific display row.
     let mut entries = load_models_dev_pricing_entries();
-    let mut known_models: HashSet<String> = entries
-        .iter()
-        .map(|entry| entry.model_name.to_ascii_lowercase())
-        .collect();
     let file_path =
         crate::paths::find_resource("pricing.csv").unwrap_or_else(|| PathBuf::from("pricing.csv"));
     if let Ok(file) = File::open(&file_path) {
@@ -223,9 +245,6 @@ pub fn load_pricing_entries() -> Vec<PricingEntry> {
                 let parts: Vec<&str> = line.split(',').collect();
                 if parts.len() >= 6 {
                     let model_name = parts[0].trim().to_string();
-                    if !known_models.insert(model_name.to_ascii_lowercase()) {
-                        continue;
-                    }
                     let input_price = parts[3].trim().parse::<f64>().unwrap_or(0.0);
                     let cache_input_price = parts[4].trim().parse::<f64>().unwrap_or(0.0);
                     let output_price = parts[5].trim().parse::<f64>().unwrap_or(0.0);
@@ -254,7 +273,11 @@ pub fn load_pricing_rules() -> Vec<PricingRule> {
     load_pricing_entries()
         .into_iter()
         .map(|entry| PricingRule {
-            model_name: entry.model_name,
+            model_name: if entry.deployment_type.starts_with("models.dev ") {
+                format!("{MODELS_DEV_RULE_PREFIX}{}", entry.model_name)
+            } else {
+                entry.model_name
+            },
             input_price: entry.input_price,
             cache_input_price: entry.cache_input_price,
             output_price: entry.output_price,
@@ -387,8 +410,10 @@ pub fn normalize_model_name(name: &str) -> String {
 #[derive(Debug, Clone)]
 struct PreparedRule {
     base: String,
+    model_id_base: String,
     threshold: Option<ThresholdRule>,
     is_claude: bool,
+    is_models_dev: bool,
 }
 
 /// 預先解析完成的價格規則集。
@@ -407,12 +432,21 @@ impl PreparedPricingRules {
         let parsed = rules
             .iter()
             .map(|rule| {
-                let (base, threshold) = parse_threshold_rule(&rule.model_name);
-                let is_claude = rule.model_name.to_ascii_lowercase().contains("claude");
+                let (rule_name, is_models_dev) = rule
+                    .model_name
+                    .strip_prefix(MODELS_DEV_RULE_PREFIX)
+                    .map_or((&rule.model_name[..], false), |name| (name, true));
+                let (base, threshold) = parse_threshold_rule(rule_name);
+                let model_id_base = rule_name
+                    .rsplit_once('/')
+                    .map_or_else(|| base.clone(), |(_, id)| normalize_model_name(id));
+                let is_claude = rule_name.to_ascii_lowercase().contains("claude");
                 PreparedRule {
                     base,
+                    model_id_base,
                     threshold,
                     is_claude,
+                    is_models_dev,
                 }
             })
             .collect();
@@ -464,6 +498,9 @@ impl PreparedPricingRules {
         let mut best_has_threshold = false;
 
         for (index, prepared) in self.parsed.iter().enumerate() {
+            if contains_match && prepared.is_models_dev {
+                continue;
+            }
             if !rule_applies_to_context(
                 &prepared.base,
                 prepared.threshold,
@@ -487,6 +524,81 @@ impl PreparedPricingRules {
         }
 
         best_rule
+    }
+
+    fn find_models_dev_rule_index(&self, model_id_base: &str, prompt_tokens: u64) -> Option<usize> {
+        self.parsed
+            .iter()
+            .enumerate()
+            .filter(|(_, prepared)| {
+                prepared.is_models_dev
+                    && prepared.model_id_base == model_id_base
+                    && prepared
+                        .threshold
+                        .map(|threshold| threshold_matches(threshold, prompt_tokens))
+                        .unwrap_or(true)
+            })
+            .min_by_key(|(index, _)| &self.rules[*index].model_name)
+            .map(|(index, _)| index)
+    }
+
+    fn calculate_rule_cost(
+        &self,
+        index: usize,
+        input: u64,
+        output: u64,
+        cache_read: u64,
+        cache_write_5m: u64,
+        cache_write_1h: u64,
+    ) -> f64 {
+        let rule = &self.rules[index];
+        let input_cost = (input as f64 / 1_000_000.0) * rule.input_price;
+        let cache_cost = (cache_read as f64 / 1_000_000.0) * rule.cache_input_price;
+        let cache_write_5m_cost = (cache_write_5m as f64 / 1_000_000.0) * rule.input_price * 1.25;
+        let cache_write_1h_cost = (cache_write_1h as f64 / 1_000_000.0) * rule.input_price * 2.0;
+        let output_cost = (output as f64 / 1_000_000.0) * rule.output_price;
+        input_cost + cache_cost + cache_write_5m_cost + cache_write_1h_cost + output_cost
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn calculate_omp_usage_cost(
+        &self,
+        model_name: Option<&str>,
+        input: u64,
+        output: u64,
+        cache_read: u64,
+        cache_write_5m: u64,
+        cache_write_1h: u64,
+    ) -> Result<f64, String> {
+        if input == 0
+            && output == 0
+            && cache_read == 0
+            && cache_write_5m == 0
+            && cache_write_1h == 0
+        {
+            return Ok(0.0);
+        }
+        let model_name = model_name
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .ok_or_else(|| "缺少模型名稱，無法估算成本".to_string())?;
+        let model_id_base = normalize_model_name(
+            model_name
+                .rsplit_once('/')
+                .map_or(model_name, |(_, model_id)| model_id),
+        );
+        let prompt_tokens = input.saturating_add(cache_read);
+        if let Some(index) = self.find_models_dev_rule_index(&model_id_base, prompt_tokens) {
+            return Ok(self.calculate_rule_cost(index, input, output, cache_read, 0, 0));
+        }
+        self.calculate_cost(
+            model_name,
+            input,
+            output,
+            cache_read,
+            cache_write_5m,
+            cache_write_1h,
+        )
     }
 
     /// 與 `calculate_cost` 相同的計價邏輯，但規則標籤只解析一次。
@@ -541,19 +653,18 @@ impl PreparedPricingRules {
             // 2. Fallback: contains base name match
             .or_else(|| self.find_rule_index(&m_base, prompt_tokens, true));
 
-        if let Some(index) = matched_index {
-            let r = &self.rules[index];
-            let input_cost = (input as f64 / 1_000_000.0) * r.input_price;
-            let cache_cost = (cache_read as f64 / 1_000_000.0) * r.cache_input_price;
-            let cache_write_5m_cost =
-                (priced_cache_write_5m as f64 / 1_000_000.0) * r.input_price * 1.25;
-            let cache_write_1h_cost =
-                (priced_cache_write_1h as f64 / 1_000_000.0) * r.input_price * 2.0;
-            let output_cost = (output as f64 / 1_000_000.0) * r.output_price;
-            Ok(input_cost + cache_cost + cache_write_5m_cost + cache_write_1h_cost + output_cost)
-        } else {
-            Err(format!("找不到可用的模型價格規則：{}", model_name))
-        }
+        matched_index
+            .map(|index| {
+                self.calculate_rule_cost(
+                    index,
+                    input,
+                    output,
+                    cache_read,
+                    priced_cache_write_5m,
+                    priced_cache_write_1h,
+                )
+            })
+            .ok_or_else(|| format!("找不到可用的模型價格規則：{}", model_name))
     }
 }
 
@@ -632,9 +743,9 @@ mod tests {
     }
 
     #[test]
-    fn models_dev_prices_keep_provider_qualified_model_identity() {
+    fn models_dev_prices_match_omp_model_ids_without_provider_match() {
         let source: Value = serde_json::json!({
-            "openai": {
+            "vivgrid": {
                 "models": {
                     "gpt-5.6-terra": {
                         "id": "gpt-5.6-terra",
@@ -646,21 +757,21 @@ mod tests {
 
         let entries = models_dev_pricing_entries(&source);
         assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].model_name, "openai/gpt-5.6-terra");
+        assert_eq!(entries[0].model_name, "vivgrid/gpt-5.6-terra");
 
         let cost = PreparedPricingRules::from_rules(
             entries
                 .into_iter()
                 .map(|entry| PricingRule {
-                    model_name: entry.model_name,
+                    model_name: format!("{MODELS_DEV_RULE_PREFIX}{}", entry.model_name),
                     input_price: entry.input_price,
                     cache_input_price: entry.cache_input_price,
                     output_price: entry.output_price,
                 })
                 .collect(),
         )
-        .calculate_usage_cost(
-            Some("openai/gpt-5.6-terra"),
+        .calculate_omp_usage_cost(
+            Some("openai-codex/gpt-5.6-terra"),
             1_000_000,
             1_000_000,
             1_000_000,
@@ -671,6 +782,40 @@ mod tests {
         assert!((cost - 14.2).abs() < f64::EPSILON);
     }
 
+    #[test]
+    fn models_dev_rules_do_not_partially_match_unqualified_models() {
+        let rules = vec![
+            PricingRule {
+                model_name: "models.dev:openrouter/anthropic/claude-haiku-4-5".to_string(),
+                input_price: 99.0,
+                cache_input_price: 99.0,
+                output_price: 99.0,
+            },
+            PricingRule {
+                model_name: "claude-haiku".to_string(),
+                input_price: 1.0,
+                cache_input_price: 0.1,
+                output_price: 5.0,
+            },
+        ];
+
+        let cost = PreparedPricingRules::from_rules(rules)
+            .calculate_usage_cost(Some("claude-haiku-4-5"), 1_000_000, 1_000_000, 0, 0, 0)
+            .unwrap();
+        assert!((cost - 6.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn pricing_entries_keep_distinct_packaged_deployments() {
+        let deployments: Vec<_> = load_pricing_entries()
+            .into_iter()
+            .filter(|entry| entry.model_name.eq_ignore_ascii_case("gpt-5.4-mini"))
+            .map(|entry| entry.deployment_type)
+            .collect();
+
+        assert!(deployments.iter().any(|deployment| deployment == "Global"));
+        assert!(deployments.iter().any(|deployment| deployment == "Cursor"));
+    }
     #[test]
     fn copilot_cli_cost_uses_non_cached_input() {
         let rules = [PricingRule {

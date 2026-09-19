@@ -29,11 +29,20 @@ mod tests {
             std::process::id()
         ));
         fs::create_dir_all(&root).unwrap();
+        let parent_stem = "2024-12-03T14-00-00_parent-id";
+        let parent_path = root.join(format!("{parent_stem}.jsonl"));
+        fs::write(
+            &parent_path,
+            r#"{"type":"session","version":3,"id":"parent-id","title":"Parent title","timestamp":"2024-12-03T14:00:00.000Z","cwd":"/tmp/project"}"#,
+        )
+        .unwrap();
+
         let path = root.join("session.jsonl");
         let mut file = fs::File::create(&path).unwrap();
         writeln!(
             file,
-            r#"{{"type":"session","version":3,"id":"omp-sess-1","parentSession":"/tmp/parent-session.jsonl","timestamp":"2024-12-03T14:00:00.000Z","cwd":"/tmp/project"}}"#
+            r#"{{"type":"session","version":3,"id":"omp-sess-1","parentSession":"{}","timestamp":"2024-12-03T14:00:00.000Z","cwd":"/tmp/project"}}"#,
+            parent_path.display()
         )
         .unwrap();
         writeln!(
@@ -43,7 +52,7 @@ mod tests {
         .unwrap();
         writeln!(
             file,
-            r#"{{"type":"message","id":"m2","parentId":null,"timestamp":"2024-12-03T14:00:02.000Z","message":{{"role":"assistant","content":[{{"type":"text","text":"Hi!"}}],"provider":"openai-codex","model":"openai-codex/gpt-5.6-terra","usage":{{"input":10,"output":5,"totalTokens":15,"cost":{{"total":0.0005}}}},"stopReason":"stop"}}}}"#
+            r#"{{"type":"message","id":"m2","parentId":null,"timestamp":"2024-12-03T14:00:02.000Z","message":{{"role":"assistant","content":[{{"type":"text","text":"Hi!"}}],"provider":"openai-codex","model":"openai-codex/gpt-5.6-terra","usage":{{"input":10,"output":5,"reasoningTokens":16,"totalTokens":15,"cost":{{"total":0.0005}}}},"stopReason":"stop"}}}}"#
         )
         .unwrap();
         writeln!(
@@ -58,16 +67,20 @@ mod tests {
         assert_eq!(entries[0].session_id, "omp-sess-1");
         assert_eq!(entries[0].session_name.as_deref(), Some("Inspect code"));
         assert_eq!(entries[0].model.as_deref(), Some("openai/gpt-5.6-terra"));
-        assert_eq!(
-            entries[0].parent_session_id.as_deref(),
-            Some("parent-session")
-        );
+        assert_eq!(entries[0].parent_session_id.as_deref(), Some("parent-id"));
         assert_eq!(entries[0].agent_nickname.as_deref(), Some("reviewer"));
         assert_eq!(entries[0].agent_role.as_deref(), Some("subagent"));
+        assert_eq!(
+            entries[0]
+                .tokens
+                .as_ref()
+                .and_then(|tokens| tokens.reasoning),
+            Some(16)
+        );
         assert_eq!(entries[1].agent_role.as_deref(), Some("subagent:preflight"));
         assert_eq!(entries[1].source_kind.as_deref(), Some(SOURCE_KIND));
 
-        let advisor_dir = root.join("parent-session");
+        let advisor_dir = root.join(parent_stem);
         fs::create_dir_all(&advisor_dir).unwrap();
         let advisor_path = advisor_dir.join("__advisor.review.jsonl");
         fs::write(
@@ -79,9 +92,44 @@ mod tests {
         assert_eq!(advisor_entries.len(), 1);
         assert_eq!(
             advisor_entries[0].parent_session_id.as_deref(),
-            Some("parent-session")
+            Some("parent-id")
         );
         assert_eq!(advisor_entries[0].agent_role.as_deref(), Some("advisor"));
+
+        let agent_path = root.join("CoreSourceResearch.jsonl");
+        fs::write(
+            &agent_path,
+            format!(
+                r#"{{"type":"session","version":3,"id":"agent-id","parentSession":"{}","timestamp":"2024-12-03T14:00:00.000Z","cwd":"/tmp/project"}}
+{{"type":"message","id":"agent","parentId":null,"timestamp":"2024-12-03T14:00:05.000Z","message":{{"role":"assistant","provider":"openai-codex","model":"gpt-5.6-terra","usage":{{"input":3,"output":2,"totalTokens":5}}}}}}"#,
+                parent_path.display()
+            ),
+        )
+        .unwrap();
+        let agent_entries = parse_session_usage_file(&agent_path).unwrap();
+        assert_eq!(
+            agent_entries[0].parent_session_id.as_deref(),
+            Some("parent-id")
+        );
+        assert_eq!(
+            agent_entries[0].agent_nickname.as_deref(),
+            Some("CoreSourceResearch")
+        );
+        assert_eq!(agent_entries[0].agent_role.as_deref(), Some("subagent"));
+
+        let main_path = root.join("main.jsonl");
+        fs::write(
+            &main_path,
+            r#"{"type":"title","v":1,"title":"Main title"}
+{"type":"session","version":3,"id":"main-id","title":"Header title","timestamp":"2024-12-03T14:00:00.000Z","cwd":"/tmp/project"}
+{"type":"message","id":"main","parentId":null,"timestamp":"2024-12-03T14:00:06.000Z","message":{"role":"assistant","provider":"openai-codex","model":"gpt-5.6-terra","usage":{"input":3,"output":2,"totalTokens":5}}}"#,
+        )
+        .unwrap();
+        let main_entries = parse_session_usage_file(&main_path).unwrap();
+        assert_eq!(
+            main_entries[0].session_name.as_deref(),
+            Some("Header title")
+        );
 
         fs::remove_dir_all(&root).ok();
     }

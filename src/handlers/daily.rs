@@ -353,9 +353,22 @@ pub async fn get_usage_details(
             .into_response();
     }
 
-    let pricing_rules = load_prepared_pricing_rules();
-    let (summary, sessions_summary, entries) =
-        aggregate_usage_details(&entries_with_type, &pricing_rules);
+    let aggregate_res = tokio::task::spawn_blocking(move || {
+        let pricing_rules = load_prepared_pricing_rules();
+        Ok::<_, String>(aggregate_usage_details(&entries_with_type, &pricing_rules))
+    })
+    .await
+    .unwrap_or_else(|_| Err("執行緒執行失敗".to_string()));
+    let (summary, sessions_summary, entries) = match aggregate_res {
+        Ok(aggregate) => aggregate,
+        Err(err) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": err })),
+            )
+                .into_response()
+        }
+    };
 
     Json(UsageDetailsResponse {
         date,
