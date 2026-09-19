@@ -1,41 +1,85 @@
 # Repository Guidelines
 
-## Project Structure & Module Organization
-`src/` contains the Rust backend: `main.rs` dispatches CLI commands or boots the Axum server, `cli.rs` implements import/export commands, `handlers.rs` exposes HTTP endpoints, `db.rs` manages SQLite sync and migrations, and `pricing.rs` / `timeline.rs` handle pricing and session reconstruction. `static/` holds the dashboard frontend, while `public/` contains the GitHub Pages landing page. `npm/` contains the thin npx wrapper, release downloader, checksum validation, and prepublish checks. `shell/` contains helper scripts and `systemd` unit templates. Runtime pricing data lives in `pricing.csv`.
+## Project Overview
+TokenUsageInsights is a local-first Rust application that imports token-usage data from Antigravity, Copilot, Codex, Claude, Cursor, Grok, Pi, OMP, and Muse. It provides a CLI plus an Axum-served dashboard/API, normalizing source data into SQLite and calculating costs from `pricing.csv`.
 
-## Build, Test, and Development Commands
-Use `cargo run` to start the local dashboard on `http://localhost:3003`. Use `cargo build --release` for production builds or before installing the `systemd` service. Run `cargo test` to execute the current Rust test suite. Run `cargo fmt` before committing; use `cargo clippy --all-targets --all-features` for an extra lint pass when touching backend logic. For service installs, render the unit file with `sed "s|<PROJECT_DIR>|$PWD|g" shell/token-usage-insights.service`. On Windows, `scripts\build.ps1` runs `cargo test --release` then `cargo build --release --all-targets` and fails the build if the compiler emits any warning (use `-AllowWarnings` only for local iteration, never for a final build).
+## Architecture & Data Flow
+- **Entry path:** `src/main.rs` runs `cli::run` first. A recognized subcommand (`export`, `export-all`, `import`, `update`, help/version) exits through `src/cli.rs`; otherwise it initializes SQLite, serves Axum routes/static assets, and starts periodic sync.
+- **Read path:** browser (`static/index.html` → `static/app.js`) calls `/api/...` → thin `src/handlers/` endpoint → `spawn_blocking` for synchronous work → `db`, `reporting`, and `pricing` → JSON DTO.
+- **Write/sync path:** provider adapters parse local JSON/JSONL/SQLite data into `db::UsageEntry`; `db::sync_usage_logs` persists entries and incremental state transactionally. Keep collector-specific parsing outside handlers.
+- **Session details:** handler → `session_details` → `session_files` (ID/path containment validation) → `timeline` parser. Do not bypass these safety boundaries for transcript access.
+- **Reporting:** use `reporting.rs` for session grouping and delta-versus-cumulative aggregation, and `pricing.rs` for costs; do not duplicate aggregation/cost rules in endpoints.
 
-For npm packaging changes, run `npm ci --ignore-scripts`, `npm test`, and `npm pack --dry-run --ignore-scripts`. The publish precheck additionally requires the current commit to have the exact version tag and all matching GitHub Release assets to exist.
+## Key Directories
+- `src/` — Rust application. `main.rs` owns lifecycle/routes; `db.rs` owns schema, migrations, imports, sync, and source discovery.
+  - `src/handlers/` — daily/monthly/yearly/misc HTTP handlers and shared assistant DTOs/normalization.
+  - `src/db/`, `grok.rs`, `pi.rs`, `muse.rs`, `vscode.rs` — provider-specific adapters.
+  - `session_files.rs`, `session_details.rs`, `timeline.rs` — session reconstruction and path-safe transcript parsing.
+- `static/` — dashboard: plain ES modules, HTML, CSS, i18n, and assistant assets. `app.js` is the main frontend entry.
+- `tests/` — Node built-in-test suites for package installer and frontend utilities; Rust tests are colocated under `#[cfg(test)]` in `src/`.
+- `npm/` — thin npx wrapper, release downloader/checksum validation, and prepublish guard; it does **not** build Rust.
+- `scripts/` — cross-platform download/install/service/build/smoke-test scripts. Treat `install.*` and `run-service.ps1` as service-lifecycle-sensitive.
+- `shell/` — status-line collectors and the source-build systemd template. Do not change the collectors' protected input parsing, JSONL writes, or state-update logic without preserving synchronization behavior.
+- `public/` — independently deployed GitHub Pages landing site; `docs/npm-publishing.md` is the npm release runbook.
 
-**Crucial Rule**: Every build (`cargo build`, `cargo build --release`, `cargo test`, and `scripts\build.ps1`) must complete with zero compiler warnings and zero errors across the unified `token-usage-insights` bin target before code is considered done. Treat warnings as build failures: fix them at the source (e.g. remove unused imports/`mut`, or add a narrowly-scoped `#[allow(...)]` with a comment explaining why) rather than suppressing them globally or ignoring them.
+## Development Commands
+Run from the repository root:
 
-## Coding Style & Naming Conventions
-Follow standard Rust formatting with 4-space indentation and `snake_case` for functions, modules, and variables. Keep route handlers thin and push data access or parsing into dedicated modules under `src/`. In frontend files, keep plain JavaScript readable and use descriptive camelCase names such as `currentAssistant` and `monthlyChartInstance`. Preserve existing bilingual UI text and avoid renaming assistant identifiers like `antigravity`, `copilot`, or `codex`.
+```sh
+make dev                         # debug dashboard at http://localhost:3003
+make build                       # cargo build
+make build-release               # cargo build --release
+make test                        # cargo test
+make fmt                         # cargo fmt
+make clippy                      # cargo clippy --all-targets --all-features
+make check                       # cargo check --all-targets --all-features
+make all                         # fmt, check, test, release build
+```
 
-## Testing Guidelines
-The repository currently uses Rust unit/integration-style tests embedded under `#[cfg(test)]`, notably in `src/handlers.rs`. Add new backend tests close to the code they exercise unless a dedicated `tests/` directory becomes necessary. Prefer deterministic fixtures by pointing `INSIGHTS_DIR` to a temporary folder, matching the existing yearly handler test pattern. Run `cargo test` after any API, database, or parsing change.
+- `PORT=3004 make dev` changes the local port. Direct source development can use `cargo run` or `cargo build --release --bin token-usage-insights`.
+- For npm/package changes: `npm ci --ignore-scripts && npm test && npm pack --dry-run --ignore-scripts`. `npm run check:package` also verifies the release/version/tag/assets preconditions.
+- Windows release gate: `./scripts/build.ps1`; run `./scripts/test-windows.ps1` when changing Windows installers or collectors. `-AllowWarnings` is local-iteration-only.
+- The systemd Make targets are Linux-only and require `sudo`; render the source template with `make service-file` or `sed "s|<PROJECT_DIR>|$PWD|g" shell/token-usage-insights.service`.
 
-## Commit & Pull Request Guidelines
-- **Automatic Detailed Commit on Completion**: Every time code editing and verification are done, create a git commit immediately. Do not leave uncommitted code changes after concluding a task unless explicitly instructed otherwise.
-- **Full Detailed Traditional Chinese (`zh-TW`) Commit Log**: Every commit message must be written in comprehensive, detailed Traditional Chinese (`zh-TW`) using Taiwan terminology. Follow Conventional Commits format (e.g. `feat(web):`, `fix(pricing):`, `fix(web):`). Structure the commit message with:
-  1. Imperative, specific subject line in Traditional Chinese.
-  2. Concise problem context and user impact overview.
-  3. Detailed file-by-file / module-by-module change breakdown (`變更細節`).
-  4. Explicit verification commands and test results (`驗證項目`), including compiler zero-warning checks, unit tests, clippy, and browser / manual verification.
-- **PRs**: PRs should describe the user-visible change, note any schema or env var impact, and include screenshots for `static/` UI changes. Link related issues when applicable and list the verification commands you ran.
+## Code Conventions & Common Patterns
+- **Rust:** standard rustfmt, four-space indentation, and `snake_case`. Keep `main.rs` module ownership clear; prefer existing `pub(crate)` seams over widening APIs.
+- **Handlers:** normalize/validate inputs, then use `tokio::task::spawn_blocking` for `rusqlite`, filesystem, transcript parsing, and subprocess/Git work. Convert domain and join errors into the existing status/JSON response pattern.
+- **Data/error handling:** use `serde` DTOs (`#[serde(default)]` for compatible optional inputs); return contextual errors in the established style. Use `Connection::transaction()` for writes, imports, and sync-state updates.
+- **Parsers:** stream JSONL via `BufReader`, tolerate malformed individual records where the existing adapter does, then map to common `UsageEntry`/timeline models.
+- **Frontend:** plain ES modules, descriptive `camelCase`, `async`/`await` + checked `fetch` responses, and module-level UI state persisted through URL parameters, cookies, and `localStorage`. Reuse the existing assistant alias/metadata maps.
+- **UI/content:** preserve the established bilingual (predominantly zh-TW) text and canonical identifiers such as `antigravity`, `copilot`, and `codex`.
 
-## Release & Changelog Guidelines
-Every release must update `CHANGELOG.md` in the same release change before creating the version tag. Move the relevant items from the `Unreleased` / `未發行` section into a version heading with the release date, and derive the entries from both the Git log and the actual diff from the previous tag. Record user-visible additions, changes, fixes, removals, security changes, migrations, environment variable changes, and breaking changes when applicable; do not list a version bump by itself as a product change.
+## Important Files
+- `src/main.rs` — CLI/server dispatch, Axum routes, CORS, static serving, background sync, shutdown.
+- `src/cli.rs` — CLI parsing and import/export behavior.
+- `src/db.rs` — SQLite schema/migrations, sync orchestration, imports, shared usage model.
+- `src/handlers/mod.rs` — supported assistants, aliases, shared HTTP DTOs.
+- `src/reporting.rs`, `src/pricing.rs` — usage aggregation and pricing; `pricing.csv` is runtime data.
+- `src/session_files.rs` — transcript path-security boundary; `src/paths.rs` — resource/path lookup. Use `find_resource` instead of assuming the current directory.
+- `Cargo.toml` / `Cargo.lock` — single Rust 2021 binary crate; preserve the committed lockfile.
+- `package.json` / `package-lock.json` — ESM npx package, Node `>=18.18`; preserve version synchronization.
+- `.github/workflows/release.yml`, `npm-package.yml`, `pages.yml` — release, package, and Pages CI contracts.
 
-GitHub Release notes must include the real changes for that tag range and a link to the full comparison. Auto-generated download or installation boilerplate is not a substitute for release notes. Keep `CHANGELOG.md`, the GitHub Release notes, `Cargo.toml`, `Cargo.lock`, the release workflow-generated package `VERSION` file, and README version examples synchronized before considering a release complete.
+## Runtime/Tooling Preferences
+- Use stable Rust/Cargo (the repository does not pin a toolchain) and npm; CI uses Node 24, while the package requires Node 18.18 or newer.
+- SQLite is bundled through `rusqlite`; do not introduce a separate database service.
+- The dashboard requires no frontend build framework. Do not add Node dependencies merely for UI changes.
+- Releases package the binary together with `static/`, `shell/`, `scripts/`, and `pricing.csv`; preserve this layout when modifying installation/release behavior.
+- The project reads local data by default. Use environment overrides (`INSIGHTS_DIR`, `ANTIGRAVITY_DIR`, `COPILOT_DIR`, `CODEX_DIR`, `CLAUDE_DIR`, `CURSOR_DIR`, `GROK_DIR`, `PI_DIR`, `OMP_DIR`) for isolated development and tests. Never commit local databases, logs, sessions, or personal paths.
 
-Keep `package.json` and `package-lock.json` synchronized with the Rust package version. After npm Trusted Publishing is enabled, the release workflow must also complete its npm publish and npx smoke-test job before the release is considered complete. Follow `docs/npm-publishing.md` for the initial manual publish and OIDC setup.
+## Testing & QA
+- Add Rust tests beside the affected module under `#[cfg(test)]`; use `#[tokio::test]` only for async behavior. Use `cargo test <name-filter>` for a focused check.
+- Use deterministic fixtures: `rusqlite::Connection::open_in_memory()` for database tests; unique temporary directories for file tests. If mutating environment variables, serialize access, save/restore prior values, and point `INSIGHTS_DIR`/source roots at test data.
+- JavaScript tests use Node's native runner (`node:test` and `node:assert/strict`):
+  ```sh
+  node --test tests/session-utils.test.mjs
+  node --test tests/chart-utils.test.mjs
+  node --test tests/npm-package.test.cjs
+  ```
+- There is no configured browser E2E or coverage threshold. For `static/` changes, manually verify the affected flow at the local dashboard and include screenshots in a PR.
+- Treat every Cargo warning as a failure. Before completing backend work, run the narrow relevant test, then the appropriate `cargo test`, `cargo clippy --all-targets --all-features`, and build path with **zero warnings and zero errors**.
 
-### AI-assisted Release Completion Prompt
-When an AI agent is authorized to publish a version, the release is not complete when the tag is pushed or the GitHub Actions workflow starts. The agent must follow this completion prompt:
-
-> Wait for the release workflow to finish and verify that it succeeded. Then verify that the corresponding public GitHub Release exists, is neither a draft nor a prerelease, and contains the expected platform assets and `SHA256SUMS`. Inspect the automatically generated Release body and replace or extend it with the real changes derived from both `git log <previous-tag>..<new-tag>` and the actual diff. Write the Release notes in Traditional Chinese using Taiwan terminology and match the established style of the existing releases: start with `## Token 戰情室 vX.Y.Z` and a concise summary, then include only the relevant sections such as `新增與改善`, `變更`, `修正`, `資料影響`, `相容性`, and `完整差異`. Preserve the useful installation commands and checksum reminder. Add a direct `https://github.com/doggy8088/TokenUsageInsights/compare/<previous-tag>...<new-tag>` comparison link. Do not treat version bumps, generated download boilerplate, commit subjects alone, or workflow completion alone as sufficient release notes. Re-open or query the published Release after editing and verify that the final public content, tag, title, assets, and comparison link are correct before reporting the release as complete.
-
-## Security & Configuration Tips
-This project is local-first and reads data from `~/.token-usage-insights`, `~/.gemini/antigravity-cli`, `~/.copilot`, `~/.codex`, `~/.claude`, `~/.cursor`, `~/.grok`, `~/.pi`, and `~/.omp` unless overridden by `INSIGHTS_DIR`, `ANTIGRAVITY_DIR`, `COPILOT_DIR`, `CODEX_DIR`, `CLAUDE_DIR`, `CURSOR_DIR`, `GROK_DIR`, `PI_DIR`, or `OMP_DIR`. Do not commit local database files, session logs, or personal paths captured during testing.
+## Delivery and Release Guardrails
+- After editing and verification, create a detailed Traditional Chinese (zh-TW) Conventional Commit. Include the user impact, file-by-file changes, and commands/results; do not leave completed work uncommitted unless explicitly told otherwise.
+- PRs must state user-visible and schema/environment impacts, list verification, and include screenshots for dashboard changes.
+- For releases, synchronize `CHANGELOG.md`, Cargo/npm versions and lockfiles, README version examples, and release assets. Verify the workflow, a non-draft public GitHub Release, all platform archives plus `SHA256SUMS`, real zh-TW release notes with the compare link, and (when enabled) npm publish/npx smoke-test completion.
