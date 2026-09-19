@@ -464,6 +464,53 @@ pub fn get_claude_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("."))
 }
 
+#[derive(Debug, Clone)]
+pub struct ClaudeSource {
+    pub label: String,
+    pub source_kind: String,
+    pub dir: PathBuf,
+}
+
+pub fn get_claude_sources() -> Vec<ClaudeSource> {
+    let default_dir = get_claude_dir();
+    let mut sources = vec![ClaudeSource {
+        label: "Default".to_string(),
+        source_kind: "claude-default".to_string(),
+        dir: default_dir,
+    }];
+    if std::env::var_os("CLAUDE_DIR").is_none() {
+        if let Some(home) = dirs::home_dir() {
+            let profiles_dir = home.join(".claude-profiles");
+            if let Ok(entries) = fs::read_dir(profiles_dir) {
+                let mut profiles: Vec<_> = entries
+                    .flatten()
+                    .map(|entry| entry.path())
+                    .filter(|path| path.is_dir() && path.join("projects").is_dir())
+                    .collect();
+                profiles.sort();
+                for path in profiles {
+                    if let Some(name) = path.file_name().and_then(|name| name.to_str()) {
+                        sources.push(ClaudeSource {
+                            label: format!("Profile: {name}"),
+                            source_kind: format!("claude-profile:{name}"),
+                            dir: path,
+                        });
+                    }
+                }
+            }
+        }
+    }
+    sources
+}
+
+pub fn get_claude_dir_for_source_kind(source_kind: &str) -> PathBuf {
+    get_claude_sources()
+        .into_iter()
+        .find(|source| source.source_kind == source_kind)
+        .map(|source| source.dir)
+        .unwrap_or_else(get_claude_dir)
+}
+
 pub fn get_cursor_dir() -> PathBuf {
     if let Some(path) = crate::paths::env_path("CURSOR_DIR") {
         return path;
@@ -3919,82 +3966,111 @@ fn sync_claude_usage_logs(conn: &mut Connection) -> Result<(), String> {
             [],
         );
     }
-
-    let claude_dir = get_claude_dir();
-    let projects_dir = claude_dir.join("projects");
-    if !projects_dir.exists() {
-        return Ok(());
+    let profile_migration_done: bool = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM sync_state WHERE filename = 'migration:claude_profiles_v1')",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(false);
+    if !profile_migration_done {
+        let tx = conn
+            .transaction()
+            .map_err(|error| format!("Claude profile migration BEGIN 失敗: {error}"))?;
+        tx.execute(
+            "DELETE FROM usage_entries WHERE assistant_type = 'claude' AND source_kind = 'legacy'",
+            [],
+        )
+        .map_err(|error| format!("清除舊 Claude 使用量失敗: {error}"))?;
+        tx.execute("DELETE FROM sync_state WHERE filename LIKE 'claude:%'", [])
+            .map_err(|error| format!("清除舊 Claude 同步狀態失敗: {error}"))?;
+        tx.execute(
+            "INSERT INTO sync_state (filename, last_synced_size, last_synced_time)
+             VALUES ('migration:claude_profiles_v1', 1, 0)",
+            [],
+        )
+        .map_err(|error| format!("記錄 Claude profile 遷移失敗: {error}"))?;
+        tx.commit()
+            .map_err(|error| format!("Claude profile migration COMMIT 失敗: {error}"))?;
     }
 
-    let files = find_claude_session_files(&projects_dir);
+    for source in get_claude_sources() {
+        let claude_dir = source.dir;
+        let projects_dir = claude_dir.join("projects");
+        if !projects_dir.exists() {
+            continue;
+        }
 
-    for filepath in files {
-        let state_path = filepath
-            .strip_prefix(&claude_dir)
-            .unwrap_or(&filepath)
-            .to_string_lossy()
-            .into_owned();
-        let state_key = format!("claude:{}", state_path);
+        let files = find_claude_session_files(&projects_dir);
+        for filepath in files {
+            let state_path = filepath
+                .strip_prefix(&claude_dir)
+                .unwrap_or(&filepath)
+                .to_string_lossy()
+                .into_owned();
+            let state_key = format!("{}:{}", source.source_kind, state_path);
 
-        let last_synced_size: u64 = conn
-            .query_row(
-                "SELECT last_synced_size FROM sync_state WHERE filename = ?",
-                params![state_key],
-                |row| row.get(0),
-            )
-            .unwrap_or(0u64);
+            let last_synced_size: u64 = conn
+                .query_row(
+                    "SELECT last_synced_size FROM sync_state WHERE filename = ?",
+                    params![state_key],
+                    |row| row.get(0),
+                )
+                .unwrap_or(0u64);
 
-        let metadata = match fs::metadata(&filepath) {
-            Ok(m) => m,
-            Err(_) => continue,
-        };
-        let current_size = metadata.len();
-
-        if current_size != last_synced_size {
-            let parsed_entries = match parse_claude_session_file(&filepath) {
-                Ok(entries) => entries,
-                Err(e) => {
-                    eprintln!("解析 Claude Code 會話檔案 {:?} 失敗: {}", filepath, e);
-                    continue;
-                }
+            let metadata = match fs::metadata(&filepath) {
+                Ok(m) => m,
+                Err(_) => continue,
             };
+            let current_size = metadata.len();
 
-            let tx = conn
-                .transaction()
-                .map_err(|e| format!("Transaction BEGIN 失敗: {}", e))?;
+            if current_size != last_synced_size {
+                let parsed_entries = match parse_claude_session_file(&filepath) {
+                    Ok(entries) => entries,
+                    Err(e) => {
+                        eprintln!("解析 Claude Code 會話檔案 {:?} 失敗: {}", filepath, e);
+                        continue;
+                    }
+                };
 
-            // First delete old entries for this session
-            let session_ids: HashSet<String> = parsed_entries
-                .iter()
-                .map(|entry| entry.session_id.clone())
-                .collect();
-            for session_id in session_ids {
-                let delete_res = tx.execute(
-                    "DELETE FROM usage_entries WHERE assistant_type = 'claude' AND session_id = ?",
-                    params![session_id],
-                );
+                let tx = conn
+                    .transaction()
+                    .map_err(|e| format!("Transaction BEGIN 失敗: {}", e))?;
 
-                if let Err(e) = delete_res {
-                    eprintln!("清空舊 Claude Code Session 資料失敗: {}", e);
-                    continue;
+                // First delete old entries for this session
+                let session_ids: HashSet<String> = parsed_entries
+                    .iter()
+                    .map(|entry| entry.session_id.clone())
+                    .collect();
+                for session_id in session_ids {
+                    let delete_res = tx.execute(
+                        "DELETE FROM usage_entries
+                     WHERE assistant_type = 'claude' AND source_kind = ? AND session_id = ?",
+                        params![source.source_kind, session_id],
+                    );
+
+                    if let Err(e) = delete_res {
+                        eprintln!("清空舊 Claude Code Session 資料失敗: {}", e);
+                        continue;
+                    }
                 }
-            }
 
-            let mut success = true;
-            for entry in &parsed_entries {
-                let tokens = entry.tokens.as_ref();
-                let delta = entry.delta_tokens.as_ref();
-                let cost = entry.cost.as_ref();
+                let mut success = true;
+                for entry in &parsed_entries {
+                    let tokens = entry.tokens.as_ref();
+                    let delta = entry.delta_tokens.as_ref();
+                    let cost = entry.cost.as_ref();
 
-                let insert_res = tx.execute(
+                    let insert_res = tx.execute(
                     "INSERT INTO usage_entries (
-                        assistant_type, timestamp, date, session_id, session_name, transcript_path, cwd, version, turn_no, model, model_id,
+                        assistant_type, source_kind, timestamp, date, session_id, session_name, transcript_path, cwd, version, turn_no, model, model_id,
                         tokens_input, tokens_output, tokens_cache_read, tokens_cache_write, tokens_cache_write_5m, tokens_cache_write_1h, tokens_reasoning, tokens_total,
                         delta_input, delta_output, delta_cache_read, delta_cache_write, delta_cache_write_5m, delta_cache_write_1h, delta_reasoning, delta_total,
                         duration_ms, premium_requests, parent_session_id, agent_nickname, agent_role, reasoning_effort
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     params![
                         "claude",
+                        source.source_kind,
                         entry.timestamp,
                         entry.timestamp.get(0..10).unwrap_or("unknown"),
                         entry.session_id,
@@ -4030,30 +4106,31 @@ fn sync_claude_usage_logs(conn: &mut Connection) -> Result<(), String> {
                     ],
                 );
 
-                if let Err(e) = insert_res {
-                    eprintln!(
-                        "寫入 Claude Code 資料庫失敗 (turn_no {}): {}",
-                        entry.turn_no, e
-                    );
-                    success = false;
-                    break;
+                    if let Err(e) = insert_res {
+                        eprintln!(
+                            "寫入 Claude Code 資料庫失敗 (turn_no {}): {}",
+                            entry.turn_no, e
+                        );
+                        success = false;
+                        break;
+                    }
                 }
-            }
 
-            if success {
-                let now = SystemTime::now()
-                    .duration_since(SystemTime::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs() as i64;
+                if success {
+                    let now = SystemTime::now()
+                        .duration_since(SystemTime::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs() as i64;
 
-                let update_state_res = tx.execute(
+                    let update_state_res = tx.execute(
                     "INSERT OR REPLACE INTO sync_state (filename, last_synced_size, last_synced_time) VALUES (?, ?, ?)",
                     params![state_key, current_size as i64, now],
                 );
 
-                if update_state_res.is_ok() {
-                    if let Err(e) = tx.commit() {
-                        eprintln!("Transaction COMMIT 失敗: {}", e);
+                    if update_state_res.is_ok() {
+                        if let Err(e) = tx.commit() {
+                            eprintln!("Transaction COMMIT 失敗: {}", e);
+                        }
                     }
                 }
             }

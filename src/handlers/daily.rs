@@ -185,8 +185,11 @@ pub async fn get_setup_info(Path(assistant): Path<String>) -> impl IntoResponse 
     let codex_exists =
         codex_dir.join("sessions").exists() || codex_dir.join("archived_sessions").exists();
 
+    let claude_sources = db::get_claude_sources();
     let claude_dir = db::get_claude_dir();
-    let claude_exists = claude_dir.join("projects").exists();
+    let claude_exists = claude_sources
+        .iter()
+        .any(|source| source.dir.join("projects").exists());
 
     let cursor_dir = db::get_cursor_dir();
     let cursor_exists = cursor_dir.join("projects").exists();
@@ -306,6 +309,15 @@ pub async fn get_setup_info(Path(assistant): Path<String>) -> impl IntoResponse 
             source_script_path: "".to_string(),
             settings_path: "".to_string(),
         },
+        claude_sources: claude_sources
+            .into_iter()
+            .map(|source| ClaudeSourceSetupStatus {
+                label: source.label,
+                config_path: source.dir.to_string_lossy().into_owned(),
+                sessions_path: source.dir.join("projects").to_string_lossy().into_owned(),
+                exists: source.dir.join("projects").exists(),
+            })
+            .collect(),
     })
     .into_response()
 }

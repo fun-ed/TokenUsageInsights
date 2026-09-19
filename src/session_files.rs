@@ -451,6 +451,7 @@ impl SessionFileReason {
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct SessionFileResolutionContext<'a> {
     pub copilot_app_source_dir: Option<&'a StdPath>,
+    pub claude_source_dir: Option<&'a StdPath>,
     pub parent_session_id: Option<&'a str>,
     pub agent_nickname: Option<&'a str>,
 }
@@ -555,7 +556,11 @@ pub(crate) fn resolve_session_file_path(
                     "找不到 Claude Code 會話日誌檔案路徑。",
                 )
             })?;
-            resolve_claude_transcript_path(&db::get_claude_dir(), session_id, path)
+            let source_dir = context
+                .claude_source_dir
+                .map(PathBuf::from)
+                .unwrap_or_else(|| db::get_claude_dir_for_source_kind(source_kind));
+            resolve_claude_transcript_path(&source_dir, session_id, path)
                 .map_err(|error| SessionFileError::new(StatusCode::BAD_REQUEST, error))
         }
         "cursor" => {

@@ -289,6 +289,8 @@ pub(crate) fn load_session_details(
     } else {
         None
     };
+    let claude_source_dir = (lookup.assistant_type == "claude")
+        .then(|| db::get_claude_dir_for_source_kind(&lookup.source_kind));
 
     let filepath = resolve_session_file_path(
         &lookup.assistant_type,
@@ -297,6 +299,7 @@ pub(crate) fn load_session_details(
         &lookup.source_kind,
         SessionFileResolutionContext {
             copilot_app_source_dir: copilot_app_source_dir.as_deref(),
+            claude_source_dir: claude_source_dir.as_deref(),
             parent_session_id: lookup.parent_session_id.as_deref(),
             agent_nickname: lookup.agent_nickname.as_deref(),
         },

@@ -6677,6 +6677,15 @@ async function loadSetupInfo(assistant = currentAssistant) {
     } else if (resolvedAssistant === 'claude') {
       const homeLabelClaude = document.getElementById('lbl-detected-home-claude');
       if (homeLabelClaude) homeLabelClaude.textContent = abbreviateHomePath(data.claude?.data_path || '');
+      const sourceFolders = document.getElementById('claude-source-folders');
+      if (sourceFolders) {
+        sourceFolders.replaceChildren();
+        for (const source of data.claude_sources || []) {
+          const row = document.createElement('div');
+          row.textContent = `${source.label}: Config ${abbreviateHomePath(source.config_path)} · Sessions ${abbreviateHomePath(source.sessions_path)}`;
+          sourceFolders.append(row);
+        }
+      }
     } else if (resolvedAssistant === 'cursor') {
       const homeLabelCursor = document.getElementById('lbl-detected-home-cursor');
       if (homeLabelCursor) homeLabelCursor.textContent = abbreviateHomePath(data.cursor?.data_path || '');
