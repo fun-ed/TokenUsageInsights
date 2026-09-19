@@ -4085,6 +4085,13 @@ function updateSortHeadersUI() {
 // 渲染 Session 列表 Table
 // =========================================================================
 function getSessionSourceBadge(session) {
+  if (session.source_kind === 'claude-default') {
+    return '<span class="badge source-badge" title="Claude Code default profile">Default</span>';
+  }
+  if (session.source_kind?.startsWith('claude-profile:')) {
+    const profileName = session.source_kind.slice('claude-profile:'.length);
+    return `<span class="badge source-badge" title="Claude Code profile">${escapeHtml(profileName)}</span>`;
+  }
   if (session.source_kind === 'vscode-chat') {
     return '<span class="badge source-badge" title="GitHub Copilot in VS Code">VS Code</span>';
   }
