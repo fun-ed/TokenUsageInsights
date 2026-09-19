@@ -33,7 +33,18 @@ This fork owns the `v10.x.y` tag namespace. The current release is `v10.0.4`.
 
 ## Manual releases
 
-- GitHub Actions workflows are intentionally absent. Build and verify release assets locally, then create the GitHub Release and upload the checked artifacts manually.
+GitHub Actions workflows are intentionally absent. Build, verify, and upload release assets manually.
+
+### macOS Apple Silicon DMG
+
+1. Confirm `main` is clean, the Cargo/npm versions match, and `vX.Y.Z` does not exist on `origin`.
+2. Run `TMPDIR=/private/tmp cargo fmt --check`, `cargo test --locked`, `RUSTFLAGS='-D warnings' cargo build --release --locked --all-targets`, `cargo clippy --all-targets --all-features --locked -- -D warnings`, `npm test`, and `git diff --check`.
+3. Stage `target/release/token-usage-insights`, `static/`, `shell/`, `scripts/`, `pricing.csv`, `README.md`, `LICENSE`, and a `VERSION` file in `token-usage-insights-vX.Y.Z-aarch64-apple-darwin/`. Mark the binary, `scripts/install.sh`, `scripts/get.sh`, and shell collectors executable.
+4. Create `token-usage-insights-vX.Y.Z-aarch64-apple-darwin.dmg` with `hdiutil create -format UDZO`, then write `SHA256SUMS` with `shasum -a 256`.
+5. Run the staged `scripts/install.sh` with isolated install and data directories. Start the installed executable and verify `/api/antigravity/pricing` plus SQLite creation.
+6. Create and push the annotated `vX.Y.Z` tag, create the public GitHub Release with zh-TW notes and a valid compare link, upload the DMG and `SHA256SUMS`, then download the uploaded checksum and verify it.
+
+`npx` and `scripts/get.sh` download target-specific `.tar.gz` files, not DMGs. Publish matching tarballs with `SHA256SUMS` before claiming those installer paths work.
 
 ## Fork-specific product behavior
 
