@@ -61,7 +61,7 @@ make all                         # fmt, check, test, release build
 - `src/session_files.rs` — transcript path-security boundary; `src/paths.rs` — resource/path lookup. Use `find_resource` instead of assuming the current directory.
 - `Cargo.toml` / `Cargo.lock` — single Rust 2021 binary crate; preserve the committed lockfile.
 - `package.json` / `package-lock.json` — ESM npx package, Node `>=18.18`; preserve version synchronization.
-- `.github/workflows/release.yml` builds and publishes GitHub Releases. npm package CI and Pages deployment workflows are intentionally absent.
+- GitHub Actions workflows are intentionally absent. Maintainers build and upload GitHub Release assets manually.
 
 ## Runtime/Tooling Preferences
 - Use stable Rust/Cargo and npm. The npm package requires Node 18.18 or newer.
@@ -86,4 +86,4 @@ make all                         # fmt, check, test, release build
 - After editing and verification, create a detailed Traditional Chinese (zh-TW) Conventional Commit. Include the user impact, file-by-file changes, and commands/results; do not leave completed work uncommitted unless explicitly told otherwise.
 - PRs must state user-visible and schema/environment impacts, list verification, and include screenshots for dashboard changes.
 - **Fork versioning and upstream sync:** This fork reserves the `v10.x.y` release-tag namespace. Keep Cargo/npm package versions as `10.x.y` (without the tag prefix), use a matching `v10.x.y` tag only for releases, and never reuse upstream `v1.x.y` tags. Treat `https://github.com/doggy8088/TokenUsageInsights` as an upstream source: fetch and review its diff first, then merge compatible changes or selectively port optional features in separate commits. Preserve this fork's versioning, local-first behavior, and fork-specific features when resolving conflicts.
-- For releases, synchronize `CHANGELOG.md`, Cargo/npm versions and lockfiles, README version examples, and release assets. Verify the Release workflow, a non-draft public GitHub Release, all platform archives plus `SHA256SUMS`, and real zh-TW release notes with the compare link. npm publishing is manual when needed.
+- For manual releases, synchronize `CHANGELOG.md`, Cargo/npm versions and lockfiles, README version examples, and release assets. Build and verify assets locally, upload them to a non-draft public GitHub Release with `SHA256SUMS`, and add real zh-TW release notes with the compare link. npm publishing is manual when needed.

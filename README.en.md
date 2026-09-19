@@ -4,7 +4,7 @@
 
 This project does not call AI provider APIs on your behalf. Its core data sources are local logs, Status Line collector files, and local SQLite.
 
-> System support: native PowerShell on Windows 10/11, macOS, Linux, and WSL.
+> System support: macOS and Linux.
 
 Language: [繁體中文](README.md) · [简体中文](README.zh-CN.md) · [English](README.en.md) · [日本語](README.ja.md) · [한국어](README.ko.md)
 
@@ -28,9 +28,8 @@ Linux / macOS:
 curl -fsSL https://raw.githubusercontent.com/fun-ed/TokenUsageInsights/main/scripts/get.sh | bash && "$HOME/.local/bin/token-usage-insights"
 ```
 
-Windows has no GitHub Release archive. Build it from source with Rust.
 
-`npx` and the installers download this fork's Linux or macOS compiled version. Rust, Cargo, WSL, and manual extraction are not required. The dashboard runs locally after the command starts. When run from an interactive terminal, it opens the dashboard in the default browser after binding its port. systemd and launchd services do not open a browser.
+`npx` and the installer download this fork's compiled version for macOS or Linux. Rust, Cargo, and manual extraction are not required. The dashboard runs locally after the command starts. When run from an interactive terminal, it opens the dashboard in the default browser after binding its port. systemd and launchd services do not open a browser.
 
 Open:
 
@@ -42,8 +41,8 @@ http://localhost:3003
 
 | Tool | Additional setup | Default data source | Description |
 | --- | --- | --- | --- |
-| Google Antigravity CLI | Required | `~/.gemini/antigravity-cli/usage/usage-YYYY-MM-DD.jsonl` | Collects token data through `statusline-token.sh` or the Windows `statusline-token.ps1` |
-| GitHub Copilot CLI | Required | `~/.copilot/usage/usage-YYYY-MM-DD.jsonl` | Collects token data through `statusline-token.sh` or the Windows `statusline-token.ps1` |
+| Google Antigravity CLI | Required | `~/.gemini/antigravity-cli/usage/usage-YYYY-MM-DD.jsonl` | Collects token data through `statusline-token.sh` |
+| GitHub Copilot CLI | Required | `~/.copilot/usage/usage-YYYY-MM-DD.jsonl` | Collects token data through `statusline-token.sh` |
 | GitHub Copilot App | Not required | `~/.copilot/data.db`, `~/.copilot/session-store.db` | The dashboard reads the desktop app's local SQLite databases directly |
 | GitHub Copilot Chat (VS Code) | Not required | VS Code `workspaceStorage/chatSessions` | The dashboard scans local chat sessions from VS Code Stable and Insiders directly |
 | Codex Desktop / CLI | Not required | `~/.codex/sessions`, `~/.codex/archived_sessions` | The dashboard scans active and archived local Codex sessions directly |
@@ -56,37 +55,11 @@ http://localhost:3003
 
 **If you only use Copilot App, VS Code Copilot, Codex Desktop, Codex CLI, Claude Code, Cursor, Grok Build, Pi Coding Agent, OMP, or Muse Code, run the one-line installation command and open the dashboard.**
 
-### Native Windows usage
-
-The Windows one-line installer creates `%USERPROFILE%\bin\token-usage-insights.cmd`; no Rust MSVC toolchain, Visual Studio Build Tools, WSL, Git Bash, or `jq` is required.
-
-Windows uses the following native paths by default:
-
-| Purpose | Windows default path |
-| --- | --- |
-| SQLite | `%LOCALAPPDATA%\TokenUsageInsights\token_usage_insights.db` |
-| Antigravity | `%USERPROFILE%\.gemini\antigravity-cli` |
-| Copilot | `%USERPROFILE%\.copilot` |
-| Codex | `%USERPROFILE%\.codex` |
-| Claude Code | `%USERPROFILE%\.claude` |
-| Cursor | `%USERPROFILE%\.cursor` |
-| Grok Build | `%USERPROFILE%\.grok` |
-| Pi Coding Agent | `%USERPROFILE%\.pi` |
-| OMP | `%USERPROFILE%\.omp` |
-| Muse Code | `%USERPROFILE%\.local\share\muse` |
-
-The dashboard's setup guide shows PowerShell copy, configuration, and diagnostic commands on Windows. The PowerShell collector uses .NET JSON and file APIs and does not depend on Bash, `jq`, `sed`, or `awk`.
-
-Drive letters, paths containing spaces or non-ASCII characters, and UNC paths are handled by native path APIs. Keeping the SQLite database on a local disk is still recommended to avoid differences in network-share locking semantics.
-
-* * *
-
 ## Fork and upstream
 
 This repository is a fork of [`doggy8088/TokenUsageInsights`](https://github.com/doggy8088/TokenUsageInsights), which is configured as `upstream`. I periodically fetch and review upstream changes, then merge compatible changes or port optional features in separate commits.
 
-This fork uses `v10.x.y` release tags so that its releases remain distinct from upstream `v1.x.y` tags. Version `v10.0.3` is the current release. Cargo and npm use the same version number without the `v` prefix.
-
+This fork uses `v10.x.y` release tags so that its releases remain distinct from upstream `v1.x.y` tags. Version `v10.0.4` is the current release. Cargo and npm use the same version number without the `v` prefix.
 * * *
 
 ## Features
@@ -95,7 +68,7 @@ This fork uses `v10.x.y` release tags so that its releases remain distinct from 
 
 - Daily, monthly, and yearly token statistics
 - Breakdown of input, output, cache read, cache write, and reasoning tokens
-- Local cost estimates based on `pricing.csv`
+- Cost estimates use the local models.dev cache first, then provider-specific `pricing.csv` rules when needed
 - Session count, request count, and API duration statistics
 - The Overview item combines all assistants and Claude profiles, with total-token rankings by assistant
 - Model usage rankings
@@ -134,7 +107,7 @@ The dashboard supports URL query parameters for opening a specific state directl
 | `agent` | All views | `all`, `antigravity`, `copilot`, `codex`, `claude`, `cursor`, `grok`, `pi`, `omp`, `muse` | Selects the assistant to display. `all` opens the read-only Overview, which combines all assistants and profiles. Aliases such as `claude-code`, `grok-build`, `pi-coding-agent`, `oh-my-pi`, and `muse-code` are also supported |
 | `tab` | All views | `daily`, `monthly`, `yearly` | Selects the daily, monthly, or yearly view |
 | `date` | All views | `daily`: `YYYY-MM-DD`; `monthly`: `YYYY-MM`; `yearly`: `YYYY` | Selects the date, month, or year to display; the format follows `tab` automatically |
-| `dir` | `daily` | Full path, `~`-prefixed home path, or a unique path suffix (e.g. `TokenUsageInsights`) | Filters the daily view by working directory. Windows paths are case-insensitive; if no directory matches, all directories are shown |
+| `dir` | `daily` | Full path, `~`-prefixed home path, or a unique path suffix (e.g. `TokenUsageInsights`) | Filters the daily view by working directory; if no directory matches, all directories are shown |
 | `chart` | `daily` | `kline`, `trend` | Selects the daily chart type: candlestick (K-line) or trend chart |
 
 Examples (`http://localhost:3003` is the default URL; adjust to your actual `HOST`/`PORT`):
@@ -270,7 +243,6 @@ VS Code Stable and Insiders are supported:
 
 | Platform | Stable | Insiders |
 | --- | --- | --- |
-| Windows | `%APPDATA%\Code\User\workspaceStorage` | `%APPDATA%\Code - Insiders\User\workspaceStorage` |
 | macOS | `~/Library/Application Support/Code/User/workspaceStorage` | `~/Library/Application Support/Code - Insiders/User/workspaceStorage` |
 | Linux | `~/.config/Code/User/workspaceStorage` | `~/.config/Code - Insiders/User/workspaceStorage` |
 
@@ -292,11 +264,6 @@ macOS / Linux:
 VSCODE_USER_DATA_DIR="/path/to/vscode-user-data" token-usage-insights
 ```
 
-Windows PowerShell:
-
-```powershell
-$env:VSCODE_USER_DATA_DIR = "C:\path\to\vscode-user-data"; & "$HOME\bin\token-usage-insights.cmd"
-```
 
 `VSCODE_USER_DATA_DIR` should point to the VS Code user-data directory containing `User/workspaceStorage`. If the environment variable points to the `data` directory in Portable Mode, use `VSCODE_PORTABLE_DATA_DIR` instead; the dashboard checks both `data/user-data/User/workspaceStorage` and `data/User/workspaceStorage`.
 
@@ -371,7 +338,7 @@ Usage:
 3. Select Cursor on the left.
 4. Click the sync button in the upper-right corner, or wait for background sync.
 
-Cursor's local data does not contain exact token counts or official billing details, so tokens are estimated from text content. Costs are estimated only when `pricing.csv` contains the matching model and do not represent the official bill. Use `CURSOR_DIR` and `CURSOR_STATE_DB` for non-default locations.
+Cursor's local data does not contain exact token counts or official billing details, so tokens are estimated from text content. Costs use a matching models.dev cache entry or `pricing.csv` rule and do not represent the official bill. Use `CURSOR_DIR` and `CURSOR_STATE_DB` for non-default locations.
 
 * * *
 
@@ -394,7 +361,7 @@ Usage:
 3. Select Grok Build on the left.
 4. Click the sync button in the upper-right corner, or wait for background sync.
 
-A Grok Build session may provide only a context token snapshot, or may also include provider usage and cost. The dashboard prioritizes provider usage/cost; when only a context snapshot is available, cost is estimated using the xAI API prices in `pricing.csv` and the session list labels it `Context`. This does not represent the weekly quota of SuperGrok or other subscription plans.
+A Grok Build session may provide only a context token snapshot, or may also include provider usage and cost. The dashboard prioritizes provider usage/cost; when only a context snapshot is available, cost is estimated from a matching models.dev cache entry or xAI API rule in `pricing.csv`, and the session list labels it `Context`. This does not represent the weekly quota of SuperGrok or other subscription plans.
 
 * * *
 
@@ -457,7 +424,7 @@ Usage:
 3. Select Muse Code on the left.
 4. Click the sync button in the upper-right corner, or wait for background sync.
 
-Muse Code costs are estimated from the model reported by the session and `pricing.csv`. If the data is not in the default location, set `MUSE_DIR` to the Muse Code data directory that contains `sessions`.
+Muse Code costs are estimated from the model reported by the session and a matching models.dev cache entry or `pricing.csv` rule. If the data is not in the default location, set `MUSE_DIR` to the Muse Code data directory that contains `sessions`.
 
 * * *
 
@@ -530,13 +497,13 @@ The data format matches the frontend and contains these fields:
 
 ## Environment variables
 
-Paths specified by environment variables are authoritative and do not need to be created in advance; `INSIGHTS_DIR` is created automatically at startup. Native absolute/relative paths are supported, as are common forms beginning with `~`, `$HOME`, `%USERPROFILE%`, `%LOCALAPPDATA%`, or `%APPDATA%`.
+Paths specified by environment variables are authoritative and do not need to be created in advance; `INSIGHTS_DIR` is created automatically at startup. Native absolute/relative paths and common forms beginning with `~` or `$HOME` are supported.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `HOST` | `0.0.0.0` | IPv4 or IPv6 address to which the dashboard service binds |
 | `PORT` | `3003` | Dashboard service port |
-| `INSIGHTS_DIR` | Windows: `%LOCALAPPDATA%\TokenUsageInsights`; other platforms: `~/.token-usage-insights` | SQLite database directory |
+| `INSIGHTS_DIR` | `~/.token-usage-insights` | SQLite database directory |
 | `TOKEN_USAGE_INSIGHTS_AUTO_UPDATE` | `true` | Whether to automatically check for updates on startup (`0`, `false`, `no`, or `off` disables it) |
 | `TOKEN_USAGE_INSIGHTS_UPDATE_INTERVAL_HOURS` | `24` | Auto-update check interval in hours (valid range 1 to 87600) |
 | `TOKEN_USAGE_INSIGHTS_INSTALL_DIR` | Auto-detected | Custom installation directory, used for update targeting and detection |
@@ -557,7 +524,7 @@ Paths specified by environment variables are authoritative and do not need to be
 
 ### Configuration file (config.yaml)
 
-In addition to environment variables and command-line flags (such as `--no-auto-update`), update behavior can also be configured in `config.yaml` located in the insights data directory (`~/.token-usage-insights/config.yaml` by default, or `%LOCALAPPDATA%\TokenUsageInsights\config.yaml` on Windows; if `INSIGHTS_DIR` is set, `config.yaml` in that directory takes precedence, with the default path supported as a fallback):
+In addition to environment variables and command-line flags (such as `--no-auto-update`), update behavior can also be configured in `config.yaml` located in the insights data directory (`~/.token-usage-insights/config.yaml` by default; if `INSIGHTS_DIR` is set, `config.yaml` in that directory takes precedence, with the default path supported as a fallback):
 
 ```yaml
 # ~/.token-usage-insights/config.yaml
@@ -575,11 +542,6 @@ Example:
 HOST="127.0.0.1" INSIGHTS_DIR="/tmp/token-usage-insights" PORT="3010" "$HOME/.local/bin/token-usage-insights"
 ```
 
-Windows PowerShell example:
-
-```powershell
-$env:HOST = '127.0.0.1'; $env:INSIGHTS_DIR = 'D:\Token Usage Insights\資料庫'; $env:CODEX_DIR = "$env:USERPROFILE\.codex"; $env:PORT = '3010'; & "$HOME\bin\token-usage-insights.cmd"
-```
 
 * * *
 
@@ -601,14 +563,6 @@ curl -fsSL https://raw.githubusercontent.com/fun-ed/TokenUsageInsights/main/scri
 
 This installs `com.tokenusageinsights.plist` into `~/Library/LaunchAgents/` and loads it immediately; stdout and stderr logs are located in `~/Library/Logs/`.
 
-### Windows: install and enable background service with one command (Task Scheduler)
-
-```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/fun-ed/TokenUsageInsights/main/scripts/get.ps1))) -Service
-```
-
-This registers the `TokenUsageInsights_<username>` task in Windows Task Scheduler for the current user and starts it immediately; it starts automatically at user logon in the background, with logs in the installation `logs\` directory (default `%LOCALAPPDATA%\TokenUsageInsights\logs\`).
-
 ### Manage the service
 
 Linux:
@@ -628,101 +582,16 @@ launchctl kickstart -k gui/$(id -u)/com.tokenusageinsights
 launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.tokenusageinsights.plist
 ```
 
-Windows PowerShell:
-
-```powershell
-# Resolve installation directory (defaults to %LOCALAPPDATA%\TokenUsageInsights, or dynamically resolved from task/shortcut)
-$TaskName = if ($env:USERNAME) { "TokenUsageInsights_$env:USERNAME" } else { "TokenUsageInsights" }
-$InstallDir = $null
-$Task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-if (-not $Task) {
-    $Task = Get-ScheduledTask -TaskName "TokenUsageInsights" -ErrorAction SilentlyContinue
-    if ($Task) {
-        $TaskName = "TokenUsageInsights"
-    }
-}
-if ($Task -and $Task.Actions) {
-    foreach ($Action in @($Task.Actions)) {
-        if ($Action.Arguments -match '(?i)-InstallDir(?:\s+|:)(?:"([^"]+)"|(\S+))') {
-            $DetectedInstallDir = if ($Matches[1]) { $Matches[1] } else { $Matches[2] }
-            $InstallDir = [Environment]::ExpandEnvironmentVariables($DetectedInstallDir)
-            break
-        } elseif ($Action.WorkingDirectory) {
-            $InstallDir = $Action.WorkingDirectory
-            break
-        }
-    }
-}
-$StartupShortcut = Join-Path ([Environment]::GetFolderPath('Startup')) "token-usage-insights.lnk"
-if (!(Test-Path $StartupShortcut)) {
-    $StartupShortcut = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Startup\token-usage-insights.lnk"
-}
-if (-not $InstallDir -and (Test-Path $StartupShortcut)) {
-    $WshShell = New-Object -ComObject WScript.Shell
-    $Shortcut = $WshShell.CreateShortcut($StartupShortcut)
-    if ($Shortcut.Arguments -match '(?i)-InstallDir(?:\s+|:)(?:"([^"]+)"|(\S+))') {
-        $DetectedInstallDir = if ($Matches[1]) { $Matches[1] } else { $Matches[2] }
-        $InstallDir = [Environment]::ExpandEnvironmentVariables($DetectedInstallDir)
-    } elseif ($Shortcut.WorkingDirectory) {
-        $InstallDir = $Shortcut.WorkingDirectory
-    }
-}
-if (-not $InstallDir) {
-    $InstallDir = Join-Path $env:LOCALAPPDATA "TokenUsageInsights"
-}
-$TargetExe = "$InstallDir\token-usage-insights.exe".ToLowerInvariant().Replace('/', '\')
-$EscapedDir = [regex]::Escape($InstallDir)
-
-# Check service status (Task Scheduler or background process)
-Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
-    ($_.CommandLine -like "*run-service.ps1*" -and $_.CommandLine -match "(?i)[\s`"'\\]$EscapedDir([\\`"'\s]|$)") -or
-    ($_.ExecutablePath -and ($_.ExecutablePath.ToLowerInvariant().Replace('/', '\') -eq $TargetExe))
-} | Select-Object ProcessId, Name, CommandLine
-
-# View logs
-Get-Content (Join-Path $InstallDir "logs\token-usage-insights.out.log") -Tail 50 -Wait
-
-# Restart service (scoped to this install directory; compatible with Task Scheduler and Startup folder modes)
-Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
-    ($_.CommandLine -like "*run-service.ps1*" -and $_.CommandLine -match "(?i)[\s`"'\\]$EscapedDir([\\`"'\s]|$)") -or
-    ($_.ExecutablePath -and ($_.ExecutablePath.ToLowerInvariant().Replace('/', '\') -eq $TargetExe))
-} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) {
-    Start-ScheduledTask -TaskName $TaskName
-} elseif (Test-Path $StartupShortcut) {
-    Start-Process $StartupShortcut
-}
-
-# Stop service (scoped to this install directory)
-Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
-    ($_.CommandLine -like "*run-service.ps1*" -and $_.CommandLine -match "(?i)[\s`"'\\]$EscapedDir([\\`"'\s]|$)") -or
-    ($_.ExecutablePath -and ($_.ExecutablePath.ToLowerInvariant().Replace('/', '\') -eq $TargetExe))
-} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-
-# Unregister service
-Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
-Unregister-ScheduledTask -TaskName "TokenUsageInsights" -Confirm:$false -ErrorAction SilentlyContinue
-if (Test-Path $StartupShortcut) {
-    Remove-Item $StartupShortcut -Force -ErrorAction SilentlyContinue
-}
-Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
-    ($_.CommandLine -like "*run-service.ps1*" -and $_.CommandLine -match "(?i)[\s`"'\\]$EscapedDir([\\`"'\s]|$)") -or
-    ($_.ExecutablePath -and ($_.ExecutablePath.ToLowerInvariant().Replace('/', '\') -eq $TargetExe))
-} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-```
 
 * * *
 
 ## Installation options and manual installation
 
-GitHub Releases provide compiled executables for Linux and macOS. Windows users must build from source.
+Maintainers publish compiled archives for Linux and macOS manually.
 
 ### Optional one-line installer parameters
 
-`scripts/get.sh` (Linux / macOS) and `scripts/get.ps1` (Windows) automatically detect the platform and CPU architecture, download the matching archive from the latest (or specified) Release, extract it, and call the packaged `install.sh` / `install.ps1`; no manual download or extraction is required:
+`scripts/get.sh` automatically detects the CPU architecture, downloads the matching macOS or Linux archive from the latest (or specified) Release, extracts it, and calls the packaged `install.sh`; no manual download or extraction is required:
 
 Linux / macOS:
 
@@ -736,19 +605,8 @@ To install and enable the background service at the same time (systemd on Linux;
 curl -fsSL https://raw.githubusercontent.com/fun-ed/TokenUsageInsights/main/scripts/get.sh | bash -s -- --service
 ```
 
-Windows PowerShell:
 
-```powershell
-irm https://raw.githubusercontent.com/fun-ed/TokenUsageInsights/main/scripts/get.ps1 | iex
-```
-
-To install and enable the background service at the same time on Windows:
-
-```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/fun-ed/TokenUsageInsights/main/scripts/get.ps1))) -Service
-```
-
-After installation, run (on Linux/macOS, confirm that `bin_dir` is on `PATH`; Windows creates a `.cmd` shim):
+After installation, confirm that `bin_dir` is on `PATH`, then run:
 
 ```bash
 # Start the dashboard service
@@ -760,23 +618,16 @@ token-usage-insights update --check
 # Self-update to the latest release (also supports --force and --target-version)
 token-usage-insights update
 token-usage-insights update --force
-token-usage-insights update --target-version v10.0.3
-```
+token-usage-insights update --target-version v10.0.4
 
 Environment variables can control the version and installation paths (all optional):
 
 | Variable | Platforms | Description |
 | --- | --- | --- |
-| `TOKEN_USAGE_INSIGHTS_VERSION` | Linux / macOS | Release tag to install, such as `v10.0.3`; defaults to `latest` |
+| `TOKEN_USAGE_INSIGHTS_VERSION` | Linux / macOS | Release tag to install, such as `v10.0.4`; defaults to `latest` |
 | `TOKEN_USAGE_INSIGHTS_INSTALL_DIR` | Linux / macOS | Installation directory, passed to `install.sh` |
 | `TOKEN_USAGE_INSIGHTS_BIN_DIR` | Linux / macOS | Executable-link directory, passed to `install.sh` |
 
-To customize the installation location, bin directory, and port on Windows, first download the script and then run it with parameters (`iex` pipelines do not support parameters):
-
-```powershell
-Invoke-WebRequest -Uri https://raw.githubusercontent.com/fun-ed/TokenUsageInsights/main/scripts/get.ps1 -OutFile get.ps1
-.\get.ps1 -InstallDir 'D:\Apps\Token Usage Insights' -Port 3010
-```
 
 ### Manual download and installation
 
@@ -786,7 +637,7 @@ If you do not want to execute a remote script directly, download the archive for
 - Frontend assets in `static/`
 - The model pricing table `pricing.csv`
 - Status Line and service scripts in `shell/`
-- The `scripts/` directory (including `install.sh`, `install.ps1`, `get.sh`, `get.ps1`, and `run-service.ps1`)
+- The `scripts/` directory (including `install.sh` and `get.sh`)
 - README, LICENSE, and VERSION
 
 Linux or macOS:
@@ -803,47 +654,11 @@ To install and enable the background service (systemd on Linux; launchd on macOS
 ./install.sh --service
 ```
 
-Windows:
 
-```powershell
-Expand-Archive token-usage-insights-<tag>-x86_64-pc-windows-msvc.zip
-cd token-usage-insights-<tag>-x86_64-pc-windows-msvc
-powershell -ExecutionPolicy Bypass -File .\install.ps1
-```
-
-To install and enable the background service on Windows:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\install.ps1 -Service
-```
-
-Custom Windows installation location and port:
-
-```powershell
-.\install.ps1 -InstallDir 'D:\Apps\Token Usage Insights' -BinDir "$HOME\bin" -Port 3010
-```
-
-### CI verification
-
-The `Release` workflow runs the matching installation script (`install.sh` or `install.ps1`) on Linux, macOS, and Windows for every build, then starts the executable and verifies that:
-
-- The service responds to `/api/<assistant>/pricing` on the selected port.
-- The response loads the packaged `pricing.csv`.
-- A new `INSIGHTS_DIR` creates an SQLite database.
-
-`get.sh` and `get.ps1` also undergo syntax checks (`bash -n` and PowerShell AST parsing) before every build.
 
 ### Maintainer release
 
-After pushing a Git tag, GitHub Actions creates the corresponding GitHub Release:
-
-```bash
-git tag vX.Y.Z
-git push origin vX.Y.Z
-```
-
-* * *
-
+Build and verify release archives locally, create the GitHub Release manually, and upload the checked artifacts. This repository has no GitHub Actions workflows.
 ## Legacy data migration
 
 If you previously used any of the following standalone projects, this project automatically attempts to migrate the old SQLite data at startup:
@@ -896,21 +711,6 @@ ls ~/.local/share/muse/sessions
 
 Antigravity CLI and Copilot CLI also require `settings.json` to define `statusLine` and the scripts to have execute permission.
 
-On Windows PowerShell, inspect the native data directories directly:
-
-```powershell
-Get-ChildItem "$env:USERPROFILE\.gemini\antigravity-cli\usage"
-Get-ChildItem "$env:USERPROFILE\.copilot\usage"
-Get-ChildItem "$env:USERPROFILE\.copilot\data.db", "$env:USERPROFILE\.copilot\session-store.db"
-Get-ChildItem "$env:USERPROFILE\.codex\sessions"
-Get-ChildItem "$env:USERPROFILE\.codex\archived_sessions"
-Get-ChildItem "$env:USERPROFILE\.claude\projects"
-Get-ChildItem "$env:USERPROFILE\.cursor\projects"
-Get-ChildItem "$env:USERPROFILE\.grok\sessions"
-Get-ChildItem "$env:USERPROFILE\.pi\agent\sessions"
-Get-ChildItem "$env:USERPROFILE\.omp\agent\sessions"
-Get-ChildItem "$env:USERPROFILE\.local\share\muse\sessions"
-```
 
 ### Status Line script cannot run
 
@@ -922,11 +722,6 @@ chmod +x ~/.copilot/statusline-token.sh
 
 The Status Line scripts depend on `jq` to parse the JSON passed by the CLI.
 
-The `jq` requirement above applies only to `.sh` collectors. You can test the Windows `.ps1` collector with the following command; it natively handles backslashes and paths containing spaces:
-
-```powershell
-Write-Output '{}' | powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$env:USERPROFILE\.gemini\antigravity-cli\statusline-token.ps1" -Assistant antigravity
-```
 
 ### Configuration file has invalid JSON
 
@@ -972,8 +767,8 @@ cargo build --release
 ```text
 src/                 Rust 後端、API、SQLite 同步、價格與時間軸解析
 static/              前端 HTML、JavaScript、CSS 與圖片資產
-shell/               Bash/PowerShell Status Line collector 與 systemd 服務範本
-scripts/             Linux/macOS、Windows 安裝與 Windows smoke test
+shell/               Bash Status Line collector and systemd service template
+scripts/             Linux and macOS installation scripts
 pricing.csv          模型價格表，本地估算費用依此檔案載入
 ```
 

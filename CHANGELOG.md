@@ -4,18 +4,19 @@
 
 ## [未發行]
 
-## [10.0.3] - 2026-09-20
+## [10.0.4] - 2026-09-20
 
 ### 變更
 
-- 移除 npm package CI、GitHub Pages 部署與 Release workflow 的 npm Trusted Publishing job。GitHub Actions 只保留 Linux、Apple Silicon macOS、Intel macOS 的 GitHub Release 建置與資產上傳；npm 發布改由維護者手動執行。
-- 移除 Windows `x86_64-pc-windows-msvc` Release 建置與壓縮包。Windows 使用者需從原始碼建置。
+- 移除所有 GitHub Actions workflows。維護者在本機建置、驗證並手動上傳 GitHub Release 資產；npm 發布亦維持手動執行。
+- 移除 README 五種語言的 Windows 安裝、服務、疑難排查與 Release 資產說明。專案文件只保留 Linux 與 macOS 的使用方式。
 
 ### 新增與改善
 
 - Claude Code 除了預設 `~/.claude/projects`，也會自動掃描 `~/.claude-profiles/*/projects`。看板會顯示 Default 或 profile 名稱，設定視窗會列出各 profile 的資料夾。
 - 新增唯讀「總覽」項目，跨所有助理與 Claude profile 彙整日、月、年報表，並依總 Token 顯示 Harness 使用排名。
 - 英文與繁體中文 README 補齊 fork 安裝方式、Claude profile、總覽與 upstream 整合說明。
+- README 改為說明價格會優先使用本機 models.dev 快取，並在無法取得或比對時使用 `pricing.csv` 規則；費用仍是估算，不等同供應商帳單。
 
 ### 變更
 
@@ -696,8 +697,8 @@
 - 修正行動版側邊欄遮擋、黑畫面、標題擠壓、圖表導覽索引與年度版面問題。
 - 修正並補齊多個 Gemini、Claude、GPT 與 GPT-OSS 模型的定價規則。
 
-[未發行]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.3...HEAD
-[10.0.3]: https://github.com/fun-ed/TokenUsageInsights/compare/v1.0.0...v10.0.3
+[未發行]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.4...HEAD
+[10.0.4]: https://github.com/fun-ed/TokenUsageInsights/compare/v1.0.0...v10.0.4
 [1.0.0]: https://github.com/fun-ed/TokenUsageInsights/compare/v0.9.9...v1.0.0
 [0.9.9]: https://github.com/doggy8088/TokenUsageInsights/compare/v0.9.8...v0.9.9
 [0.9.8]: https://github.com/doggy8088/TokenUsageInsights/compare/v0.9.5...v0.9.8

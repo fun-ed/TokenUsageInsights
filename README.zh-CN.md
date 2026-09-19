@@ -4,7 +4,7 @@
 
 本项目不会代你调用 AI 供应商 API 查询数据；核心数据来源是本地日志、Status Line 收集文件与本地 SQLite。
 
-> 系统环境：支持 Windows 10/11 原生 PowerShell、macOS、Linux 与 WSL。
+> 系统环境：支持 macOS 与 Linux。
 
 语言： [繁體中文](README.md) · [简体中文](README.zh-CN.md) · [English](README.en.md) · [日本語](README.ja.md) · [한국어](README.ko.md)
 
@@ -28,13 +28,8 @@ Linux / macOS：
 curl -fsSL https://raw.githubusercontent.com/doggy8088/TokenUsageInsights/main/scripts/get.sh | bash && "$HOME/.local/bin/token-usage-insights"
 ```
 
-Windows PowerShell：
 
-```powershell
-irm https://raw.githubusercontent.com/doggy8088/TokenUsageInsights/main/scripts/get.ps1 | iex; & "$HOME\bin\token-usage-insights.cmd"
-```
-
-`npx` 与安装脚本都会下载当前平台的已编译版本，不需要 Rust、Cargo、WSL 或手动解压。命令启动后，看板会在本机运行。
+`npx` 与安装脚本会下载 macOS 或 Linux 的已编译版本，不需要 Rust、Cargo 或手动解压。命令启动后，看板会在本机运行。
 
 打开：
 
@@ -46,8 +41,8 @@ http://localhost:3003
 
 | 工具 | 是否需要额外设置 | 默认数据源 | 说明 |
 | --- | --- | --- | --- |
-| Google Antigravity CLI | 需要 | `~/.gemini/antigravity-cli/usage/usage-YYYY-MM-DD.jsonl` | 通过 `statusline-token.sh` 或 Windows `statusline-token.ps1` 收集 Token 数据 |
-| GitHub Copilot CLI | 需要 | `~/.copilot/usage/usage-YYYY-MM-DD.jsonl` | 通过 `statusline-token.sh` 或 Windows `statusline-token.ps1` 收集 Token 数据 |
+| Google Antigravity CLI | 需要 | `~/.gemini/antigravity-cli/usage/usage-YYYY-MM-DD.jsonl` | 通过 `statusline-token.sh` 收集 Token 数据 |
+| GitHub Copilot CLI | 需要 | `~/.copilot/usage/usage-YYYY-MM-DD.jsonl` | 通过 `statusline-token.sh` 收集 Token 数据 |
 | GitHub Copilot App | 不需要 | `~/.copilot/data.db`、`~/.copilot/session-store.db` | 看板直接读取 Copilot 桌面应用的本地 SQLite |
 | GitHub Copilot Chat（VS Code） | 不需要 | VS Code `workspaceStorage/chatSessions` | 看板直接扫描 VS Code Stable 与 Insiders 的本地聊天 Session |
 | Codex Desktop / CLI | 不需要 | `~/.codex/sessions`、`~/.codex/archived_sessions` | 看板会直接扫描 Codex 活动中与已归档的本地 Session 记录 |
@@ -59,31 +54,6 @@ http://localhost:3003
 | Muse Code | 不需要 | `~/.local/share/muse/sessions` | 看板会直接扫描 Muse Code 自动保存的本地 Session JSONL 文件 |
 
 **只使用 Copilot App、VS Code Copilot、Codex Desktop、Codex CLI、Claude Code、Cursor、Grok Build、Pi Coding Agent、OMP 或 Muse Code 时，执行一行安装命令并打开看板即可。**
-
-### Windows 原生使用
-
-Windows 的一行安装会创建 `%USERPROFILE%\bin\token-usage-insights.cmd` 启动文件；不需要 Rust MSVC toolchain、Visual Studio Build Tools、WSL、Git Bash 或 `jq`。
-
-Windows 默认使用以下原生路径：
-
-| 用途 | Windows 默认路径 |
-| --- | --- |
-| SQLite | `%LOCALAPPDATA%\TokenUsageInsights\token_usage_insights.db` |
-| Antigravity | `%USERPROFILE%\.gemini\antigravity-cli` |
-| Copilot | `%USERPROFILE%\.copilot` |
-| Codex | `%USERPROFILE%\.codex` |
-| Claude Code | `%USERPROFILE%\.claude` |
-| Cursor | `%USERPROFILE%\.cursor` |
-| Grok Build | `%USERPROFILE%\.grok` |
-| Pi Coding Agent | `%USERPROFILE%\.pi` |
-| OMP | `%USERPROFILE%\.omp` |
-| Muse Code | `%USERPROFILE%\.local\share\muse` |
-
-看板内的设置指南会在 Windows 显示 PowerShell 复制、设置与诊断命令。PowerShell collector 使用 .NET JSON 与文件 API，不依赖 Bash、`jq`、`sed` 或 `awk`。
-
-驱动器号、含空格或非 ASCII 字符的路径，以及 UNC 路径都会交由原生路径 API 处理。SQLite 数据库仍建议放在本地磁盘，以避免网络共享的 locking 语义差异。
-
-* * *
 
 ## 支持功能
 
@@ -129,7 +99,7 @@ Windows 默认使用以下原生路径：
 | `agent` | 全部 | `antigravity`、`copilot`、`codex`、`claude`、`cursor`、`grok`、`pi`、`omp`、`muse` | 指定要显示的 Coding Agent。另支持 `claude-code`、`grok-build`、`pi-coding-agent`、`oh-my-pi`、`muse-code` 等别名写法 |
 | `tab` | 全部 | `daily`、`monthly`、`yearly` | 指定以日（每日）、月（月度）或年（年度）视图显示 |
 | `date` | 全部 | `daily`：`YYYY-MM-DD`；`monthly`：`YYYY-MM`；`yearly`：`YYYY` | 指定要显示的日期、月份或年份，格式会依 `tab` 自动对应 |
-| `dir` | `daily` | 完整路径、`~` 开头的家目录路径，或唯一的路径后缀（如 `TokenUsageInsights`） | 指定每日视图的工作目录筛选。Windows 路径不区分大小写；找不到匹配目录时会显示全部 |
+| `dir` | `daily` | 完整路径、`~` 开头的家目录路径，或唯一的路径后缀（如 `TokenUsageInsights`） | 指定每日视图的工作目录筛选；找不到匹配目录时会显示全部 |
 | `chart` | `daily` | `kline`、`trend` | 指定每日视图的图表类型：K 线图或趋势图 |
 
 示例（`http://localhost:3003` 为默认网址，请依实际 `HOST`/`PORT` 调整）：
@@ -265,7 +235,6 @@ COPILOT_APP_DIR="/path/to/copilot-app-data" token-usage-insights
 
 | 平台 | Stable | Insiders |
 | --- | --- | --- |
-| Windows | `%APPDATA%\Code\User\workspaceStorage` | `%APPDATA%\Code - Insiders\User\workspaceStorage` |
 | macOS | `~/Library/Application Support/Code/User/workspaceStorage` | `~/Library/Application Support/Code - Insiders/User/workspaceStorage` |
 | Linux | `~/.config/Code/User/workspaceStorage` | `~/.config/Code - Insiders/User/workspaceStorage` |
 
@@ -287,11 +256,6 @@ macOS / Linux：
 VSCODE_USER_DATA_DIR="/path/to/vscode-user-data" token-usage-insights
 ```
 
-Windows PowerShell：
-
-```powershell
-$env:VSCODE_USER_DATA_DIR = "C:\path\to\vscode-user-data"; & "$HOME\bin\token-usage-insights.cmd"
-```
 
 `VSCODE_USER_DATA_DIR` 应指向包含 `User/workspaceStorage` 的 VS Code 用户数据目录。Portable Mode 如果环境变量指向 `data` 目录，请改用 `VSCODE_PORTABLE_DATA_DIR`；看板会同时检查 `data/user-data/User/workspaceStorage` 与 `data/User/workspaceStorage`。
 
@@ -525,13 +489,13 @@ cargo build --release --bin token-usage-insights
 
 ## 环境变量
 
-环境变量指定的路径会被视为权威设置，不必预先创建；`INSIGHTS_DIR` 会在启动时自动创建。支持原生绝对/相对路径，以及以 `~`、`$HOME`、`%USERPROFILE%`、`%LOCALAPPDATA%` 或 `%APPDATA%` 开头的常见写法。
+环境变量指定的路径会被视为权威设置，不必预先创建；`INSIGHTS_DIR` 会在启动时自动创建。支持原生绝对/相对路径，以及以 `~` 或 `$HOME` 开头的常见写法。
 
 | 变量 | 默认值 | 用途 |
 | --- | --- | --- |
 | `HOST` | `0.0.0.0` | 看板服务绑定的 IPv4 或 IPv6 地址 |
 | `PORT` | `3003` | 看板服务端口号 |
-| `INSIGHTS_DIR` | Windows: `%LOCALAPPDATA%\TokenUsageInsights`; 其他平台：`~/.token-usage-insights` | SQLite 数据库目录 |
+| `INSIGHTS_DIR` | `~/.token-usage-insights` | SQLite 数据库目录 |
 | `TOKEN_USAGE_INSIGHTS_AUTO_UPDATE` | `true` | 是否在启动时自动检查更新（设为 `0`、`false`、`no` 或 `off` 可停用） |
 | `TOKEN_USAGE_INSIGHTS_UPDATE_INTERVAL_HOURS` | `24` | 自动检查更新的间隔周期（小时，有效范围 1 至 87600） |
 | `TOKEN_USAGE_INSIGHTS_INSTALL_DIR` | 自动检测 | 自定义安装目录，作为更新目标与环境识别依据 |
@@ -552,7 +516,7 @@ cargo build --release --bin token-usage-insights
 
 ### 配置文件 (config.yaml)
 
-除环境变量与命令行标志（如 `--no-auto-update`）外，亦可在数据目录中的 `config.yaml`（预设为 `~/.token-usage-insights/config.yaml`，Windows 为 `%LOCALAPPDATA%\TokenUsageInsights\config.yaml`；若设定 `INSIGHTS_DIR` 环境变量则优先读取该目录下的 `config.yaml`，且支援预设路径作为备援）中设置更新行为：
+除环境变量与命令行标志（如 `--no-auto-update`）外，亦可在数据目录中的 `config.yaml` 设置更新行为（预设为 `~/.token-usage-insights/config.yaml`；若设定 `INSIGHTS_DIR` 环境变量则优先读取该目录下的 `config.yaml`，且支援预设路径作为备援）：
 
 ```yaml
 # ~/.token-usage-insights/config.yaml
@@ -570,11 +534,6 @@ update_check_interval: 1   # 自动检查更新的间隔周期（天）
 HOST="127.0.0.1" INSIGHTS_DIR="/tmp/token-usage-insights" PORT="3010" "$HOME/.local/bin/token-usage-insights"
 ```
 
-Windows PowerShell 示例：
-
-```powershell
-$env:HOST = '127.0.0.1'; $env:INSIGHTS_DIR = 'D:\Token Usage Insights\資料庫'; $env:CODEX_DIR = "$env:USERPROFILE\.codex"; $env:PORT = '3010'; & "$HOME\bin\token-usage-insights.cmd"
-```
 
 * * *
 
@@ -596,14 +555,6 @@ curl -fsSL https://raw.githubusercontent.com/doggy8088/TokenUsageInsights/main/s
 
 这会将 `com.tokenusageinsights.plist` 安装到 `~/Library/LaunchAgents/` 并立即加载；标准输出与错误日志位于 `~/Library/Logs/`。
 
-### Windows：一行安装并启用背景常驻服务（任务计划程序）
-
-```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/doggy8088/TokenUsageInsights/main/scripts/get.ps1))) -Service
-```
-
-这会通过 Windows 任务计划程序（Task Scheduler）注册专属于当前用户的 `TokenUsageInsights_<username>` 计划任务并立即启动；用户每次登录时均会自动在后台运行，标准输出与错误日志位于安装目录下的 `logs\`（默认为 `%LOCALAPPDATA%\TokenUsageInsights\logs\`）。
-
 ### 管理服务
 
 Linux 可使用：
@@ -623,101 +574,16 @@ launchctl kickstart -k gui/$(id -u)/com.tokenusageinsights
 launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.tokenusageinsights.plist
 ```
 
-Windows PowerShell 可使用：
-
-```powershell
-# 解析安装目录（默认为 %LOCALAPPDATA%\TokenUsageInsights，或由已注册计划任务/快捷方式动态解析）
-$TaskName = if ($env:USERNAME) { "TokenUsageInsights_$env:USERNAME" } else { "TokenUsageInsights" }
-$InstallDir = $null
-$Task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-if (-not $Task) {
-    $Task = Get-ScheduledTask -TaskName "TokenUsageInsights" -ErrorAction SilentlyContinue
-    if ($Task) {
-        $TaskName = "TokenUsageInsights"
-    }
-}
-if ($Task -and $Task.Actions) {
-    foreach ($Action in @($Task.Actions)) {
-        if ($Action.Arguments -match '(?i)-InstallDir(?:\s+|:)(?:"([^"]+)"|(\S+))') {
-            $DetectedInstallDir = if ($Matches[1]) { $Matches[1] } else { $Matches[2] }
-            $InstallDir = [Environment]::ExpandEnvironmentVariables($DetectedInstallDir)
-            break
-        } elseif ($Action.WorkingDirectory) {
-            $InstallDir = $Action.WorkingDirectory
-            break
-        }
-    }
-}
-$StartupShortcut = Join-Path ([Environment]::GetFolderPath('Startup')) "token-usage-insights.lnk"
-if (!(Test-Path $StartupShortcut)) {
-    $StartupShortcut = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Startup\token-usage-insights.lnk"
-}
-if (-not $InstallDir -and (Test-Path $StartupShortcut)) {
-    $WshShell = New-Object -ComObject WScript.Shell
-    $Shortcut = $WshShell.CreateShortcut($StartupShortcut)
-    if ($Shortcut.Arguments -match '(?i)-InstallDir(?:\s+|:)(?:"([^"]+)"|(\S+))') {
-        $DetectedInstallDir = if ($Matches[1]) { $Matches[1] } else { $Matches[2] }
-        $InstallDir = [Environment]::ExpandEnvironmentVariables($DetectedInstallDir)
-    } elseif ($Shortcut.WorkingDirectory) {
-        $InstallDir = $Shortcut.WorkingDirectory
-    }
-}
-if (-not $InstallDir) {
-    $InstallDir = Join-Path $env:LOCALAPPDATA "TokenUsageInsights"
-}
-$TargetExe = "$InstallDir\token-usage-insights.exe".ToLowerInvariant().Replace('/', '\')
-$EscapedDir = [regex]::Escape($InstallDir)
-
-# 查看服务状态（任务计划程序或后台进程）
-Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
-    ($_.CommandLine -like "*run-service.ps1*" -and $_.CommandLine -match "(?i)[\s`"'\\]$EscapedDir([\\`"'\s]|$)") -or
-    ($_.ExecutablePath -and ($_.ExecutablePath.ToLowerInvariant().Replace('/', '\') -eq $TargetExe))
-} | Select-Object ProcessId, Name, CommandLine
-
-# 查看实时日志
-Get-Content (Join-Path $InstallDir "logs\token-usage-insights.out.log") -Tail 50 -Wait
-
-# 重启服务（仅限此安装目录，自动兼容任务计划程序与启动文件夹模式）
-Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
-    ($_.CommandLine -like "*run-service.ps1*" -and $_.CommandLine -match "(?i)[\s`"'\\]$EscapedDir([\\`"'\s]|$)") -or
-    ($_.ExecutablePath -and ($_.ExecutablePath.ToLowerInvariant().Replace('/', '\') -eq $TargetExe))
-} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) {
-    Start-ScheduledTask -TaskName $TaskName
-} elseif (Test-Path $StartupShortcut) {
-    Start-Process $StartupShortcut
-}
-
-# 停止服务（仅限此安装目录）
-Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
-    ($_.CommandLine -like "*run-service.ps1*" -and $_.CommandLine -match "(?i)[\s`"'\\]$EscapedDir([\\`"'\s]|$)") -or
-    ($_.ExecutablePath -and ($_.ExecutablePath.ToLowerInvariant().Replace('/', '\') -eq $TargetExe))
-} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-
-# 卸载常驻服务
-Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
-Unregister-ScheduledTask -TaskName "TokenUsageInsights" -Confirm:$false -ErrorAction SilentlyContinue
-if (Test-Path $StartupShortcut) {
-    Remove-Item $StartupShortcut -Force -ErrorAction SilentlyContinue
-}
-Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
-    ($_.CommandLine -like "*run-service.ps1*" -and $_.CommandLine -match "(?i)[\s`"'\\]$EscapedDir([\\`"'\s]|$)") -or
-    ($_.ExecutablePath -and ($_.ExecutablePath.ToLowerInvariant().Replace('/', '\') -eq $TargetExe))
-} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-```
 
 * * *
 
 ## 安装选项与手动安装
 
-GitHub Release 提供 Linux、macOS 与 Windows 的已编译可执行文件，安装与运行都不需要 Rust 或 Cargo。
+维护者会手动发布 Linux 与 macOS 的已编译压缩包。
 
 ### 一行安装的可选参数
 
-`scripts/get.sh`（Linux / macOS）与 `scripts/get.ps1`（Windows）会自动判断平台与 CPU 架构，从最新（或指定）Release 下载对应压缩包，解压后调用包内的 `install.sh` / `install.ps1`，全程不需要手动下载或解压：
+`scripts/get.sh` 会自动判断 CPU 架构，从最新（或指定）Release 下载对应的 macOS 或 Linux 压缩包，解压后调用包内的 `install.sh`，全程不需要手动下载或解压：
 
 Linux / macOS：
 
@@ -731,19 +597,8 @@ Linux（systemd user service）或 macOS（launchd LaunchAgent）如需同时安
 curl -fsSL https://raw.githubusercontent.com/doggy8088/TokenUsageInsights/main/scripts/get.sh | bash -s -- --service
 ```
 
-Windows PowerShell：
 
-```powershell
-irm https://raw.githubusercontent.com/doggy8088/TokenUsageInsights/main/scripts/get.ps1 | iex
-```
-
-Windows PowerShell 如需同时安装并启用常驻服务：
-
-```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/doggy8088/TokenUsageInsights/main/scripts/get.ps1))) -Service
-```
-
-安装完成后即可运行（Linux/macOS 需确认 `bin_dir` 已加入 `PATH`；Windows 会创建 `.cmd` shim）：
+安装完成后，确认 `bin_dir` 已加入 `PATH` 后即可运行：
 
 ```bash
 # 启动看板服务
@@ -762,16 +617,10 @@ token-usage-insights update --target-version v1.0.0
 
 | 变量 | 适用平台 | 说明 |
 | --- | --- | --- |
-| `TOKEN_USAGE_INSIGHTS_VERSION` | Linux / macOS / Windows | 指定要安装的 Release tag，例如 `v1.0.0`。默认 `latest` |
+| `TOKEN_USAGE_INSIGHTS_VERSION` | Linux / macOS | 指定要安装的 Release tag，例如 `v1.0.0`。默认 `latest` |
 | `TOKEN_USAGE_INSIGHTS_INSTALL_DIR` | Linux / macOS | 安装目录，会传递给 `install.sh` |
 | `TOKEN_USAGE_INSIGHTS_BIN_DIR` | Linux / macOS | 可执行文件链接目录，会传递给 `install.sh` |
 
-Windows 若要自定义安装位置、bin 目录与端口号，需要先下载脚本再带参数运行（`iex` 管道不支持传递参数）：
-
-```powershell
-Invoke-WebRequest -Uri https://raw.githubusercontent.com/doggy8088/TokenUsageInsights/main/scripts/get.ps1 -OutFile get.ps1
-.\get.ps1 -InstallDir 'D:\Apps\Token Usage Insights' -Port 3010
-```
 
 ### 手动下载安装
 
@@ -781,7 +630,7 @@ Invoke-WebRequest -Uri https://raw.githubusercontent.com/doggy8088/TokenUsageIns
 - `static/` 前端资源
 - `pricing.csv` 模型费用表
 - `shell/` 目录下的 Status Line 与服务脚本
-- `scripts/` 目录（含 `install.sh`、`install.ps1`、`get.sh`、`get.ps1`、`run-service.ps1`）
+- `scripts/` 目录（含 `install.sh` 与 `get.sh`）
 - README、LICENSE 与 VERSION
 
 Linux 或 macOS：
@@ -798,47 +647,11 @@ Linux（systemd user service）或 macOS（launchd LaunchAgent）如需安装并
 ./install.sh --service
 ```
 
-Windows：
 
-```powershell
-Expand-Archive token-usage-insights-<tag>-x86_64-pc-windows-msvc.zip
-cd token-usage-insights-<tag>-x86_64-pc-windows-msvc
-powershell -ExecutionPolicy Bypass -File .\install.ps1
-```
-
-Windows 如需安装并启用背景常驻服务：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\install.ps1 -Service
-```
-
-自定义 Windows 安装位置与端口号：
-
-```powershell
-.\install.ps1 -InstallDir 'D:\Apps\Token Usage Insights' -BinDir "$HOME\bin" -Port 3010
-```
-
-### CI 验证
-
-`Release` workflow 每次构建都会在 Linux、macOS 与 Windows 上实际运行对应的安装脚本（`install.sh` / `install.ps1`），安装后启动可执行文件并确认：
-
-- 服务会在指定端口响应 `/api/<assistant>/pricing`
-- 响应内容确实加载了包内的 `pricing.csv`
-- 全新的 `INSIGHTS_DIR` 会被创建并生成 SQLite 数据库
-
-`get.sh` 与 `get.ps1` 也会在每次构建时先进行语法检查（`bash -n` 与 PowerShell AST 解析），确保推送到 Release 的版本可以正常运行。
 
 ### 维护者发布
 
-推送 Git tag 后，GitHub Actions 会自动创建对应的 Release：
-
-```bash
-git tag vX.Y.Z
-git push origin vX.Y.Z
-```
-
-* * *
-
+在本机构建并验证发布压缩包后，手动创建 GitHub Release 并上传已检查的文件。本项目不使用 GitHub Actions workflow。
 ## 旧数据迁移
 
 如果你以前使用过以下独立项目，启动本项目时会自动尝试迁移旧 SQLite 数据：
@@ -891,21 +704,6 @@ ls ~/.local/share/muse/sessions
 
 Antigravity CLI 与 Copilot CLI 还需要确认 `settings.json` 已设置 `statusLine`，且脚本具有执行权限。
 
-Windows PowerShell 可直接检查原生数据目录：
-
-```powershell
-Get-ChildItem "$env:USERPROFILE\.gemini\antigravity-cli\usage"
-Get-ChildItem "$env:USERPROFILE\.copilot\usage"
-Get-ChildItem "$env:USERPROFILE\.copilot\data.db", "$env:USERPROFILE\.copilot\session-store.db"
-Get-ChildItem "$env:USERPROFILE\.codex\sessions"
-Get-ChildItem "$env:USERPROFILE\.codex\archived_sessions"
-Get-ChildItem "$env:USERPROFILE\.claude\projects"
-Get-ChildItem "$env:USERPROFILE\.cursor\projects"
-Get-ChildItem "$env:USERPROFILE\.grok\sessions"
-Get-ChildItem "$env:USERPROFILE\.pi\agent\sessions"
-Get-ChildItem "$env:USERPROFILE\.omp\agent\sessions"
-Get-ChildItem "$env:USERPROFILE\.local\share\muse\sessions"
-```
 
 ### Status Line 脚本无法执行
 
@@ -917,11 +715,6 @@ chmod +x ~/.copilot/statusline-token.sh
 
 Status Line 脚本依赖 `jq` 解析 CLI 传入的 JSON。
 
-上述 `jq` 要求只适用于 `.sh` collector。Windows `.ps1` collector 可使用以下命令测试，并会原生处理反斜杠与包含空格的路径：
-
-```powershell
-Write-Output '{}' | powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$env:USERPROFILE\.gemini\antigravity-cli\statusline-token.ps1" -Assistant antigravity
-```
 
 ### 配置文件 JSON 格式错误
 
@@ -967,8 +760,8 @@ cargo build --release
 ```text
 src/                 Rust 後端、API、SQLite 同步、價格與時間軸解析
 static/              前端 HTML、JavaScript、CSS 與圖片資產
-shell/               Bash/PowerShell Status Line collector 與 systemd 服務範本
-scripts/             Linux/macOS、Windows 安裝與 Windows smoke test
+shell/               Bash Status Line collector 与 systemd 服务范本
+scripts/             Linux 与 macOS 安装脚本
 pricing.csv          模型價格表，本地估算費用依此檔案載入
 ```
 

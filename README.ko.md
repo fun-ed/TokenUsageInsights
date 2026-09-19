@@ -4,7 +4,7 @@
 
 이 프로젝트는 AI 공급자 API를 대신 호출하여 데이터를 조회하지 않습니다. 핵심 데이터 원본은 로컬 로그, Status Line 수집 파일, 로컬 SQLite입니다.
 
-> 시스템 환경: Windows 10/11 네이티브 PowerShell, macOS, Linux 및 WSL을 지원합니다.
+> 시스템 환경: macOS와 Linux를 지원합니다.
 
 언어: [繁體中文](README.md) · [简体中文](README.zh-CN.md) · [English](README.en.md) · [日本語](README.ja.md) · [한국어](README.ko.md)
 
@@ -28,13 +28,8 @@ Linux / macOS:
 curl -fsSL https://raw.githubusercontent.com/doggy8088/TokenUsageInsights/main/scripts/get.sh | bash && "$HOME/.local/bin/token-usage-insights"
 ```
 
-Windows PowerShell:
 
-```powershell
-irm https://raw.githubusercontent.com/doggy8088/TokenUsageInsights/main/scripts/get.ps1 | iex; & "$HOME\bin\token-usage-insights.cmd"
-```
-
-`npx`와 설치 프로그램은 모두 현재 플랫폼에 맞는 컴파일된 버전을 다운로드합니다. Rust, Cargo, WSL 또는 수동 압축 해제가 필요하지 않습니다. 명령이 시작되면 대시보드가 로컬에서 실행됩니다.
+`npx`와 설치 프로그램은 macOS 또는 Linux용 컴파일된 버전을 다운로드합니다. Rust, Cargo 또는 수동 압축 해제가 필요하지 않습니다. 명령이 시작되면 대시보드가 로컬에서 실행됩니다.
 
 열기:
 
@@ -46,8 +41,8 @@ http://localhost:3003
 
 | 도구 | 추가 설정 | 기본 데이터 원본 | 설명 |
 | --- | --- | --- | --- |
-| Google Antigravity CLI | 필요 | `~/.gemini/antigravity-cli/usage/usage-YYYY-MM-DD.jsonl` | `statusline-token.sh` 또는 Windows의 `statusline-token.ps1`로 Token 데이터를 수집 |
-| GitHub Copilot CLI | 필요 | `~/.copilot/usage/usage-YYYY-MM-DD.jsonl` | `statusline-token.sh` 또는 Windows의 `statusline-token.ps1`로 Token 데이터를 수집 |
+| Google Antigravity CLI | 필요 | `~/.gemini/antigravity-cli/usage/usage-YYYY-MM-DD.jsonl` | `statusline-token.sh`로 Token 데이터를 수집 |
+| GitHub Copilot CLI | 필요 | `~/.copilot/usage/usage-YYYY-MM-DD.jsonl` | `statusline-token.sh`로 Token 데이터를 수집 |
 | GitHub Copilot App | 불필요 | `~/.copilot/data.db`, `~/.copilot/session-store.db` | 대시보드가 데스크톱 앱의 로컬 SQLite를 직접 읽음 |
 | GitHub Copilot Chat(VS Code) | 불필요 | VS Code `workspaceStorage/chatSessions` | VS Code Stable 및 Insiders의 로컬 채팅 Session을 직접 스캔 |
 | Codex Desktop / CLI | 불필요 | `~/.codex/sessions`, `~/.codex/archived_sessions` | Codex의 활성 및 보관된 로컬 Session 기록을 직접 스캔 |
@@ -59,31 +54,6 @@ http://localhost:3003
 | Muse Code | 불필요 | `~/.local/share/muse/sessions` | Muse Code가 자동 저장하는 로컬 Session JSONL 파일을 직접 스캔 |
 
 **Copilot App, VS Code Copilot, Codex Desktop, Codex CLI, Claude Code, Cursor, Grok Build, Pi Coding Agent, OMP 또는 Muse Code만 사용하는 경우 한 줄 설치 명령을 실행하고 대시보드를 열기만 하면 됩니다.**
-
-### Windows 네이티브 사용
-
-Windows 한 줄 설치는 `%USERPROFILE%\bin\token-usage-insights.cmd` 실행 파일을 만듭니다. Rust MSVC toolchain, Visual Studio Build Tools, WSL, Git Bash 또는 `jq`가 필요하지 않습니다.
-
-Windows는 기본적으로 다음 네이티브 경로를 사용합니다.
-
-| 용도 | Windows 기본 경로 |
-| --- | --- |
-| SQLite | `%LOCALAPPDATA%\TokenUsageInsights\token_usage_insights.db` |
-| Antigravity | `%USERPROFILE%\.gemini\antigravity-cli` |
-| Copilot | `%USERPROFILE%\.copilot` |
-| Codex | `%USERPROFILE%\.codex` |
-| Claude Code | `%USERPROFILE%\.claude` |
-| Cursor | `%USERPROFILE%\.cursor` |
-| Grok Build | `%USERPROFILE%\.grok` |
-| Pi Coding Agent | `%USERPROFILE%\.pi` |
-| OMP | `%USERPROFILE%\.omp` |
-| Muse Code | `%USERPROFILE%\.local\share\muse` |
-
-대시보드의 설정 안내는 Windows에서 PowerShell 복사, 설정 및 진단 명령을 표시합니다. PowerShell collector는 .NET JSON 및 파일 API를 사용하며 Bash, `jq`, `sed`, `awk`에 의존하지 않습니다.
-
-드라이브 문자, 공백이나 비 ASCII 문자가 포함된 경로, UNC 경로는 모두 네이티브 경로 API로 처리됩니다. 네트워크 공유의 locking 의미 차이를 피하려면 SQLite 데이터베이스는 로컬 디스크에 두는 것이 좋습니다.
-
-* * *
 
 ## 지원 기능
 
@@ -129,7 +99,7 @@ Windows는 기본적으로 다음 네이티브 경로를 사용합니다.
 | `agent` | 전체 | `antigravity`, `copilot`, `codex`, `claude`, `cursor`, `grok`, `pi`, `omp`, `muse` | 표시할 Coding Agent를 지정합니다. `claude-code`, `grok-build`, `pi-coding-agent`, `oh-my-pi`, `muse-code` 같은 별칭도 지원합니다 |
 | `tab` | 전체 | `daily`, `monthly`, `yearly` | 일별(daily), 월별(monthly), 연별(yearly) 보기를 지정합니다 |
 | `date` | 전체 | `daily`: `YYYY-MM-DD`, `monthly`: `YYYY-MM`, `yearly`: `YYYY` | 표시할 날짜·월·연도를 지정하며, 형식은 `tab`에 따라 자동으로 매핑됩니다 |
-| `dir` | `daily` | 전체 경로, `~`로 시작하는 홈 디렉터리 경로, 또는 고유한 경로 접미사(예: `TokenUsageInsights`) | 일별 보기의 작업 디렉터리 필터를 지정합니다. Windows 경로는 대소문자를 구분하지 않으며, 일치하는 디렉터리가 없으면 전체를 표시합니다 |
+| `dir` | `daily` | 전체 경로, `~`로 시작하는 홈 디렉터리 경로, 또는 고유한 경로 접미사(예: `TokenUsageInsights`) | 일별 보기의 작업 디렉터리 필터를 지정합니다. 일치하는 디렉터리가 없으면 전체를 표시합니다 |
 | `chart` | `daily` | `kline`, `trend` | 일별 보기의 차트 유형(캔들차트 또는 추세 차트)을 지정합니다 |
 
 예시(`http://localhost:3003`은 기본 URL이며, 실제 `HOST`/`PORT`에 맞게 조정하세요):
@@ -265,7 +235,6 @@ VS Code Stable 및 Insiders를 지원합니다.
 
 | 플랫폼 | Stable | Insiders |
 | --- | --- | --- |
-| Windows | `%APPDATA%\Code\User\workspaceStorage` | `%APPDATA%\Code - Insiders\User\workspaceStorage` |
 | macOS | `~/Library/Application Support/Code/User/workspaceStorage` | `~/Library/Application Support/Code - Insiders/User/workspaceStorage` |
 | Linux | `~/.config/Code/User/workspaceStorage` | `~/.config/Code - Insiders/User/workspaceStorage` |
 
@@ -287,11 +256,6 @@ macOS / Linux:
 VSCODE_USER_DATA_DIR="/path/to/vscode-user-data" token-usage-insights
 ```
 
-Windows PowerShell:
-
-```powershell
-$env:VSCODE_USER_DATA_DIR = "C:\path\to\vscode-user-data"; & "$HOME\bin\token-usage-insights.cmd"
-```
 
 `VSCODE_USER_DATA_DIR`은 `User/workspaceStorage`를 포함하는 VS Code 사용자 데이터 디렉터리를 가리켜야 합니다. Portable Mode에서 환경 변수가 `data` 디렉터리를 가리키면 `VSCODE_PORTABLE_DATA_DIR`을 사용하세요. 대시보드는 `data/user-data/User/workspaceStorage`와 `data/User/workspaceStorage`를 모두 확인합니다.
 
@@ -525,13 +489,13 @@ cargo build --release --bin token-usage-insights
 
 ## 환경 변수
 
-환경 변수로 지정한 경로는 권위 있는 설정으로 취급되며 미리 만들 필요가 없습니다. `INSIGHTS_DIR`은 시작 시 자동으로 생성됩니다. 네이티브 절대/상대 경로와 `~`, `$HOME`, `%USERPROFILE%`, `%LOCALAPPDATA%`, `%APPDATA%`로 시작하는 일반적인 형식을 지원합니다.
+환경 변수로 지정한 경로는 권위 있는 설정으로 취급되며 미리 만들 필요가 없습니다. `INSIGHTS_DIR`은 시작 시 자동으로 생성됩니다. 네이티브 절대/상대 경로와 `~` 또는 `$HOME`으로 시작하는 일반적인 형식을 지원합니다.
 
 | 변수 | 기본값 | 용도 |
 | --- | --- | --- |
 | `HOST` | `0.0.0.0` | 대시보드 서비스가 바인딩할 IPv4 또는 IPv6 주소 |
 | `PORT` | `3003` | 대시보드 서비스 포트 |
-| `INSIGHTS_DIR` | Windows: `%LOCALAPPDATA%\TokenUsageInsights`; 기타 플랫폼: `~/.token-usage-insights` | SQLite 데이터베이스 디렉터리 |
+| `INSIGHTS_DIR` | `~/.token-usage-insights` | SQLite 데이터베이스 디렉터리 |
 | `TOKEN_USAGE_INSIGHTS_AUTO_UPDATE` | `true` | 서비스 시작 시 자동 업데이트 확인 여부 (`0`, `false`, `no`, `off`로 비활성화) |
 | `TOKEN_USAGE_INSIGHTS_UPDATE_INTERVAL_HOURS` | `24` | 자동 업데이트 확인 주기 (시간 단위, 유효 범위 1 ~ 87600) |
 | `TOKEN_USAGE_INSIGHTS_INSTALL_DIR` | 자동 감지 | 사용자 지정 설치 디렉터리. 업데이트 대상 및 환경 식별에 사용 |
@@ -552,7 +516,7 @@ cargo build --release --bin token-usage-insights
 
 ### 설정 파일 (config.yaml)
 
-환경 변수 및 명령줄 플래그(`--no-auto-update` 등) 외에도 데이터 디렉터리의 `config.yaml`(기본값은 `~/.token-usage-insights/config.yaml`, Windows의 경우 `%LOCALAPPDATA%\TokenUsageInsights\config.yaml`; `INSIGHTS_DIR` 환경 변수가 설정된 경우 해당 디렉터리의 `config.yaml`이 우선 적용되며 기본 경로도 대체 경로로 지원됨)에서 업데이트 동작을 설정할 수 있습니다:
+환경 변수 및 명령줄 플래그(`--no-auto-update` 등) 외에도 데이터 디렉터리의 `config.yaml`에서 업데이트 동작을 설정할 수 있습니다(기본값은 `~/.token-usage-insights/config.yaml`이며, `INSIGHTS_DIR` 환경 변수가 설정된 경우 해당 디렉터리의 `config.yaml`이 우선 적용되고 기본 경로도 대체 경로로 지원됩니다).
 
 ```yaml
 # ~/.token-usage-insights/config.yaml
@@ -570,11 +534,6 @@ update_check_interval: 1   # 업데이트 확인 주기 (일 단위)
 HOST="127.0.0.1" INSIGHTS_DIR="/tmp/token-usage-insights" PORT="3010" "$HOME/.local/bin/token-usage-insights"
 ```
 
-Windows PowerShell 예:
-
-```powershell
-$env:HOST = '127.0.0.1'; $env:INSIGHTS_DIR = 'D:\Token Usage Insights\資料庫'; $env:CODEX_DIR = "$env:USERPROFILE\.codex"; $env:PORT = '3010'; & "$HOME\bin\token-usage-insights.cmd"
-```
 
 * * *
 
@@ -596,14 +555,6 @@ curl -fsSL https://raw.githubusercontent.com/doggy8088/TokenUsageInsights/main/s
 
 이 명령은 `com.tokenusageinsights.plist`를 `~/Library/LaunchAgents/`에 설치하고 즉시 로드합니다. 표준 출력과 오류 로그는 `~/Library/Logs/`에 저장됩니다.
 
-### Windows: 한 줄로 백그라운드 상주 서비스(작업 스케줄러) 설치 및 활성화
-
-```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/doggy8088/TokenUsageInsights/main/scripts/get.ps1))) -Service
-```
-
-이 명령은 Windows 작업 스케줄러(Task Scheduler)에 현재 사용자 전용 `TokenUsageInsights_<username>` 작업을 등록하고 즉시 시작합니다. 사용자가 로그인할 때마다 백그라운드에서 자동으로 실행되며 표준 출력 및 오류 로그는 설치 디렉터리 하위의 `logs\`(기본값은 `%LOCALAPPDATA%\TokenUsageInsights\logs\`)에 저장됩니다.
-
 ### 서비스 관리
 
 Linux:
@@ -623,101 +574,16 @@ launchctl kickstart -k gui/$(id -u)/com.tokenusageinsights
 launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.tokenusageinsights.plist
 ```
 
-Windows PowerShell:
-
-```powershell
-# 설치 디렉터리 확인(기본값은 %LOCALAPPDATA%\TokenUsageInsights, 또는 작업/바로 가기에서 동적 확인)
-$TaskName = if ($env:USERNAME) { "TokenUsageInsights_$env:USERNAME" } else { "TokenUsageInsights" }
-$InstallDir = $null
-$Task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-if (-not $Task) {
-    $Task = Get-ScheduledTask -TaskName "TokenUsageInsights" -ErrorAction SilentlyContinue
-    if ($Task) {
-        $TaskName = "TokenUsageInsights"
-    }
-}
-if ($Task -and $Task.Actions) {
-    foreach ($Action in @($Task.Actions)) {
-        if ($Action.Arguments -match '(?i)-InstallDir(?:\s+|:)(?:"([^"]+)"|(\S+))') {
-            $DetectedInstallDir = if ($Matches[1]) { $Matches[1] } else { $Matches[2] }
-            $InstallDir = [Environment]::ExpandEnvironmentVariables($DetectedInstallDir)
-            break
-        } elseif ($Action.WorkingDirectory) {
-            $InstallDir = $Action.WorkingDirectory
-            break
-        }
-    }
-}
-$StartupShortcut = Join-Path ([Environment]::GetFolderPath('Startup')) "token-usage-insights.lnk"
-if (!(Test-Path $StartupShortcut)) {
-    $StartupShortcut = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Startup\token-usage-insights.lnk"
-}
-if (-not $InstallDir -and (Test-Path $StartupShortcut)) {
-    $WshShell = New-Object -ComObject WScript.Shell
-    $Shortcut = $WshShell.CreateShortcut($StartupShortcut)
-    if ($Shortcut.Arguments -match '(?i)-InstallDir(?:\s+|:)(?:"([^"]+)"|(\S+))') {
-        $DetectedInstallDir = if ($Matches[1]) { $Matches[1] } else { $Matches[2] }
-        $InstallDir = [Environment]::ExpandEnvironmentVariables($DetectedInstallDir)
-    } elseif ($Shortcut.WorkingDirectory) {
-        $InstallDir = $Shortcut.WorkingDirectory
-    }
-}
-if (-not $InstallDir) {
-    $InstallDir = Join-Path $env:LOCALAPPDATA "TokenUsageInsights"
-}
-$TargetExe = "$InstallDir\token-usage-insights.exe".ToLowerInvariant().Replace('/', '\')
-$EscapedDir = [regex]::Escape($InstallDir)
-
-# 서비스 상태 확인(작업 스케줄러 또는 백그라운드 프로세스)
-Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
-    ($_.CommandLine -like "*run-service.ps1*" -and $_.CommandLine -match "(?i)[\s`"'\\]$EscapedDir([\\`"'\s]|$)") -or
-    ($_.ExecutablePath -and ($_.ExecutablePath.ToLowerInvariant().Replace('/', '\') -eq $TargetExe))
-} | Select-Object ProcessId, Name, CommandLine
-
-# 실시간 로그 확인
-Get-Content (Join-Path $InstallDir "logs\token-usage-insights.out.log") -Tail 50 -Wait
-
-# 서비스 다시 시작(해당 설치 디렉터리에 한정, 작업 스케줄러 및 시작프로그램 모드 자동 호환)
-Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
-    ($_.CommandLine -like "*run-service.ps1*" -and $_.CommandLine -match "(?i)[\s`"'\\]$EscapedDir([\\`"'\s]|$)") -or
-    ($_.ExecutablePath -and ($_.ExecutablePath.ToLowerInvariant().Replace('/', '\') -eq $TargetExe))
-} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) {
-    Start-ScheduledTask -TaskName $TaskName
-} elseif (Test-Path $StartupShortcut) {
-    Start-Process $StartupShortcut
-}
-
-# 서비스 중지(해당 설치 디렉터리에 한정)
-Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
-    ($_.CommandLine -like "*run-service.ps1*" -and $_.CommandLine -match "(?i)[\s`"'\\]$EscapedDir([\\`"'\s]|$)") -or
-    ($_.ExecutablePath -and ($_.ExecutablePath.ToLowerInvariant().Replace('/', '\') -eq $TargetExe))
-} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-
-# 상주 서비스 등록 해제
-Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
-Unregister-ScheduledTask -TaskName "TokenUsageInsights" -Confirm:$false -ErrorAction SilentlyContinue
-if (Test-Path $StartupShortcut) {
-    Remove-Item $StartupShortcut -Force -ErrorAction SilentlyContinue
-}
-Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
-    ($_.CommandLine -like "*run-service.ps1*" -and $_.CommandLine -match "(?i)[\s`"'\\]$EscapedDir([\\`"'\s]|$)") -or
-    ($_.ExecutablePath -and ($_.ExecutablePath.ToLowerInvariant().Replace('/', '\') -eq $TargetExe))
-} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-```
 
 * * *
 
 ## 설치 옵션 및 수동 설치
 
-GitHub Release는 Linux, macOS 및 Windows용 컴파일된 실행 파일을 제공합니다. 설치와 실행에 Rust 또는 Cargo가 필요하지 않습니다.
+유지 관리자가 Linux와 macOS용 컴파일된 압축 파일을 수동으로 게시합니다.
 
 ### 한 줄 설치의 선택적 매개 변수
 
-`scripts/get.sh`(Linux / macOS) 및 `scripts/get.ps1`(Windows)은 플랫폼과 CPU 아키텍처를 자동으로 판단하고 최신(또는 지정된) Release에서 해당 압축 패키지를 다운로드한 뒤 압축을 풀고 패키지의 `install.sh` / `install.ps1`을 호출합니다. 수동 다운로드나 압축 해제가 필요하지 않습니다.
+`scripts/get.sh`는 CPU 아키텍처를 자동으로 판단하고 최신(또는 지정된) Release에서 해당 macOS 또는 Linux 압축 패키지를 다운로드한 뒤 압축을 풀고 패키지의 `install.sh`을 호출합니다. 수동 다운로드나 압축 해제가 필요하지 않습니다.
 
 Linux / macOS:
 
@@ -731,19 +597,8 @@ Linux(systemd user service) 또는 macOS(launchd LaunchAgent)에서 상주 서�
 curl -fsSL https://raw.githubusercontent.com/doggy8088/TokenUsageInsights/main/scripts/get.sh | bash -s -- --service
 ```
 
-Windows PowerShell:
 
-```powershell
-irm https://raw.githubusercontent.com/doggy8088/TokenUsageInsights/main/scripts/get.ps1 | iex
-```
-
-Windows PowerShell에서 상주 서비스를 함께 설치하고 활성화하려면:
-
-```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/doggy8088/TokenUsageInsights/main/scripts/get.ps1))) -Service
-```
-
-설치가 끝나면 실행합니다(Linux/macOS는 `bin_dir`가 `PATH`에 포함되는지 확인하고, Windows는 `.cmd` shim을 만듭니다).
+설치가 끝나면 `bin_dir`가 `PATH`에 포함되는지 확인하고 실행합니다.
 
 ```bash
 # 대시보드 서비스 시작
@@ -762,16 +617,10 @@ token-usage-insights update --target-version v1.0.0
 
 | 변수 | 대상 플랫폼 | 설명 |
 | --- | --- | --- |
-| `TOKEN_USAGE_INSIGHTS_VERSION` | Linux / macOS / Windows | 설치할 Release tag(예: `v1.0.0`); 기본값은 `latest` |
+| `TOKEN_USAGE_INSIGHTS_VERSION` | Linux / macOS | 설치할 Release tag(예: `v1.0.0`); 기본값은 `latest` |
 | `TOKEN_USAGE_INSIGHTS_INSTALL_DIR` | Linux / macOS | `install.sh`에 전달할 설치 디렉터리 |
 | `TOKEN_USAGE_INSIGHTS_BIN_DIR` | Linux / macOS | `install.sh`에 전달할 실행 파일 링크 디렉터리 |
 
-Windows에서 설치 위치, bin 디렉터리 및 포트를 사용자 지정하려면 먼저 스크립트를 다운로드한 뒤 매개 변수와 함께 실행해야 합니다(`iex` 파이프라인은 매개 변수를 지원하지 않음).
-
-```powershell
-Invoke-WebRequest -Uri https://raw.githubusercontent.com/doggy8088/TokenUsageInsights/main/scripts/get.ps1 -OutFile get.ps1
-.\get.ps1 -InstallDir 'D:\Apps\Token Usage Insights' -Port 3010
-```
 
 ### 수동 다운로드 및 설치
 
@@ -781,7 +630,7 @@ Invoke-WebRequest -Uri https://raw.githubusercontent.com/doggy8088/TokenUsageIns
 - `static/`의 프런트엔드 자산
 - 모델 가격표 `pricing.csv`
 - `shell/` 디렉터리의 Status Line 및 서비스 스크립트
-- `scripts/` 디렉터리(`install.sh`, `install.ps1`, `get.sh`, `get.ps1`, `run-service.ps1` 포함)
+- `scripts/` 디렉터리(`install.sh`, `get.sh` 포함)
 - README, LICENSE 및 VERSION
 
 Linux 또는 macOS:
@@ -798,47 +647,11 @@ Linux(systemd user service) 또는 macOS(launchd LaunchAgent)에서 상주 서�
 ./install.sh --service
 ```
 
-Windows:
 
-```powershell
-Expand-Archive token-usage-insights-<tag>-x86_64-pc-windows-msvc.zip
-cd token-usage-insights-<tag>-x86_64-pc-windows-msvc
-powershell -ExecutionPolicy Bypass -File .\install.ps1
-```
-
-Windows에서 백그라운드 상주 서비스를 설치하고 활성화하려면:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\install.ps1 -Service
-```
-
-Windows 설치 위치 및 포트 사용자 지정:
-
-```powershell
-.\install.ps1 -InstallDir 'D:\Apps\Token Usage Insights' -BinDir "$HOME\bin" -Port 3010
-```
-
-### CI 검증
-
-`Release` workflow는 매 빌드마다 Linux, macOS 및 Windows에서 해당 설치 스크립트(`install.sh` / `install.ps1`)를 실제로 실행하고, 설치 후 실행 파일을 시작하여 다음을 확인합니다.
-
-- 서비스가 지정된 포트에서 `/api/<assistant>/pricing`에 응답함
-- 응답 내용이 패키지에 포함된 `pricing.csv`를 실제로 읽음
-- 새로운 `INSIGHTS_DIR`이 생성되고 SQLite 데이터베이스가 만들어짐
-
-`get.sh` 및 `get.ps1`도 매 빌드 전에 구문 검사(`bash -n` 및 PowerShell AST 분석)를 수행하여 Release에 게시되는 버전이 정상적으로 실행되는지 확인합니다.
 
 ### 유지 관리자의 릴리스
 
-Git tag를 push하면 GitHub Actions가 해당 Release를 자동으로 만듭니다.
-
-```bash
-git tag vX.Y.Z
-git push origin vX.Y.Z
-```
-
-* * *
-
+로컬에서 Release 압축 파일을 빌드하고 검증한 뒤 GitHub Release를 수동으로 만들고 검증한 파일을 업로드합니다. 이 저장소는 GitHub Actions workflow를 사용하지 않습니다.
 ## 이전 데이터 마이그레이션
 
 이전에 다음 독립 프로젝트를 사용했다면 이 프로젝트를 시작할 때 오래된 SQLite 데이터를 자동으로 마이그레이션하려고 시도합니다.
@@ -891,21 +704,6 @@ ls ~/.local/share/muse/sessions
 
 Antigravity CLI와 Copilot CLI는 `settings.json`에 `statusLine`이 설정되어 있고 스크립트에 실행 권한이 있는지도 확인해야 합니다.
 
-Windows PowerShell에서는 네이티브 데이터 디렉터리를 직접 확인할 수 있습니다.
-
-```powershell
-Get-ChildItem "$env:USERPROFILE\.gemini\antigravity-cli\usage"
-Get-ChildItem "$env:USERPROFILE\.copilot\usage"
-Get-ChildItem "$env:USERPROFILE\.copilot\data.db", "$env:USERPROFILE\.copilot\session-store.db"
-Get-ChildItem "$env:USERPROFILE\.codex\sessions"
-Get-ChildItem "$env:USERPROFILE\.codex\archived_sessions"
-Get-ChildItem "$env:USERPROFILE\.claude\projects"
-Get-ChildItem "$env:USERPROFILE\.cursor\projects"
-Get-ChildItem "$env:USERPROFILE\.grok\sessions"
-Get-ChildItem "$env:USERPROFILE\.pi\agent\sessions"
-Get-ChildItem "$env:USERPROFILE\.omp\agent\sessions"
-Get-ChildItem "$env:USERPROFILE\.local\share\muse\sessions"
-```
 
 ### Status Line 스크립트를 실행할 수 없음
 
@@ -917,11 +715,6 @@ chmod +x ~/.copilot/statusline-token.sh
 
 Status Line 스크립트는 CLI가 전달한 JSON을 분석하기 위해 `jq`에 의존합니다.
 
-위의 `jq` 요구 사항은 `.sh` collector에만 적용됩니다. Windows `.ps1` collector는 다음 명령으로 테스트할 수 있으며 백슬래시와 공백이 포함된 경로를 네이티브 방식으로 처리합니다.
-
-```powershell
-Write-Output '{}' | powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$env:USERPROFILE\.gemini\antigravity-cli\statusline-token.ps1" -Assistant antigravity
-```
 
 ### 설정 파일 JSON 형식 오류
 
@@ -967,8 +760,8 @@ cargo build --release
 ```text
 src/                 Rust 後端、API、SQLite 同步、價格與時間軸解析
 static/              前端 HTML、JavaScript、CSS 與圖片資產
-shell/               Bash/PowerShell Status Line collector 與 systemd 服務範本
-scripts/             Linux/macOS、Windows 安裝與 Windows smoke test
+shell/               Bash Status Line collector 및 systemd 서비스 템플릿
+scripts/             Linux 및 macOS 설치 스크립트
 pricing.csv          模型價格表，本地估算費用依此檔案載入
 ```
 

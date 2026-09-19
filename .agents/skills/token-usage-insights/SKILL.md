@@ -23,13 +23,17 @@ TokenUsageInsights is a local-first Rust/Axum dashboard with plain ES-module fro
 
 ## Fork release and upstream policy
 
-This fork owns the `v10.x.y` tag namespace. The current release is `v10.0.3`.
+This fork owns the `v10.x.y` tag namespace. The current release is `v10.0.4`.
 
 - Cargo and npm package metadata use `10.x.y`; release tags use matching `v10.x.y`.
 - Never reuse upstream `v1.x.y` release tags.
 - Use `https://github.com/doggy8088/TokenUsageInsights` as an upstream source. Fetch and review its diff before integrating it.
 - Merge compatible upstream fixes only after validation. Port optional upstream features as separate, reviewable commits.
 - Resolve conflicts in favor of this fork's local-first behavior, `v10.x.y` namespace, and fork-specific features such as multi-profile Claude discovery and the all-harness overview.
+
+## Manual releases
+
+- GitHub Actions workflows are intentionally absent. Build and verify release assets locally, then create the GitHub Release and upload the checked artifacts manually.
 
 ## Fork-specific product behavior
 
