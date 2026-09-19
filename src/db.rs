@@ -3968,7 +3968,7 @@ fn sync_claude_usage_logs(conn: &mut Connection) -> Result<(), String> {
     }
     let profile_migration_done: bool = conn
         .query_row(
-            "SELECT EXISTS(SELECT 1 FROM sync_state WHERE filename = 'migration:claude_profiles_v1')",
+            "SELECT EXISTS(SELECT 1 FROM sync_state WHERE filename = 'migration:claude_profiles_v2')",
             [],
             |row| row.get(0),
         )
@@ -3978,15 +3978,17 @@ fn sync_claude_usage_logs(conn: &mut Connection) -> Result<(), String> {
             .transaction()
             .map_err(|error| format!("Claude profile migration BEGIN 失敗: {error}"))?;
         tx.execute(
-            "DELETE FROM usage_entries WHERE assistant_type = 'claude' AND source_kind = 'legacy'",
+            "UPDATE usage_entries
+             SET source_kind = 'claude-default'
+             WHERE assistant_type = 'claude' AND source_kind = 'legacy'",
             [],
         )
-        .map_err(|error| format!("清除舊 Claude 使用量失敗: {error}"))?;
+        .map_err(|error| format!("保留舊 Claude 使用量失敗: {error}"))?;
         tx.execute("DELETE FROM sync_state WHERE filename LIKE 'claude:%'", [])
             .map_err(|error| format!("清除舊 Claude 同步狀態失敗: {error}"))?;
         tx.execute(
             "INSERT INTO sync_state (filename, last_synced_size, last_synced_time)
-             VALUES ('migration:claude_profiles_v1', 1, 0)",
+             VALUES ('migration:claude_profiles_v2', 1, 0)",
             [],
         )
         .map_err(|error| format!("記錄 Claude profile 遷移失敗: {error}"))?;
