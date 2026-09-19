@@ -2,9 +2,9 @@
 
 ## 摘要
 
-已完成 `Token 戰情室` 一頁式介紹頁的最終內容並放置於 `public/`，同步新增 GitHub Pages 發佈流程與 SEO/分享相關設定，並保留四組 `imagegen` 版面嘗試與模型評分結果。  
+已完成 `Token 戰情室` 一頁式介紹頁面並放置於 `public/`，加入 SEO 與分享設定，並保留四組 `imagegen` 版面嘗試與模型評分結果。
 
-選定方案為 `Concept C（Field Guide）`，目前版本已整合到最終頁面、favicon、`og:image`、`robots.txt`、`sitemap.xml`、`manifest`，並加入 GitHub Pages 專用 CI workflow。
+選定方案為 `Concept C（Field Guide）`。最終頁面包含 favicon、`og:image`、`robots.txt`、`sitemap.xml` 與 manifest。此 fork 不使用 GitHub Actions 發佈 Pages。
 
 * * *
 
@@ -17,7 +17,7 @@
 5. 補齊 SEO、OpenGraph、JSON-LD、`robots.txt`。  
 6. 設定 GitHub Pages + 自訂網域 `token.gh.miniasp.com`。  
 7. 以 Chrome 截圖後製作 Facebook 專用 `og:image`。  
-8. 用 CI 發佈並確認可正常佈署。  
+8. 準備可由 GitHub Pages 或其他靜態網站服務部署的檔案。
 
 * * *
 
@@ -35,10 +35,9 @@
 - `public/sitemap.xml`
 - `public/site.webmanifest`
 
-### GitHub Pages 佈署
+### 靜態網站部署
 
 - `public/CNAME`（值為 `token.gh.miniasp.com`）
-- `.github/workflows/pages.yml`
 - `public/.nojekyll`
 - `public/404.html`
 
@@ -88,26 +87,16 @@
 
 * * *
 
-## CI 與 GitHub Pages 設定結果
+## GitHub Pages 部署
 
-- Workflow：`.github/workflows/pages.yml`  
-- 觸發：`push` 到 `main` 針對 `public/**`、`.github/workflows/pages.yml`、`public` 相關內容；另有 `workflow_dispatch`。  
-- 發佈步驟：  
-  - `actions/configure-pages`  
-  - `actions/upload-pages-artifact`  
-  - `actions/deploy-pages`  
-- `CNAME` 已建立，預期網址：`https://token.gh.miniasp.com/`。  
-- 圖片與 OG 已就緒，含 1200x630 `og:image`。  
+此 fork 沒有 GitHub Actions workflow。若使用 GitHub Pages，請在 Repository Settings 將來源設為 `main` 分支的 `/public` 目錄，或自行以其他靜態網站服務部署 `public/`。
+
+- `CNAME` 已建立，預期網址為 `https://token.gh.miniasp.com/`。
+- 圖片與 OG 資產包含 1200x630 `og:image`。
 
 ### Chrome 截圖與 meta 驗證重點
 
-- 已以 Chrome 進行桌機與行動版快照。  
-- `canonical`、`og:*`、`twitter:*` 與 JSON-LD 在頁面 metadata 中完整存在。  
-- `robots.txt` 與 `sitemap.xml` 對外可見。  
-
-* * *
-
-## 目前狀態與下一步
-
-這份文件已完成並放進 `docs/`，後續執行 `git commit`/`push` 後，請在 GitHub Pages 執行一次手動 `workflow run` 驗證「成功完成」即視為可發佈。  
+- 已以 Chrome 進行桌機與行動版快照。
+- `canonical`、`og:*`、`twitter:*` 與 JSON-LD 在頁面 metadata 中存在。
+- `robots.txt` 與 `sitemap.xml` 包含在 `public/`。
 

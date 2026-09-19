@@ -28,13 +28,9 @@ Linux / macOS：
 curl -fsSL https://raw.githubusercontent.com/fun-ed/TokenUsageInsights/main/scripts/get.sh | bash && "$HOME/.local/bin/token-usage-insights"
 ```
 
-Windows PowerShell：
+Windows 沒有對應的 GitHub Release 壓縮包。請使用 Rust 從原始碼建置。
 
-```powershell
-irm https://raw.githubusercontent.com/fun-ed/TokenUsageInsights/main/scripts/get.ps1 | iex; & "$HOME\bin\token-usage-insights.cmd"
-```
-
-`npx` 與安裝腳本都會下載此 fork 目前平台的已編譯版本，不需要 Rust、Cargo、WSL 或手動解壓縮。指令執行後，看板會在本機執行。從互動式終端機手動啟動時，程式會在連接埠監聽成功後，自動使用作業系統的預設瀏覽器開啟看板；以 systemd、launchd 或 Windows 背景 runner 執行服務時不會開啟瀏覽器。
+`npx` 與安裝腳本會下載此 fork 的 Linux 或 macOS 已編譯版本，不需要 Rust、Cargo、WSL 或手動解壓縮。指令執行後，看板會在本機執行。從互動式終端機手動啟動時，程式會在連接埠監聽成功後，自動使用作業系統的預設瀏覽器開啟看板；以 systemd 或 launchd 背景服務執行時不會開啟瀏覽器。
 
 非互動模式下可手動開啟：
 
@@ -88,7 +84,7 @@ Windows 預設使用下列原生路徑：
 
 本專案 fork 自 [`doggy8088/TokenUsageInsights`](https://github.com/doggy8088/TokenUsageInsights)，並將其設為 `upstream`。我會不定時取得並檢閱上游更新，將相容的變更 merge 回本 fork；選用功能則以獨立 commit 移植。
 
-本 fork 使用獨立的 `v10.x.y` 發布標籤，避免和上游的 `v1.x.y` 發布混淆。目前版本為 **v10.0.2**。Cargo 與 npm 使用相同數字但不含 `v` 前綴，例如 `10.0.2`。衝突時保留本 fork 的 `v10.x.y` 版本命名、local-first 行為與 fork 專屬功能。
+本 fork 使用獨立的 `v10.x.y` 發布標籤，避免和上游的 `v1.x.y` 發布混淆。目前版本為 **v10.0.3**。Cargo 與 npm 使用相同數字但不含 `v` 前綴，例如 `10.0.3`。衝突時保留本 fork 的 `v10.x.y` 版本命名、local-first 行為與 fork 專屬功能。
 
 * * *
 
@@ -737,7 +733,7 @@ Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
 
 ## 安裝選項與手動安裝
 
-GitHub Release 提供 Linux、macOS 與 Windows 的已編譯可執行檔，安裝與執行都不需要 Rust 或 Cargo。
+GitHub Release 提供 Linux 與 macOS 的已編譯可執行檔，安裝與執行都不需要 Rust 或 Cargo。Windows 請從原始碼建置。
 
 ### 使用 npx 直接執行
 
@@ -789,14 +785,14 @@ token-usage-insights update --check
 # 原地自我更新至最新版本（亦支援 --force 強制覆蓋、--target-version 指定版本）
 token-usage-insights update
 token-usage-insights update --force
-token-usage-insights update --target-version v10.0.2
+token-usage-insights update --target-version v10.0.3
 ```
 
 環境變數可控制版本與安裝路徑（皆為選用）：
 
 | 變數 | 適用平台 | 說明 |
 | --- | --- | --- |
-| `TOKEN_USAGE_INSIGHTS_VERSION` | Linux / macOS / Windows | 指定要安裝的 Release tag，例如 `v10.0.2`。預設 `latest` |
+| `TOKEN_USAGE_INSIGHTS_VERSION` | Linux / macOS | 指定要安裝的 Release tag，例如 `v10.0.3`。預設 `latest` |
 | `TOKEN_USAGE_INSIGHTS_INSTALL_DIR` | Linux / macOS | 安裝目錄，會轉交給 `install.sh` |
 | `TOKEN_USAGE_INSIGHTS_BIN_DIR` | Linux / macOS | 執行檔連結目錄，會轉交給 `install.sh` |
 
@@ -871,7 +867,7 @@ git tag vX.Y.Z
 git push origin vX.Y.Z
 ```
 
-npm 第一次上架、Trusted Publishing 的必要欄位、GitHub Environment、Repository variable 與後續 OIDC 自動發布流程，請依照 [npm 首次上架與 Trusted Publishing 設定](docs/npm-publishing.md) 操作。
+npm 手動發布流程請參閱 [npm 手動發布](docs/npm-publishing.md)。
 
 * * *
 

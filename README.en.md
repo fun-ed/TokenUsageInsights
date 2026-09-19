@@ -28,13 +28,9 @@ Linux / macOS:
 curl -fsSL https://raw.githubusercontent.com/fun-ed/TokenUsageInsights/main/scripts/get.sh | bash && "$HOME/.local/bin/token-usage-insights"
 ```
 
-Windows PowerShell:
+Windows has no GitHub Release archive. Build it from source with Rust.
 
-```powershell
-irm https://raw.githubusercontent.com/fun-ed/TokenUsageInsights/main/scripts/get.ps1 | iex; & "$HOME\bin\token-usage-insights.cmd"
-```
-
-Both `npx` and the installers download this fork's compiled version for the current platform. Rust, Cargo, WSL, and manual extraction are not required. The dashboard runs locally after the command starts.
+`npx` and the installers download this fork's Linux or macOS compiled version. Rust, Cargo, WSL, and manual extraction are not required. The dashboard runs locally after the command starts. When run from an interactive terminal, it opens the dashboard in the default browser after binding its port. systemd and launchd services do not open a browser.
 
 Open:
 
@@ -89,7 +85,7 @@ Drive letters, paths containing spaces or non-ASCII characters, and UNC paths ar
 
 This repository is a fork of [`doggy8088/TokenUsageInsights`](https://github.com/doggy8088/TokenUsageInsights), which is configured as `upstream`. I periodically fetch and review upstream changes, then merge compatible changes or port optional features in separate commits.
 
-This fork uses `v10.x.y` release tags so that its releases remain distinct from upstream `v1.x.y` tags. Version `v10.0.2` is the current release. Cargo and npm use the same version number without the `v` prefix.
+This fork uses `v10.x.y` release tags so that its releases remain distinct from upstream `v1.x.y` tags. Version `v10.0.3` is the current release. Cargo and npm use the same version number without the `v` prefix.
 
 * * *
 
@@ -722,7 +718,7 @@ Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
 
 ## Installation options and manual installation
 
-GitHub Releases provide compiled executables for Linux, macOS, and Windows. Rust or Cargo is not required for installation or execution.
+GitHub Releases provide compiled executables for Linux and macOS. Windows users must build from source.
 
 ### Optional one-line installer parameters
 
@@ -764,14 +760,14 @@ token-usage-insights update --check
 # Self-update to the latest release (also supports --force and --target-version)
 token-usage-insights update
 token-usage-insights update --force
-token-usage-insights update --target-version v10.0.2
+token-usage-insights update --target-version v10.0.3
 ```
 
 Environment variables can control the version and installation paths (all optional):
 
 | Variable | Platforms | Description |
 | --- | --- | --- |
-| `TOKEN_USAGE_INSIGHTS_VERSION` | Linux / macOS / Windows | Release tag to install, such as `v10.0.2`; defaults to `latest` |
+| `TOKEN_USAGE_INSIGHTS_VERSION` | Linux / macOS | Release tag to install, such as `v10.0.3`; defaults to `latest` |
 | `TOKEN_USAGE_INSIGHTS_INSTALL_DIR` | Linux / macOS | Installation directory, passed to `install.sh` |
 | `TOKEN_USAGE_INSIGHTS_BIN_DIR` | Linux / macOS | Executable-link directory, passed to `install.sh` |
 
@@ -829,17 +825,17 @@ Custom Windows installation location and port:
 
 ### CI verification
 
-The `Release` workflow runs the corresponding installation script (`install.sh` / `install.ps1`) on Linux, macOS, and Windows for every build, then starts the executable and verifies that:
+The `Release` workflow runs the matching installation script (`install.sh` or `install.ps1`) on Linux, macOS, and Windows for every build, then starts the executable and verifies that:
 
-- The service responds to `/api/<assistant>/pricing` on the specified port
-- The response actually loads the `pricing.csv` packaged with the application
-- A new `INSIGHTS_DIR` is created and an SQLite database is generated
+- The service responds to `/api/<assistant>/pricing` on the selected port.
+- The response loads the packaged `pricing.csv`.
+- A new `INSIGHTS_DIR` creates an SQLite database.
 
-`get.sh` and `get.ps1` also undergo syntax checks (`bash -n` and PowerShell AST parsing) before every build, ensuring the version published to the Release can run correctly.
+`get.sh` and `get.ps1` also undergo syntax checks (`bash -n` and PowerShell AST parsing) before every build.
 
 ### Maintainer release
 
-After pushing a Git tag, GitHub Actions automatically creates the corresponding Release:
+After pushing a Git tag, GitHub Actions creates the corresponding GitHub Release:
 
 ```bash
 git tag vX.Y.Z

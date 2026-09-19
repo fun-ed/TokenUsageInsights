@@ -4,6 +4,34 @@
 
 ## [未發行]
 
+## [10.0.3] - 2026-09-20
+
+### 變更
+
+- 移除 npm package CI、GitHub Pages 部署與 Release workflow 的 npm Trusted Publishing job。GitHub Actions 只保留 Linux、Apple Silicon macOS、Intel macOS 的 GitHub Release 建置與資產上傳；npm 發布改由維護者手動執行。
+- 移除 Windows `x86_64-pc-windows-msvc` Release 建置與壓縮包。Windows 使用者需從原始碼建置。
+
+### 新增與改善
+
+- Claude Code 除了預設 `~/.claude/projects`，也會自動掃描 `~/.claude-profiles/*/projects`。看板會顯示 Default 或 profile 名稱，設定視窗會列出各 profile 的資料夾。
+- 新增唯讀「總覽」項目，跨所有助理與 Claude profile 彙整日、月、年報表，並依總 Token 顯示 Harness 使用排名。
+- 英文與繁體中文 README 補齊 fork 安裝方式、Claude profile、總覽與 upstream 整合說明。
+
+### 變更
+
+- Linux、macOS 與 Windows 安裝腳本、npm repository/bugs 中繼資料、README 範例與原始碼建置指令改用 `fun-ed/TokenUsageInsights`。
+- 專案 skill 改放在 `.agents/skills/token-usage-insights/SKILL.md`。
+- 發布標籤改用 `v10.x.y`，Cargo 與 npm 套件版本使用不含 `v` 的相同數字。
+
+### 資料影響
+
+- 既有 Claude 使用量的 `source_kind` 會從 `legacy` 更新為 `claude-default` 並重新同步。資料列會保留，不會刪除歷史使用量。
+
+### 相容性
+
+- `agent=all` 是唯讀總覽，匯入、匯出、設定與手動同步等單一助理操作不適用。
+- 本次不新增資料表或環境變數。既有資料來源與單一助理 API 維持相容。
+
 ## [1.0.0] - 2026-09-14
 
 ### 新增與改善
@@ -668,8 +696,9 @@
 - 修正行動版側邊欄遮擋、黑畫面、標題擠壓、圖表導覽索引與年度版面問題。
 - 修正並補齊多個 Gemini、Claude、GPT 與 GPT-OSS 模型的定價規則。
 
-[未發行]: https://github.com/doggy8088/TokenUsageInsights/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/doggy8088/TokenUsageInsights/compare/v0.9.9...v1.0.0
+[未發行]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.3...HEAD
+[10.0.3]: https://github.com/fun-ed/TokenUsageInsights/compare/v1.0.0...v10.0.3
+[1.0.0]: https://github.com/fun-ed/TokenUsageInsights/compare/v0.9.9...v1.0.0
 [0.9.9]: https://github.com/doggy8088/TokenUsageInsights/compare/v0.9.8...v0.9.9
 [0.9.8]: https://github.com/doggy8088/TokenUsageInsights/compare/v0.9.5...v0.9.8
 [0.9.5]: https://github.com/doggy8088/TokenUsageInsights/compare/v0.9.4...v0.9.5
