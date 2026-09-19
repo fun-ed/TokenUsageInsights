@@ -8,8 +8,10 @@ SERVICE_TEMPLATE := shell/token-usage-insights.service
 SERVICE_NAME := token-usage-insights.service
 SERVICE_FILE := /etc/systemd/system/$(SERVICE_NAME)
 RELEASE_BIN := target/release/$(PROJECT_NAME)
+LOCAL_BIN_DIR ?= $(HOME)/.local/bin
+LOCAL_BIN := $(LOCAL_BIN_DIR)/$(PROJECT_NAME)
 
-.PHONY: help run dev run-release build build-release test fmt clippy check lint all clean \
+.PHONY: help run dev run-release build build-release install-local test fmt clippy check lint all clean \
 	service-file install-service uninstall-service enable-service disable-service \
 	start-service stop-service restart-service status
 
@@ -22,6 +24,7 @@ help:
 	@echo "  make run-release     等同 run"
 	@echo "  make build           建置 Debug 版本"
 	@echo "  make build-release   建置 Release 版本"
+	@echo "  make install-local   建置 Release 版本並安裝到 $(LOCAL_BIN)"
 	@echo "  make test            執行 Rust 測試"
 	@echo "  make fmt             套用 Rust formatting"
 	@echo "  make clippy          執行 clippy 全量檢查"
@@ -52,6 +55,11 @@ build:
 
 build-release:
 	$(CARGO) build --release
+
+install-local: build-release
+	@mkdir -p "$(LOCAL_BIN_DIR)"
+	install -m 755 "$(RELEASE_BIN)" "$(LOCAL_BIN)"
+	@echo "Installed $(PROJECT_NAME) to $(LOCAL_BIN)"
 
 test:
 	$(CARGO) test
