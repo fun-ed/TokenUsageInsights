@@ -5,7 +5,7 @@ TokenUsageInsights is a local-first Rust application that imports token-usage da
 
 
 ## Project Skill
-- For any repository change, read and apply `skills/token-usage-insights/SKILL.md`. It is the shared operational reference for local-data boundaries, Claude profile sources, all-harness reporting, fork versioning, and controlled upstream integration.
+- For any repository change, read and apply `.agents/skills/token-usage-insights/SKILL.md`. It is the shared operational reference for local-data boundaries, Claude profile sources, all-harness reporting, fork versioning, and controlled upstream integration.
 
 ## Architecture & Data Flow
 - **Entry path:** `src/main.rs` runs `cli::run` first. A recognized subcommand (`export`, `export-all`, `import`, `update`, help/version) exits through `src/cli.rs`; otherwise it initializes SQLite, serves Axum routes/static assets, and starts periodic sync.

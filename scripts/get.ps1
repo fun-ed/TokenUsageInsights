@@ -8,13 +8,13 @@
   install.ps1. Safe to re-run to upgrade to a newer release.
 
 .EXAMPLE
-  irm https://raw.githubusercontent.com/doggy8088/TokenUsageInsights/main/scripts/get.ps1 | iex
+irm https://raw.githubusercontent.com/fun-ed/TokenUsageInsights/main/scripts/get.ps1 | iex
 
 .EXAMPLE
-  & ([scriptblock]::Create((irm https://raw.githubusercontent.com/doggy8088/TokenUsageInsights/main/scripts/get.ps1))) -Service
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/fun-ed/TokenUsageInsights/main/scripts/get.ps1))) -Service
 
 .EXAMPLE
-  $script = irm https://raw.githubusercontent.com/doggy8088/TokenUsageInsights/main/scripts/get.ps1
+  $script = irm https://raw.githubusercontent.com/fun-ed/TokenUsageInsights/main/scripts/get.ps1
   Invoke-Expression "& { $script } -InstallDir 'D:\Apps\Token Usage Insights' -Port 3010"
 #>
 [CmdletBinding()]
@@ -28,7 +28,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$Repo = "doggy8088/TokenUsageInsights"
+$Repo = "fun-ed/TokenUsageInsights"
 $AppName = "token-usage-insights"
 $Target = "x86_64-pc-windows-msvc"
 

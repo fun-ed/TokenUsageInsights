@@ -17,7 +17,7 @@ Language: [繁體中文](README.md) · [简体中文](README.zh-CN.md) · [Engli
 If Node.js 18.18 or newer is installed, run the dashboard directly without creating a global npm command:
 
 ```bash
-npx --yes token-usage-insights
+npx --yes github:fun-ed/TokenUsageInsights
 ```
 
 To install a persistent system command, use the installer for your platform.
@@ -25,16 +25,16 @@ To install a persistent system command, use the installer for your platform.
 Linux / macOS:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/doggy8088/TokenUsageInsights/main/scripts/get.sh | bash && "$HOME/.local/bin/token-usage-insights"
+curl -fsSL https://raw.githubusercontent.com/fun-ed/TokenUsageInsights/main/scripts/get.sh | bash && "$HOME/.local/bin/token-usage-insights"
 ```
 
 Windows PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/doggy8088/TokenUsageInsights/main/scripts/get.ps1 | iex; & "$HOME\bin\token-usage-insights.cmd"
+irm https://raw.githubusercontent.com/fun-ed/TokenUsageInsights/main/scripts/get.ps1 | iex; & "$HOME\bin\token-usage-insights.cmd"
 ```
 
-Both `npx` and the installers download the compiled version for the current platform. Rust, Cargo, WSL, and manual extraction are not required. The dashboard runs locally after the command starts.
+Both `npx` and the installers download this fork's compiled version for the current platform. Rust, Cargo, WSL, and manual extraction are not required. The dashboard runs locally after the command starts.
 
 Open:
 
@@ -51,7 +51,7 @@ http://localhost:3003
 | GitHub Copilot App | Not required | `~/.copilot/data.db`, `~/.copilot/session-store.db` | The dashboard reads the desktop app's local SQLite databases directly |
 | GitHub Copilot Chat (VS Code) | Not required | VS Code `workspaceStorage/chatSessions` | The dashboard scans local chat sessions from VS Code Stable and Insiders directly |
 | Codex Desktop / CLI | Not required | `~/.codex/sessions`, `~/.codex/archived_sessions` | The dashboard scans active and archived local Codex sessions directly |
-| Claude Code | Not required | `~/.claude/projects` | The dashboard scans local Claude Code project sessions directly |
+| Claude Code | Not required | `~/.claude/projects`, `~/.claude-profiles/*/projects` | The dashboard scans the default Claude Code sessions and discovered profile sessions, preserving their source labels |
 | Cursor | Not required | `~/.cursor/projects` | The dashboard scans local Cursor transcripts and reads attributable model metadata in read-only mode |
 | Grok Build | Not required | `~/.grok/sessions` | The dashboard scans the `updates.jsonl` session streams saved automatically by Grok Build |
 | Pi Coding Agent | Not required | `~/.pi/agent/sessions` | The dashboard scans the local session JSONL files saved automatically by Pi Coding Agent |
@@ -85,6 +85,14 @@ Drive letters, paths containing spaces or non-ASCII characters, and UNC paths ar
 
 * * *
 
+## Fork and upstream
+
+This repository is a fork of [`doggy8088/TokenUsageInsights`](https://github.com/doggy8088/TokenUsageInsights), which is configured as `upstream`. I periodically fetch and review upstream changes, then merge compatible changes or port optional features in separate commits.
+
+This fork uses `v10.x.y` release tags so that its releases remain distinct from upstream `v1.x.y` tags. Version `v10.0.2` is the current release. Cargo and npm use the same version number without the `v` prefix.
+
+* * *
+
 ## Features
 
 ### Data analysis
@@ -93,6 +101,7 @@ Drive letters, paths containing spaces or non-ASCII characters, and UNC paths ar
 - Breakdown of input, output, cache read, cache write, and reasoning tokens
 - Local cost estimates based on `pricing.csv`
 - Session count, request count, and API duration statistics
+- The Overview item combines all assistants and Claude profiles, with total-token rankings by assistant
 - Model usage rankings
 - Cursor sessions can be attributed to specific models from local `state.vscdb` `agentKv` records; unmatched sessions remain `Unknown Model`
 - Project working-directory statistics
@@ -109,7 +118,7 @@ Drive letters, paths containing spaces or non-ASCII characters, and UNC paths ar
 
 ### Interface
 
-- Switch between nine coding-agent badges
+- Overview plus nine coding-agent badges
 - Daily, monthly, and yearly views
 - Quick date, month, and year switching
 - Automatic live refresh every 5, 10, or 30 seconds
@@ -126,7 +135,7 @@ The dashboard supports URL query parameters for opening a specific state directl
 
 | Parameter | Applies to | Values | Description |
 | --- | --- | --- | --- |
-| `agent` | All views | `antigravity`, `copilot`, `codex`, `claude`, `cursor`, `grok`, `pi`, `omp`, `muse` | Selects the coding agent to display. Aliases such as `claude-code`, `grok-build`, `pi-coding-agent`, `oh-my-pi`, and `muse-code` are also supported |
+| `agent` | All views | `all`, `antigravity`, `copilot`, `codex`, `claude`, `cursor`, `grok`, `pi`, `omp`, `muse` | Selects the assistant to display. `all` opens the read-only Overview, which combines all assistants and profiles. Aliases such as `claude-code`, `grok-build`, `pi-coding-agent`, `oh-my-pi`, and `muse-code` are also supported |
 | `tab` | All views | `daily`, `monthly`, `yearly` | Selects the daily, monthly, or yearly view |
 | `date` | All views | `daily`: `YYYY-MM-DD`; `monthly`: `YYYY-MM`; `yearly`: `YYYY` | Selects the date, month, or year to display; the format follows `tab` automatically |
 | `dir` | `daily` | Full path, `~`-prefixed home path, or a unique path suffix (e.g. `TokenUsageInsights`) | Filters the daily view by working directory. Windows paths are case-insensitive; if no directory matches, all directories are shown |
@@ -332,7 +341,7 @@ The dashboard scans this directory directly:
 
 ```text
 ~/.claude/projects
-```
+~/.claude-profiles/*/projects
 
 Usage:
 
@@ -345,7 +354,7 @@ Notes:
 
 - Claude Code credentials continue to be managed by Claude Code itself.
 - The dashboard only reads local project session records for analysis.
-- If `~/.claude/projects` does not exist, the Claude Code page shows no data.
+- When both the default directory and profiles exist, the setup dialog lists each Config and Sessions directory, and session lists show Default or the profile name.
 
 * * *
 
@@ -583,7 +592,7 @@ $env:HOST = '127.0.0.1'; $env:INSIGHTS_DIR = 'D:\Token Usage Insights\資料庫'
 ### Linux: install and enable the systemd user service with one command
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/doggy8088/TokenUsageInsights/main/scripts/get.sh | bash -s -- --service
+curl -fsSL https://raw.githubusercontent.com/fun-ed/TokenUsageInsights/main/scripts/get.sh | bash -s -- --service
 ```
 
 This downloads the installed version and immediately enables `token-usage-insights.service`; you do not need to build or edit a systemd file yourself.
@@ -591,7 +600,7 @@ This downloads the installed version and immediately enables `token-usage-insigh
 ### macOS: install and enable the launchd LaunchAgent with one command
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/doggy8088/TokenUsageInsights/main/scripts/get.sh | bash -s -- --service
+curl -fsSL https://raw.githubusercontent.com/fun-ed/TokenUsageInsights/main/scripts/get.sh | bash -s -- --service
 ```
 
 This installs `com.tokenusageinsights.plist` into `~/Library/LaunchAgents/` and loads it immediately; stdout and stderr logs are located in `~/Library/Logs/`.
@@ -599,7 +608,7 @@ This installs `com.tokenusageinsights.plist` into `~/Library/LaunchAgents/` and 
 ### Windows: install and enable background service with one command (Task Scheduler)
 
 ```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/doggy8088/TokenUsageInsights/main/scripts/get.ps1))) -Service
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/fun-ed/TokenUsageInsights/main/scripts/get.ps1))) -Service
 ```
 
 This registers the `TokenUsageInsights_<username>` task in Windows Task Scheduler for the current user and starts it immediately; it starts automatically at user logon in the background, with logs in the installation `logs\` directory (default `%LOCALAPPDATA%\TokenUsageInsights\logs\`).
@@ -722,25 +731,25 @@ GitHub Releases provide compiled executables for Linux, macOS, and Windows. Rust
 Linux / macOS:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/doggy8088/TokenUsageInsights/main/scripts/get.sh | bash
+curl -fsSL https://raw.githubusercontent.com/fun-ed/TokenUsageInsights/main/scripts/get.sh | bash
 ```
 
 To install and enable the background service at the same time (systemd on Linux; launchd on macOS):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/doggy8088/TokenUsageInsights/main/scripts/get.sh | bash -s -- --service
+curl -fsSL https://raw.githubusercontent.com/fun-ed/TokenUsageInsights/main/scripts/get.sh | bash -s -- --service
 ```
 
 Windows PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/doggy8088/TokenUsageInsights/main/scripts/get.ps1 | iex
+irm https://raw.githubusercontent.com/fun-ed/TokenUsageInsights/main/scripts/get.ps1 | iex
 ```
 
 To install and enable the background service at the same time on Windows:
 
 ```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/doggy8088/TokenUsageInsights/main/scripts/get.ps1))) -Service
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/fun-ed/TokenUsageInsights/main/scripts/get.ps1))) -Service
 ```
 
 After installation, run (on Linux/macOS, confirm that `bin_dir` is on `PATH`; Windows creates a `.cmd` shim):
@@ -755,21 +764,21 @@ token-usage-insights update --check
 # Self-update to the latest release (also supports --force and --target-version)
 token-usage-insights update
 token-usage-insights update --force
-token-usage-insights update --target-version v1.0.0
+token-usage-insights update --target-version v10.0.2
 ```
 
 Environment variables can control the version and installation paths (all optional):
 
 | Variable | Platforms | Description |
 | --- | --- | --- |
-| `TOKEN_USAGE_INSIGHTS_VERSION` | Linux / macOS / Windows | Release tag to install, such as `v1.0.0`; defaults to `latest` |
+| `TOKEN_USAGE_INSIGHTS_VERSION` | Linux / macOS / Windows | Release tag to install, such as `v10.0.2`; defaults to `latest` |
 | `TOKEN_USAGE_INSIGHTS_INSTALL_DIR` | Linux / macOS | Installation directory, passed to `install.sh` |
 | `TOKEN_USAGE_INSIGHTS_BIN_DIR` | Linux / macOS | Executable-link directory, passed to `install.sh` |
 
 To customize the installation location, bin directory, and port on Windows, first download the script and then run it with parameters (`iex` pipelines do not support parameters):
 
 ```powershell
-Invoke-WebRequest -Uri https://raw.githubusercontent.com/doggy8088/TokenUsageInsights/main/scripts/get.ps1 -OutFile get.ps1
+Invoke-WebRequest -Uri https://raw.githubusercontent.com/fun-ed/TokenUsageInsights/main/scripts/get.ps1 -OutFile get.ps1
 .\get.ps1 -InstallDir 'D:\Apps\Token Usage Insights' -Port 3010
 ```
 
@@ -951,7 +960,7 @@ http://localhost:3010
 This section is for developers who need to modify or build the project from source. For normal use, use the one-line installation command above.
 
 ```bash
-git clone https://github.com/doggy8088/TokenUsageInsights.git
+git clone https://github.com/fun-ed/TokenUsageInsights.git
 cd TokenUsageInsights
 cargo fmt
 cargo test

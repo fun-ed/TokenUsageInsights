@@ -17,7 +17,7 @@
 已安裝 Node.js 18.18 或更新版本時，可直接執行，不會建立全域 npm 命令：
 
 ```bash
-npx --yes token-usage-insights
+npx --yes github:fun-ed/TokenUsageInsights
 ```
 
 若要安裝成固定的系統命令，可使用下列安裝腳本。
@@ -25,16 +25,16 @@ npx --yes token-usage-insights
 Linux / macOS：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/doggy8088/TokenUsageInsights/main/scripts/get.sh | bash && "$HOME/.local/bin/token-usage-insights"
+curl -fsSL https://raw.githubusercontent.com/fun-ed/TokenUsageInsights/main/scripts/get.sh | bash && "$HOME/.local/bin/token-usage-insights"
 ```
 
 Windows PowerShell：
 
 ```powershell
-irm https://raw.githubusercontent.com/doggy8088/TokenUsageInsights/main/scripts/get.ps1 | iex; & "$HOME\bin\token-usage-insights.cmd"
+irm https://raw.githubusercontent.com/fun-ed/TokenUsageInsights/main/scripts/get.ps1 | iex; & "$HOME\bin\token-usage-insights.cmd"
 ```
 
-`npx` 與安裝腳本都會下載目前平台的已編譯版本，不需要 Rust、Cargo、WSL 或手動解壓縮。指令執行後，看板會在本機執行。從互動式終端機手動啟動時，程式會在連接埠監聽成功後，自動使用作業系統的預設瀏覽器開啟看板；以 systemd、launchd 或 Windows 背景 runner 執行服務時不會開啟瀏覽器。
+`npx` 與安裝腳本都會下載此 fork 目前平台的已編譯版本，不需要 Rust、Cargo、WSL 或手動解壓縮。指令執行後，看板會在本機執行。從互動式終端機手動啟動時，程式會在連接埠監聽成功後，自動使用作業系統的預設瀏覽器開啟看板；以 systemd、launchd 或 Windows 背景 runner 執行服務時不會開啟瀏覽器。
 
 非互動模式下可手動開啟：
 
@@ -86,9 +86,9 @@ Windows 預設使用下列原生路徑：
 
 ## Fork 版本與上游同步
 
-本 fork 使用獨立的 `v10.x.y` 發布標籤，避免和上游 [`doggy8088/TokenUsageInsights`](https://github.com/doggy8088/TokenUsageInsights) 的 `v1.x.y` 發布混淆。目前 baseline 是 **v10.0.1**，下一個 patch 版本為 **v10.0.2**；Cargo 與 npm 的套件版本使用相同數字但不含 `v` 前綴（例如 `10.0.1`）。
+本專案 fork 自 [`doggy8088/TokenUsageInsights`](https://github.com/doggy8088/TokenUsageInsights)，並將其設為 `upstream`。我會不定時取得並檢閱上游更新，將相容的變更 merge 回本 fork；選用功能則以獨立 commit 移植。
 
-上游更新採受控同步：先取得並檢閱 upstream diff，再將相容修正 merge；可選功能則以獨立 commit 選擇性移植。衝突時保留本 fork 的 `v10.x.y` 版本命名、local-first 行為與 fork 專屬功能。
+本 fork 使用獨立的 `v10.x.y` 發布標籤，避免和上游的 `v1.x.y` 發布混淆。目前版本為 **v10.0.2**。Cargo 與 npm 使用相同數字但不含 `v` 前綴，例如 `10.0.2`。衝突時保留本 fork 的 `v10.x.y` 版本命名、local-first 行為與 fork 專屬功能。
 
 * * *
 
@@ -607,7 +607,7 @@ $env:HOST = '127.0.0.1'; $env:INSIGHTS_DIR = 'D:\Token Usage Insights\資料庫'
 ### Linux：一行安裝並啟用 systemd 使用者服務
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/doggy8088/TokenUsageInsights/main/scripts/get.sh | bash -s -- --service
+curl -fsSL https://raw.githubusercontent.com/fun-ed/TokenUsageInsights/main/scripts/get.sh | bash -s -- --service
 ```
 
 這會下載安裝版並立即啟用 `token-usage-insights.service`，不需要自行建置或修改 systemd 檔案。
@@ -615,7 +615,7 @@ curl -fsSL https://raw.githubusercontent.com/doggy8088/TokenUsageInsights/main/s
 ### macOS：一行安裝並啟用 launchd LaunchAgent
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/doggy8088/TokenUsageInsights/main/scripts/get.sh | bash -s -- --service
+curl -fsSL https://raw.githubusercontent.com/fun-ed/TokenUsageInsights/main/scripts/get.sh | bash -s -- --service
 ```
 
 這會將 `com.tokenusageinsights.plist` 安裝到 `~/Library/LaunchAgents/` 並立即載入；標準輸出與錯誤日誌位於 `~/Library/Logs/`。
@@ -623,7 +623,7 @@ curl -fsSL https://raw.githubusercontent.com/doggy8088/TokenUsageInsights/main/s
 ### Windows：一行安裝並啟用背景常駐服務（工作排程器）
 
 ```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/doggy8088/TokenUsageInsights/main/scripts/get.ps1))) -Service
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/fun-ed/TokenUsageInsights/main/scripts/get.ps1))) -Service
 ```
 
 這會透過 Windows 工作排程器（Task Scheduler）註冊專屬於目前使用者的 `TokenUsageInsights_<username>` 背景工作並立即啟動；使用者每次登入時均會自動於背景執行，標準輸出與錯誤日誌位於安裝目錄下的 `logs\`（預設為 `%LOCALAPPDATA%\TokenUsageInsights\logs\`）。
@@ -744,10 +744,10 @@ GitHub Release 提供 Linux、macOS 與 Windows 的已編譯可執行檔，安�
 電腦已有 Node.js 18.18 或更新版本時，執行以下命令即可下載目前版本並啟動看板：
 
 ```bash
-npx --yes token-usage-insights
+npx --yes github:fun-ed/TokenUsageInsights
 ```
 
-`npx` 不會建立全域命令；每次都可使用相同命令啟動。若需要固定的 `token-usage-insights` 系統命令、自訂安裝目錄，或安裝 Linux systemd 服務，請改用下一節的安裝腳本。
+`npx` 不會建立全域命令；每次都可使用相同命令啟動此 fork。若需要固定的 `token-usage-insights` 系統命令、自訂安裝目錄，或安裝 Linux systemd 服務，請改用下一節的安裝腳本。
 
 ### 一行安裝的選用參數
 
@@ -756,25 +756,25 @@ npx --yes token-usage-insights
 Linux / macOS：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/doggy8088/TokenUsageInsights/main/scripts/get.sh | bash
+curl -fsSL https://raw.githubusercontent.com/fun-ed/TokenUsageInsights/main/scripts/get.sh | bash
 ```
 
 Linux（systemd user service）或 macOS（launchd LaunchAgent）如需同時安裝並啟用常駐服務：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/doggy8088/TokenUsageInsights/main/scripts/get.sh | bash -s -- --service
+curl -fsSL https://raw.githubusercontent.com/fun-ed/TokenUsageInsights/main/scripts/get.sh | bash -s -- --service
 ```
 
 Windows PowerShell：
 
 ```powershell
-irm https://raw.githubusercontent.com/doggy8088/TokenUsageInsights/main/scripts/get.ps1 | iex
+irm https://raw.githubusercontent.com/fun-ed/TokenUsageInsights/main/scripts/get.ps1 | iex
 ```
 
 Windows PowerShell 如需同時安裝並啟用常駐服務：
 
 ```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/doggy8088/TokenUsageInsights/main/scripts/get.ps1))) -Service
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/fun-ed/TokenUsageInsights/main/scripts/get.ps1))) -Service
 ```
 
 安裝完成後即可執行（Linux/macOS 需確認 `bin_dir` 已加入 `PATH`；Windows 會建立 `.cmd` shim）：
@@ -789,21 +789,21 @@ token-usage-insights update --check
 # 原地自我更新至最新版本（亦支援 --force 強制覆蓋、--target-version 指定版本）
 token-usage-insights update
 token-usage-insights update --force
-token-usage-insights update --target-version v10.0.1
+token-usage-insights update --target-version v10.0.2
 ```
 
 環境變數可控制版本與安裝路徑（皆為選用）：
 
 | 變數 | 適用平台 | 說明 |
 | --- | --- | --- |
-| `TOKEN_USAGE_INSIGHTS_VERSION` | Linux / macOS / Windows | 指定要安裝的 Release tag，例如 `v10.0.1`。預設 `latest` |
+| `TOKEN_USAGE_INSIGHTS_VERSION` | Linux / macOS / Windows | 指定要安裝的 Release tag，例如 `v10.0.2`。預設 `latest` |
 | `TOKEN_USAGE_INSIGHTS_INSTALL_DIR` | Linux / macOS | 安裝目錄，會轉交給 `install.sh` |
 | `TOKEN_USAGE_INSIGHTS_BIN_DIR` | Linux / macOS | 執行檔連結目錄，會轉交給 `install.sh` |
 
 Windows 若要自訂安裝位置、bin 目錄與埠號，需先下載腳本再帶參數執行（`iex` 管線不支援傳參數）：
 
 ```powershell
-Invoke-WebRequest -Uri https://raw.githubusercontent.com/doggy8088/TokenUsageInsights/main/scripts/get.ps1 -OutFile get.ps1
+Invoke-WebRequest -Uri https://raw.githubusercontent.com/fun-ed/TokenUsageInsights/main/scripts/get.ps1 -OutFile get.ps1
 .\get.ps1 -InstallDir 'D:\Apps\Token Usage Insights' -Port 3010
 ```
 
@@ -987,7 +987,7 @@ http://localhost:3010
 本節僅供需要修改或從原始碼建置專案的開發者使用；一般使用請採用前述一行安裝指令。
 
 ```bash
-git clone https://github.com/doggy8088/TokenUsageInsights.git
+git clone https://github.com/fun-ed/TokenUsageInsights.git
 cd TokenUsageInsights
 cargo fmt
 cargo test

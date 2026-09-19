@@ -6,7 +6,7 @@
 # install.sh. Safe to re-run to upgrade to a newer release.
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/doggy8088/TokenUsageInsights/main/scripts/get.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/fun-ed/TokenUsageInsights/main/scripts/get.sh | bash
 #   curl -fsSL .../get.sh | bash -s -- --service
 #
 # Environment:
@@ -15,7 +15,7 @@
 #   TOKEN_USAGE_INSIGHTS_BIN_DIR       Forwarded to install.sh
 set -euo pipefail
 
-repo="doggy8088/TokenUsageInsights"
+repo="fun-ed/TokenUsageInsights"
 app_name="token-usage-insights"
 version="${TOKEN_USAGE_INSIGHTS_VERSION:-latest}"
 
