@@ -23,7 +23,7 @@ TokenUsageInsights is a local-first Rust/Axum dashboard with plain ES-module fro
 
 ## Fork release and upstream policy
 
-This fork owns the `v10.x.y` tag namespace. The current release is `v10.0.4`.
+This fork owns the `v10.x.y` tag namespace. The current release is `v10.0.5`.
 
 - Cargo and npm package metadata use `10.x.y`; release tags use matching `v10.x.y`.
 - Never reuse upstream `v1.x.y` release tags.
