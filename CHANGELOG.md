@@ -4,6 +4,8 @@
 
 ## [未發行]
 
+## [10.0.5] - 2026-09-21
+
 ### 新增與改善
 
 - 同步 upstream `v1.0.1` 的 MiniMax Code 支援。新增 `mcode` Agent，掃描 `~/.minimax/v2/sessions`，合併 `messages.jsonl` 與 `snapshots/*.jsonl`、依 `message_id` 去重並還原單一 Session 時間軸。
@@ -707,7 +709,8 @@
 - 修正行動版側邊欄遮擋、黑畫面、標題擠壓、圖表導覽索引與年度版面問題。
 - 修正並補齊多個 Gemini、Claude、GPT 與 GPT-OSS 模型的定價規則。
 
-[未發行]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.4...HEAD
+[未發行]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.5...HEAD
+[10.0.5]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.4...v10.0.5
 [10.0.4]: https://github.com/fun-ed/TokenUsageInsights/compare/v1.0.0...v10.0.4
 [1.0.0]: https://github.com/fun-ed/TokenUsageInsights/compare/v0.9.9...v1.0.0
 [0.9.9]: https://github.com/doggy8088/TokenUsageInsights/compare/v0.9.8...v0.9.9
