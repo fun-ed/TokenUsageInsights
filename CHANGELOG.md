@@ -4,6 +4,16 @@
 
 ## [未發行]
 
+### 新增與改善
+
+- 同步 upstream `v1.0.1` 的 MiniMax Code 支援。新增 `mcode` Agent，掃描 `~/.minimax/v2/sessions`，合併 `messages.jsonl` 與 `snapshots/*.jsonl`、依 `message_id` 去重並還原單一 Session 時間軸。
+- 工作目錄與 Session 名稱會從 MiniMax Code 執行期 `runtime-state.sqlite` 唯讀取得；新增選用的 `MCODE_DIR` 與 `MCODE_STATE_DB` 路徑覆寫。
+
+### 資料影響
+
+- MiniMax Code 使用既有 `usage_entries` 資料表，以 `assistant_type = 'mcode'` 與 `source_kind = 'mcode-session'` 儲存，無資料庫結構遷移。未回報的費用由 `pricing.csv` 估算。
+
+
 ## [10.0.4] - 2026-09-20
 
 ### 變更

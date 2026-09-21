@@ -68,7 +68,7 @@ make all                         # fmt, check, test, release build
 - SQLite is bundled through `rusqlite`; do not introduce a separate database service.
 - The dashboard requires no frontend build framework. Do not add Node dependencies merely for UI changes.
 - Releases package the binary together with `static/`, `shell/`, `scripts/`, and `pricing.csv`; preserve this layout when modifying installation/release behavior.
-- The project reads local data by default. Use environment overrides (`INSIGHTS_DIR`, `ANTIGRAVITY_DIR`, `COPILOT_DIR`, `CODEX_DIR`, `CLAUDE_DIR`, `CURSOR_DIR`, `GROK_DIR`, `PI_DIR`, `OMP_DIR`) for isolated development and tests. Never commit local databases, logs, sessions, or personal paths.
+- The project reads local data by default. Use environment overrides (`INSIGHTS_DIR`, `ANTIGRAVITY_DIR`, `COPILOT_DIR`, `CODEX_DIR`, `CLAUDE_DIR`, `CURSOR_DIR`, `GROK_DIR`, `PI_DIR`, `OMP_DIR`, `MUSE_DIR`, `MCODE_DIR`, `MCODE_STATE_DB`) for isolated development and tests. Never commit local databases, logs, sessions, or personal paths.
 
 ## Testing & QA
 - Add Rust tests beside the affected module under `#[cfg(test)]`; use `#[tokio::test]` only for async behavior. Use `cargo test <name-filter>` for a focused check.

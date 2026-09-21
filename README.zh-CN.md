@@ -2,6 +2,8 @@
 
 Token 战情室是本地优先的 AI Coding Agent 用量看板。它将本地记录导入 SQLite，显示 Token、预估费用与 Session 时间轴。
 
+支持 Antigravity、Copilot、Codex、Claude Code、Cursor、Grok Build、Pi、OMP、Muse Code 和 MiniMax Code；所有来源均保持本地读取。
+
 英文 [README](README.md) 是项目的正式说明。项目支持 macOS 与 Linux。
 
 ```bash
