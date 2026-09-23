@@ -4,14 +4,22 @@
 
 ## [未發行]
 
+## [10.0.6] - 2026-09-23
+
 ### 新增與改善
 
 - 新增 GPT-6 Sol、Luna、Terra 與 Claude Opus 5.5 的離線定價規則，包含 Sol／Luna 的 272K 與 Opus 5.5 的 200K 長上下文分級。
 - 修正舊模型簡短別名的價格比對，避免 `opus-5` 誤套用 Opus 5.5 費率。
+- npm CLI 安裝器改從本 fork 的 GitHub Release 下載，不再誤用 upstream 的版本與資產。
 
 ### 上游同步
 
-- 已檢視 upstream `v1.0.6`；該版本的功能修正僅涉及 Windows PowerShell 一行安裝，不移植至本 fork。套件版本維持 `10.0.5`，不沿用上游 `v1.x.y` 標籤。
+- 已檢視 upstream `v1.0.6`；該版本的功能修正僅涉及 Windows PowerShell 一行安裝，不移植至本 fork。發行版本維持 fork 專屬 `v10.x.y` 命名空間。
+
+### 發行資產
+
+- 提供 Apple Silicon macOS 的 DMG 與 CLI `.tar.gz`，附 `SHA256SUMS`；壓縮包不包含 Windows 腳本。本次未建置 Intel macOS 或 Linux 資產，npm 套件亦未發布。
+
 
 ## [10.0.5] - 2026-09-21
 

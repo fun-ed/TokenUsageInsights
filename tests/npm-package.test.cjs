@@ -44,7 +44,7 @@ test('uses the existing GitHub Release artifact contract', () => {
   );
   assert.equal(
     releaseBaseUrl('1.2.3'),
-    'https://github.com/doggy8088/TokenUsageInsights/releases/download/v1.2.3',
+    'https://github.com/fun-ed/TokenUsageInsights/releases/download/v1.2.3',
   );
   const urls = expectedReleaseUrls('1.2.3');
   assert.equal(urls.length, 5);

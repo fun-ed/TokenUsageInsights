@@ -23,7 +23,7 @@ const { URL } = require('node:url');
 
 const PACKAGE_ROOT = join(__dirname, '..');
 const BINARY_NAME = 'token-usage-insights';
-const GITHUB_OWNER = 'doggy8088';
+const GITHUB_OWNER = 'fun-ed';
 const GITHUB_REPO = 'TokenUsageInsights';
 const INSTALL_DIR = join(__dirname, `${BINARY_NAME}-bin`);
 const EXECUTABLE_NAME = process.platform === 'win32' ? `${BINARY_NAME}.exe` : BINARY_NAME;
