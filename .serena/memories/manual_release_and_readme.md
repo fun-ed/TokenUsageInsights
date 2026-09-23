@@ -1,5 +1,5 @@
 - Fork releases use matching `10.x.y` Cargo/npm versions and annotated `v10.x.y` tags; GitHub Actions are intentionally absent.
-- Current release: `v10.0.5` (Apple Silicon DMG + `SHA256SUMS` verified and published); `make install-local` installs the matching CLI to `~/.local/bin/token-usage-insights`.
+- Current release: `v10.0.6` (public Apple Silicon DMG + `.tar.gz` + `SHA256SUMS` verified as listed GitHub assets); `make install-local` built and installed CLI 10.0.6 at `~/.local/bin/token-usage-insights` on 2026-09-23.
 - Release flow: run formatter, locked tests/build with warnings denied, Clippy, npm tests/package check; stage a macOS DMG containing binary, `static/`, `shell/`, `scripts/`, `pricing.csv`, `README.md`, `LICENSE`, `VERSION`; run isolated installer/API/SQLite smoke tests; publish tag/release and download-verify checksum.
 - Root `README.md` is the canonical English README. Retain only `README.md`, `README.zh-TW.md`, and `README.zh-CN.md`; do not restore `README.en.md`, Japanese, or Korean README variants.
-- Releases currently ship only the macOS Apple Silicon DMG and checksum. Do not advertise `npx`/`get.sh` tarball installation as working until matching target tarballs and checksum entries are published.
+- The `v10.0.6` release ships Apple Silicon macOS DMG, Apple Silicon macOS tarball, and SHA256SUMS; do not advertise installer availability for Intel macOS or Linux until matching tarballs are published. npm registry publication was not verified.
