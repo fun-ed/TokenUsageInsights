@@ -29,6 +29,7 @@ This fork owns the `v10.x.y` tag namespace. The current release is `v10.0.5`.
 - Never reuse upstream `v1.x.y` release tags.
 - Use `https://github.com/doggy8088/TokenUsageInsights` as an upstream source. Fetch and review its diff before integrating it.
 - Merge compatible upstream fixes only after validation. Port optional upstream features as separate, reviewable commits.
+- Upstream sync is Unix-only for this fork: exclude Windows-only scripts, tests, workflows, installer paths, release assets, documentation, and platform-specific code when reviewing or porting upstream changes. If a change mixes platforms, extract only the Linux/macOS portion.
 - Resolve conflicts in favor of this fork's local-first behavior, `v10.x.y` namespace, and fork-specific features such as multi-profile Claude discovery and the all-harness overview.
 
 ## Manual releases
