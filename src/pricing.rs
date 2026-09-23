@@ -495,6 +495,7 @@ impl PreparedPricingRules {
     ) -> Option<usize> {
         let mut best_rule = None;
         let mut best_base_len = 0;
+        let mut best_model_extends_rule = false;
         let mut best_has_threshold = false;
 
         for (index, prepared) in self.parsed.iter().enumerate() {
@@ -513,12 +514,24 @@ impl PreparedPricingRules {
 
             let base_len = prepared.base.len();
             let has_threshold = prepared.threshold.is_some();
-            let is_more_specific = base_len > best_base_len;
-            let is_same_base_with_threshold =
+            let model_extends_rule = model_base.contains(&prepared.base);
+            let uses_more_source_specificity = model_extends_rule && !best_model_extends_rule;
+            let is_more_specific = model_extends_rule == best_model_extends_rule
+                && if model_extends_rule {
+                    base_len > best_base_len
+                } else {
+                    base_len < best_base_len
+                };
+            let has_same_base_with_threshold =
                 base_len == best_base_len && has_threshold && !best_has_threshold;
-            if best_rule.is_none() || is_more_specific || is_same_base_with_threshold {
+            if best_rule.is_none()
+                || uses_more_source_specificity
+                || is_more_specific
+                || has_same_base_with_threshold
+            {
                 best_rule = Some(index);
                 best_base_len = base_len;
+                best_model_extends_rule = model_extends_rule;
                 best_has_threshold = has_threshold;
             }
         }
@@ -863,6 +876,83 @@ mod tests {
             assert!(
                 (cost - 30.5).abs() < 1e-9,
                 "unexpected Opus 5 cost for {model_name}: {cost}"
+            );
+        }
+    }
+
+    #[test]
+    fn latest_gpt_6_and_claude_opus_5_5_models_use_packaged_pricing() {
+        let rules = load_pricing_rules();
+
+        for model_name in ["gpt-6-sol", "GPT-6 Sol", "openai/gpt-6-sol · high"] {
+            let short_context_cost =
+                calculate_usage_cost(&rules, Some(model_name), 100_000, 100_000, 100_000, 0, 0)
+                    .unwrap();
+            assert!(
+                (short_context_cost - 1.22).abs() < 1e-9,
+                "unexpected GPT-6 Sol short-context cost for {model_name}: {short_context_cost}"
+            );
+
+            let long_context_cost =
+                calculate_usage_cost(&rules, Some(model_name), 300_000, 50_000, 0, 0, 0).unwrap();
+            assert!(
+                (long_context_cost - 1.95).abs() < 1e-9,
+                "unexpected GPT-6 Sol long-context cost for {model_name}: {long_context_cost}"
+            );
+        }
+
+        for model_name in ["gpt-6-luna", "GPT-6 Luna", "openai/gpt-6-luna · high"] {
+            let short_context_cost =
+                calculate_usage_cost(&rules, Some(model_name), 100_000, 100_000, 100_000, 0, 0)
+                    .unwrap();
+            assert!(
+                (short_context_cost - 0.061).abs() < 1e-9,
+                "unexpected GPT-6 Luna short-context cost for {model_name}: {short_context_cost}"
+            );
+
+            let long_context_cost =
+                calculate_usage_cost(&rules, Some(model_name), 300_000, 50_000, 0, 0, 0).unwrap();
+            assert!(
+                (long_context_cost - 0.0975).abs() < 1e-9,
+                "unexpected GPT-6 Luna long-context cost for {model_name}: {long_context_cost}"
+            );
+        }
+
+        for model_name in ["gpt-6-terra", "GPT-6 Terra", "gpt-terra-latest"] {
+            let cost = calculate_usage_cost(
+                &rules,
+                Some(model_name),
+                1_000_000,
+                1_000_000,
+                1_000_000,
+                0,
+                0,
+            )
+            .unwrap();
+            assert!(
+                (cost - 14.2).abs() < 1e-9,
+                "unexpected GPT Terra cost for {model_name}: {cost}"
+            );
+        }
+
+        for model_name in [
+            "claude-opus-5.5",
+            "Claude Opus 5.5",
+            "anthropic/claude-opus-5-5 · high",
+        ] {
+            let short_context_cost =
+                calculate_usage_cost(&rules, Some(model_name), 100_000, 100_000, 100_000, 0, 0)
+                    .unwrap();
+            assert!(
+                (short_context_cost - 2.42).abs() < 1e-9,
+                "unexpected Claude Opus 5.5 short-context cost for {model_name}: {short_context_cost}"
+            );
+
+            let long_context_cost =
+                calculate_usage_cost(&rules, Some(model_name), 300_000, 50_000, 0, 0, 0).unwrap();
+            assert!(
+                (long_context_cost - 3.9).abs() < 1e-9,
+                "unexpected Claude Opus 5.5 long-context cost for {model_name}: {long_context_cost}"
             );
         }
     }

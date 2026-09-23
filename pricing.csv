@@ -59,6 +59,14 @@ GPT-OSS 120B (Medium),Local/OSS,1M Tokens,0.00,0.00,0.00,N/A
 GPT-6 Astra (<272k),Global,1M Tokens,10.00,1.00,50.00,5.00/0.50/25.00
 GPT-6 Astra (>272k),Global,1M Tokens,20.00,2.00,75.00,10.00/1.00/37.50
 GPT-6 Astra,Global,1M Tokens,10.00,1.00,50.00,5.00/0.50/25.00
+GPT-6 Sol (<272k),Global,1M Tokens,2.00,0.20,10.00,N/A
+GPT-6 Sol (>272k),Global,1M Tokens,4.00,0.40,15.00,N/A
+GPT-6 Sol,Global,1M Tokens,2.00,0.20,10.00,N/A
+GPT-6 Luna (<272k),Global,1M Tokens,0.10,0.01,0.50,N/A
+GPT-6 Luna (>272k),Global,1M Tokens,0.20,0.02,0.75,N/A
+GPT-6 Luna,Global,1M Tokens,0.10,0.01,0.50,N/A
+GPT-6 Terra,Global,1M Tokens,2.00,0.20,12.00,N/A
+gpt-terra-latest,Global,1M Tokens,2.00,0.20,12.00,N/A
 gpt-5.6-sol,Global,1M Tokens,5.00,0.50,30.00,N/A
 gpt-daybreak-blue-latest,Global,1M Tokens,5.00,0.50,30.00,N/A
 gpt-daybreak-blue,Global,1M Tokens,5.00,0.50,30.00,N/A
@@ -82,6 +90,9 @@ Claude Fable 5,Global,1M Tokens,10.00,1.00,50.00,N/A
 Claude Opus 5,Global,1M Tokens,5.00,0.50,25.00,N/A
 Claude Opus 4.8-fast,Global,1M Tokens,10.00,1.00,50.00,N/A
 Claude Opus 4.8,Global,1M Tokens,5.00,0.50,25.00,N/A
+Claude Opus 5.5 (<200k),Global,1M Tokens,4.00,0.20,20.00,N/A
+Claude Opus 5.5 (>200k),Global,1M Tokens,8.00,0.40,30.00,N/A
+Claude Opus 5.5,Global,1M Tokens,4.00,0.20,20.00,N/A
 Claude Opus 4.7,Global,1M Tokens,5.00,0.50,25.00,N/A
 Claude Opus 4.6 (<200k),Global,1M Tokens,5.00,0.50,25.00,N/A
 Claude Opus 4.6 (>200k),Global,1M Tokens,10.00,1.00,37.50,N/A
