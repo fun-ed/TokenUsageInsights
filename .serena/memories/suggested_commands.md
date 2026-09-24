@@ -16,7 +16,6 @@ npm ci --ignore-scripts && npm test && npm pack --dry-run --ignore-scripts
 npm run check:package
 ```
 
-- Windows: `./scripts/build.ps1`; installer/collector changes also need `./scripts/test-windows.ps1`.
 - `PORT=3004 make dev` changes the local port.
 - Linux systemd targets require `sudo`; render the source template with `make service-file`.
 - On macOS, standard Git/Cargo/npm command forms need no project-specific variation.

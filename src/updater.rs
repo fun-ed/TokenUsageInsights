@@ -3124,8 +3124,7 @@ pub(crate) async fn run_update_in_dir(
                 "VERSION",
                 "scripts",
                 "shell",
-                "install.sh",
-                "install.ps1",
+                "scripts/install.sh",
             ];
             for required in required_items {
                 if !release_root.join(required).exists() {
@@ -7856,10 +7855,8 @@ update_check_interval: 5 # check every 5 days
             ("README.md", b"# Updated", 0o644),
             ("LICENSE", b"MIT", 0o644),
             ("static/index.html", b"<h1>Dashboard</h1>", 0o644),
-            ("scripts/run-service.ps1", b"# runner", 0o644),
+            ("scripts/install.sh", b"#!/bin/sh\nexit 0\n", 0o755),
             ("shell/token-usage-insights.service", b"# service", 0o644),
-            ("install.sh", b"#!/bin/sh\nexit 0\n", 0o755),
-            ("install.ps1", b"# installer\n", 0o644),
         ];
         let exec_name = if target.contains("windows") {
             format!("{APP_NAME}.exe")

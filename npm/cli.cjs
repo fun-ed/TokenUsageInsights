@@ -6,14 +6,13 @@ const { join } = require('node:path');
 const { installBinary, isReleaseRoot } = require('./install.cjs');
 
 const BINARY_NAME = 'token-usage-insights';
-const executableName = process.platform === 'win32' ? `${BINARY_NAME}.exe` : BINARY_NAME;
 const installDirectory = join(__dirname, `${BINARY_NAME}-bin`);
-const executable = join(__dirname, `${BINARY_NAME}-bin`, executableName);
+const executable = join(__dirname, `${BINARY_NAME}-bin`, BINARY_NAME);
 
 async function main() {
-  if (!isReleaseRoot(installDirectory, executableName)) await installBinary();
+  if (!isReleaseRoot(installDirectory)) await installBinary();
 
-  if (!isReleaseRoot(installDirectory, executableName)) {
+  if (!isReleaseRoot(installDirectory)) {
     throw new Error(
       `${BINARY_NAME} 原生執行檔尚未建置；請先執行 cargo build --release。`,
     );

@@ -43,7 +43,7 @@ case "$os" in
     archive_ext="tar.gz"
     ;;
   *)
-    echo "Unsupported OS: ${os}. Use scripts/get.ps1 on Windows instead." >&2
+    echo "Unsupported OS: ${os}. This installer supports Linux and macOS." >&2
     exit 1
     ;;
 esac
@@ -91,9 +91,14 @@ if [[ ! -d "$extracted_dir" ]]; then
   extracted_dir="$(find "$workdir" -mindepth 1 -maxdepth 1 -type d | head -n1)"
 fi
 
-if [[ ! -x "${extracted_dir}/install.sh" ]]; then
-  chmod +x "${extracted_dir}/install.sh" 2>/dev/null || true
+install_script="${extracted_dir}/scripts/install.sh"
+if [[ ! -f "$install_script" ]]; then
+  install_script="${extracted_dir}/install.sh"
+fi
+if [[ ! -f "$install_script" ]]; then
+  echo "Installer not found in ${archive}." >&2
+  exit 1
 fi
 
 echo "Installing ${tag} ..."
-"${extracted_dir}/install.sh" "$@"
+bash "$install_script" "$@"

@@ -62,6 +62,7 @@ pub(super) fn parse_claude_session_file(filepath: &Path) -> Result<Vec<UsageEntr
         .to_string();
 
     let mut session_name_selector = InitialUserPromptSelector::default();
+    let mut custom_title: Option<String> = None;
     let mut session_cwd: Option<String> = None;
     let mut session_version: Option<String> = None;
     let mut seen_response_keys = HashSet::new();
@@ -88,6 +89,17 @@ pub(super) fn parse_claude_session_file(filepath: &Path) -> Result<Vec<UsageEntr
                 .get("version")
                 .and_then(|version| version.as_str())
                 .map(|version| version.to_string());
+        }
+
+        if event.get("type").and_then(|kind| kind.as_str()) == Some("custom-title") {
+            if let Some(title) = event
+                .get("customTitle")
+                .and_then(|title| title.as_str())
+                .map(str::trim)
+                .filter(|title| !title.is_empty())
+            {
+                custom_title = Some(title.to_string());
+            }
         }
 
         let message = match event.get("message") {
@@ -216,6 +228,12 @@ pub(super) fn parse_claude_session_file(filepath: &Path) -> Result<Vec<UsageEntr
         });
     }
 
+    if let Some(title) = custom_title {
+        for entry in &mut results {
+            entry.session_name = Some(title.clone());
+        }
+    }
+
     Ok(results)
 }
 #[cfg(test)]
@@ -278,5 +296,22 @@ mod tests {
         assert_eq!(tokens.cache_write_5m, Some(3));
         assert_eq!(tokens.cache_write_1h, Some(0));
         assert_eq!(tokens.total, 25);
+    }
+
+    #[test]
+    fn parse_claude_session_file_uses_latest_custom_title_after_usage() {
+        let path = temp_jsonl_path("claude-renamed");
+        let content = r#"{"type":"user","sessionId":"renamed","message":{"role":"user","content":"Original prompt"}}
+{"type":"assistant","sessionId":"renamed","timestamp":"2026-09-24T09:00:00Z","requestId":"req_1","message":{"id":"msg_1","role":"assistant","model":"claude-opus-5-5","usage":{"input_tokens":1,"output_tokens":2}}}
+{"type":"custom-title","sessionId":"renamed","customTitle":"First name"}
+{"type":"custom-title","sessionId":"renamed","customTitle":"Final name"}
+"#;
+        fs::write(&path, content).unwrap();
+        let entries = parse_claude_session_file(&path).unwrap();
+        fs::remove_file(&path).unwrap();
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].session_name.as_deref(), Some("Final name"));
+        assert_eq!(entries[0].tokens.as_ref().unwrap().total, 3);
     }
 }

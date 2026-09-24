@@ -66,9 +66,6 @@ pub fn find_resource(relative: impl AsRef<Path>) -> Option<PathBuf> {
     if let Some(manifest_dir) = std::env::var_os("CARGO_MANIFEST_DIR") {
         roots.push(PathBuf::from(manifest_dir));
     }
-    if let Some(manifest_dir) = option_env!("CARGO_MANIFEST_DIR") {
-        roots.push(PathBuf::from(manifest_dir));
-    }
     if let Ok(executable) = std::env::current_exe() {
         // ~/.local/bin 內是指向安裝目錄的 symlink；先解析 symlink 才能找到
         // 與真實執行檔同層的資源目錄。
@@ -82,6 +79,10 @@ pub fn find_resource(relative: impl AsRef<Path>) -> Option<PathBuf> {
                 roots.extend(executable_dir.ancestors().take(5).map(Path::to_path_buf));
             }
         }
+    }
+    // 安裝版先使用執行檔旁的資源，避免誤讀仍存在的編譯來源目錄。
+    if let Some(manifest_dir) = option_env!("CARGO_MANIFEST_DIR") {
+        roots.push(PathBuf::from(manifest_dir));
     }
     if let Ok(current_dir) = std::env::current_dir() {
         roots.push(current_dir);

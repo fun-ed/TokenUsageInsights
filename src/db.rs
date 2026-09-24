@@ -4039,21 +4039,28 @@ fn sync_claude_usage_logs(conn: &mut Connection) -> Result<(), String> {
                 .into_owned();
             let state_key = format!("{}:{}", source.source_kind, state_path);
 
-            let last_synced_size: u64 = conn
+            let (last_synced_size, last_synced_time): (u64, i64) = conn
                 .query_row(
-                    "SELECT last_synced_size FROM sync_state WHERE filename = ?",
+                    "SELECT last_synced_size, last_synced_time FROM sync_state WHERE filename = ?",
                     params![state_key],
-                    |row| row.get(0),
+                    |row| Ok((row.get(0)?, row.get(1)?)),
                 )
-                .unwrap_or(0u64);
+                .unwrap_or((0, 0));
 
             let metadata = match fs::metadata(&filepath) {
                 Ok(m) => m,
                 Err(_) => continue,
             };
             let current_size = metadata.len();
+            let modified_time = file_modified_nanos(&metadata);
+            // Older Claude sync rows stored wall-clock seconds; new rows store file mtime nanos.
+            let changed = if last_synced_time < 1_000_000_000_000 {
+                modified_time > last_synced_time.saturating_mul(1_000_000_000)
+            } else {
+                modified_time != last_synced_time
+            };
 
-            if current_size != last_synced_size {
+            if current_size != last_synced_size || changed {
                 let parsed_entries = match parse_claude_session_file(&filepath) {
                     Ok(entries) => entries,
                     Err(e) => {
@@ -4146,14 +4153,9 @@ fn sync_claude_usage_logs(conn: &mut Connection) -> Result<(), String> {
                 }
 
                 if success {
-                    let now = SystemTime::now()
-                        .duration_since(SystemTime::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_secs() as i64;
-
                     let update_state_res = tx.execute(
                     "INSERT OR REPLACE INTO sync_state (filename, last_synced_size, last_synced_time) VALUES (?, ?, ?)",
-                    params![state_key, current_size as i64, now],
+                    params![state_key, current_size as i64, modified_time],
                 );
 
                     if update_state_res.is_ok() {
@@ -8213,6 +8215,63 @@ mod tests {
             )
             .unwrap();
         assert_eq!(stored, (10, 1, 2, 10, 1, 2));
+
+        if let Some(value) = old_claude_dir {
+            std::env::set_var("CLAUDE_DIR", value);
+        } else {
+            std::env::remove_var("CLAUDE_DIR");
+        }
+        fs::remove_dir_all(claude_dir).unwrap();
+    }
+
+    #[test]
+    fn sync_claude_refreshes_same_size_rename_only_when_local_file_changes() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let old_claude_dir = std::env::var_os("CLAUDE_DIR");
+        let claude_dir = temp_jsonl_path("claude-title-sync").with_extension("");
+        let projects_dir = claude_dir.join("projects/test-project");
+        fs::create_dir_all(&projects_dir).unwrap();
+        let session_path = projects_dir.join("renamed.jsonl");
+        let initial = r#"{"type":"assistant","sessionId":"renamed","timestamp":"2026-09-24T09:00:00Z","requestId":"req_1","message":{"id":"msg_1","role":"assistant","model":"claude-opus-5-5","usage":{"input_tokens":1,"output_tokens":2}}}
+{"type":"custom-title","sessionId":"renamed","customTitle":"First"}
+"#;
+        fs::write(&session_path, initial).unwrap();
+        std::env::set_var("CLAUDE_DIR", &claude_dir);
+
+        let mut conn = Connection::open_in_memory().unwrap();
+        init_db(&conn).unwrap();
+        sync_claude_usage_logs(&mut conn).unwrap();
+        let title_and_tokens = |conn: &Connection| -> (String, u64, u64) {
+            conn.query_row(
+                "SELECT session_name, tokens_total, COUNT(*) FROM usage_entries
+                 WHERE assistant_type = 'claude' AND source_kind = 'claude-default'
+                   AND session_id = 'renamed'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap()
+        };
+        assert_eq!(title_and_tokens(&conn), ("First".to_string(), 3, 1));
+
+        let first_modified = fs::metadata(&session_path).unwrap().modified().unwrap();
+        let updated = initial.replace("\"First\"", "\"Final\"");
+        assert_eq!(initial.len(), updated.len());
+        fs::write(&session_path, updated).unwrap();
+        File::options()
+            .write(true)
+            .open(&session_path)
+            .unwrap()
+            .set_times(
+                fs::FileTimes::new()
+                    .set_modified(first_modified + std::time::Duration::from_secs(2)),
+            )
+            .unwrap();
+        sync_claude_usage_logs(&mut conn).unwrap();
+        assert_eq!(title_and_tokens(&conn), ("Final".to_string(), 3, 1));
+
+        fs::remove_file(&session_path).unwrap();
+        sync_claude_usage_logs(&mut conn).unwrap();
+        assert_eq!(title_and_tokens(&conn), ("Final".to_string(), 3, 1));
 
         if let Some(value) = old_claude_dir {
             std::env::set_var("CLAUDE_DIR", value);

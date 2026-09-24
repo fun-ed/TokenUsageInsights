@@ -26,12 +26,10 @@ const BINARY_NAME = 'token-usage-insights';
 const GITHUB_OWNER = 'fun-ed';
 const GITHUB_REPO = 'TokenUsageInsights';
 const INSTALL_DIR = join(__dirname, `${BINARY_NAME}-bin`);
-const EXECUTABLE_NAME = process.platform === 'win32' ? `${BINARY_NAME}.exe` : BINARY_NAME;
 const TARGETS = Object.freeze({
   'darwin-arm64': 'aarch64-apple-darwin',
   'darwin-x64': 'x86_64-apple-darwin',
   'linux-x64': 'x86_64-unknown-linux-gnu',
-  'win32-x64': 'x86_64-pc-windows-msvc',
 });
 
 function platformKey(platform = process.platform, arch = process.arch) {
@@ -43,7 +41,7 @@ function cargoTarget(platform = process.platform, arch = process.arch) {
   if (!target) {
     throw new Error(
       `不支援的平台：${platform}/${arch}。` +
-        '目前支援 Windows x64、Linux x64、Intel Mac 與 Apple Silicon Mac。',
+        '目前支援 Linux x64、Intel Mac 與 Apple Silicon Mac。',
     );
   }
   return target;
@@ -54,8 +52,7 @@ function packageVersion() {
 }
 
 function artifactName(target, version = packageVersion()) {
-  const extension = target.includes('windows') ? 'zip' : 'tar.gz';
-  return `${BINARY_NAME}-v${version}-${target}.${extension}`;
+  return `${BINARY_NAME}-v${version}-${target}.tar.gz`;
 }
 
 function releaseBaseUrl(version = packageVersion()) {
@@ -110,77 +107,30 @@ function run(command, args, options = {}) {
   if (result.status !== 0) throw new Error(`命令執行失敗：${command}`);
 }
 
-// 以 .NET ZipFile API 解壓，不依賴 Microsoft.PowerShell.Archive 模組：
-// 從 pwsh 7 啟動 npx 時，powershell.exe 會繼承 PowerShell 7 的 PSModulePath，
-// 導致 Expand-Archive 因 PSEdition 檢查而無法自動載入。
-const WINDOWS_ZIP_SCRIPT = [
-  "$ErrorActionPreference = 'Stop'",
-  'Add-Type -AssemblyName System.IO.Compression.FileSystem',
-  '$root = [System.IO.Path]::GetFullPath($env:TUI_DESTINATION)',
-  "if (-not $root.EndsWith([System.IO.Path]::DirectorySeparatorChar)) { $root += [System.IO.Path]::DirectorySeparatorChar }",
-  '$zip = [System.IO.Compression.ZipFile]::OpenRead($env:TUI_ARCHIVE)',
-  'try {',
-  '  foreach ($entry in $zip.Entries) {',
-  '    $target = [System.IO.Path]::GetFullPath([System.IO.Path]::Combine($root, $entry.FullName))',
-  '    if (-not $target.StartsWith($root, [System.StringComparison]::OrdinalIgnoreCase)) { throw "壓縮包含不安全路徑：$($entry.FullName)" }',
-  "    if ($entry.FullName.EndsWith('/') -or $entry.FullName.EndsWith('\\')) {",
-  '      [System.IO.Directory]::CreateDirectory($target) | Out-Null',
-  '      continue',
-  '    }',
-  '    [System.IO.Directory]::CreateDirectory([System.IO.Path]::GetDirectoryName($target)) | Out-Null',
-  '    [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $target, $true)',
-  '  }',
-  '} finally {',
-  '  $zip.Dispose()',
-  '}',
-].join('\n');
-
-function windowsPowerShellEnvironment(archive, destination, baseEnvironment = process.env) {
-  const env = { ...baseEnvironment, TUI_ARCHIVE: archive, TUI_DESTINATION: destination };
-  // 移除從 pwsh 7 繼承的 PSModulePath，讓 Windows PowerShell 5.1 使用自身預設模組路徑。
-  for (const key of Object.keys(env)) {
-    if (key.toLowerCase() === 'psmodulepath') delete env[key];
-  }
-  return env;
-}
-
-function extractWindowsZip(archive, destination) {
-  // Windows 10 1803 以後內建 bsdtar（tar.exe），可直接解壓 zip。
-  const tar = spawnSync('tar', ['-xf', archive, '-C', destination], { stdio: 'inherit' });
-  if (!tar.error && tar.status === 0) return;
-  run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', WINDOWS_ZIP_SCRIPT], {
-    env: windowsPowerShellEnvironment(archive, destination),
-  });
-}
-
 function extract(archive, destination) {
   mkdirSync(destination, { recursive: true });
-  if (archive.endsWith('.zip') && process.platform === 'win32') {
-    extractWindowsZip(archive, destination);
-    return;
-  }
-  run('tar', [archive.endsWith('.tar.gz') ? '-xzf' : '-xf', archive, '-C', destination]);
+  run('tar', ['-xzf', archive, '-C', destination]);
 }
 
-function isReleaseRoot(directory, executableName = EXECUTABLE_NAME) {
+function isReleaseRoot(directory) {
   return (
-    existsSync(join(directory, executableName)) &&
+    existsSync(join(directory, BINARY_NAME)) &&
     existsSync(join(directory, 'static')) &&
     existsSync(join(directory, 'pricing.csv'))
   );
 }
 
-function findReleaseRoot(directory, executableName = EXECUTABLE_NAME) {
-  if (isReleaseRoot(directory, executableName)) return directory;
+function findReleaseRoot(directory) {
+  if (isReleaseRoot(directory)) return directory;
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
     const candidate = join(directory, entry.name);
-    if (isReleaseRoot(candidate, executableName)) return candidate;
+    if (isReleaseRoot(candidate)) return candidate;
   }
   throw new Error('GitHub Release 壓縮包缺少執行檔、static 或 pricing.csv');
 }
 
-function copyReleaseContents(source, destination, executableName = EXECUTABLE_NAME) {
+function copyReleaseContents(source, destination) {
   rmSync(destination, { recursive: true, force: true });
   mkdirSync(destination, { recursive: true });
   for (const entry of readdirSync(source, { withFileTypes: true })) {
@@ -189,17 +139,17 @@ function copyReleaseContents(source, destination, executableName = EXECUTABLE_NA
       force: true,
     });
   }
-  chmodSync(join(destination, executableName), 0o755);
+  chmodSync(join(destination, BINARY_NAME), 0o755);
 }
 
 function installFromLocalBuild() {
-  const localBinary = join(PACKAGE_ROOT, 'target', 'release', EXECUTABLE_NAME);
+  const localBinary = join(PACKAGE_ROOT, 'target', 'release', BINARY_NAME);
   if (!existsSync(localBinary)) return false;
 
   rmSync(INSTALL_DIR, { recursive: true, force: true });
   mkdirSync(INSTALL_DIR, { recursive: true });
-  copyFileSync(localBinary, join(INSTALL_DIR, EXECUTABLE_NAME));
-  chmodSync(join(INSTALL_DIR, EXECUTABLE_NAME), 0o755);
+  copyFileSync(localBinary, join(INSTALL_DIR, BINARY_NAME));
+  chmodSync(join(INSTALL_DIR, BINARY_NAME), 0o755);
   for (const item of ['static', 'shell', 'scripts', 'pricing.csv', 'README.md', 'LICENSE']) {
     const source = join(PACKAGE_ROOT, item);
     if (existsSync(source)) {
@@ -252,7 +202,6 @@ if (require.main === module) {
 
 module.exports = {
   TARGETS,
-  WINDOWS_ZIP_SCRIPT,
   artifactName,
   cargoTarget,
   checksumForArtifact,
@@ -264,5 +213,4 @@ module.exports = {
   releaseBaseUrl,
   sha256,
   verifyChecksum,
-  windowsPowerShellEnvironment,
 };

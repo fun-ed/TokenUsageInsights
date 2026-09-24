@@ -22,7 +22,7 @@ TokenUsageInsights is a local-first Rust application that imports token-usage da
 - `static/` — dashboard: plain ES modules, HTML, CSS, i18n, and assistant assets. `app.js` is the main frontend entry.
 - `tests/` — Node built-in-test suites for package installer and frontend utilities; Rust tests are colocated under `#[cfg(test)]` in `src/`.
 - `npm/` — thin npx wrapper, release downloader/checksum validation, and prepublish guard; it does **not** build Rust.
-- `scripts/` — cross-platform download/install/service/build/smoke-test scripts. Treat `install.*` and `run-service.ps1` as service-lifecycle-sensitive.
+- `scripts/` — Linux/macOS download, install, service, build, and smoke-test scripts. Treat `install.sh` and service lifecycle scripts as sensitive.
 - `shell/` — status-line collectors and the source-build systemd template. Do not change the collectors' protected input parsing, JSONL writes, or state-update logic without preserving synchronization behavior.
 - `public/` — independently deployed GitHub Pages landing site; `docs/npm-publishing.md` is the npm release runbook.
 
@@ -85,5 +85,5 @@ make all                         # fmt, check, test, release build
 ## Delivery and Release Guardrails
 - After editing and verification, create a detailed Traditional Chinese (zh-TW) Conventional Commit. Include the user impact, file-by-file changes, and commands/results; do not leave completed work uncommitted unless explicitly told otherwise.
 - PRs must state user-visible and schema/environment impacts, list verification, and include screenshots for dashboard changes.
-- **Fork versioning and upstream sync:** This fork reserves the `v10.x.y` release-tag namespace. Keep Cargo/npm package versions as `10.x.y` (without the tag prefix), use a matching `v10.x.y` tag only for releases, and never reuse upstream `v1.x.y` tags. Treat `https://github.com/doggy8088/TokenUsageInsights` as an upstream source: fetch and review its diff first, then merge compatible changes or selectively port optional features in separate commits. Preserve this fork's versioning, local-first behavior, and fork-specific features when resolving conflicts.
+- **Fork versioning and upstream sync:** This fork reserves the `v10.x.y` release-tag namespace. Keep Cargo/npm package versions as `10.x.y` (without the tag prefix), use a matching `v10.x.y` tag only for releases, and never reuse upstream `v1.x.y` tags. Review `https://github.com/doggy8088/TokenUsageInsights` remotely before integrating changes; selectively port only Linux/macOS-compatible code, never merge Windows-only changes or pull Windows files into this fork. Preserve local-first behavior and fork-specific features.
 - For manual releases, synchronize `CHANGELOG.md`, Cargo/npm versions and lockfiles, README version examples, and release assets. Build and verify assets locally, upload them to a non-draft public GitHub Release with `SHA256SUMS`, and add real zh-TW release notes with the compare link. npm publishing is manual when needed.

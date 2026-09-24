@@ -334,7 +334,7 @@
       </div>
       <footer class="sidebar-version">
         <span class="sr-only">應用程式版本</span>
-        <span id="app-version">v—</span> <time datetime="2026-09-14">(2026/9/14)</time>
+        <span id="app-version">v—</span> <time id="app-date"></time>
       </footer>
     </aside>
 
@@ -538,10 +538,13 @@
             </div>
           </div>
           <div class="table-wrapper">
-            <table class="premium-table">
+            <table class="premium-table sessions-table">
               <thead>
                 <tr>
-                  <th class="sortable" data-sort="session_name"><span data-i18n="col_session">會話</span> <span class="sort-icon"></span></th>
+                  <th class="sortable session-name-header" data-sort="session_name">
+                    <span data-i18n="col_session">會話</span> <span class="sort-icon"></span>
+                    <span id="session-column-resizer" class="session-column-resizer" role="separator" data-i18n-title="session_column_resize" aria-label="拖曳或使用方向鍵調整會話欄寬" title="拖曳或使用方向鍵調整會話欄寬" aria-orientation="vertical" aria-valuemin="220" aria-valuemax="720" aria-valuenow="320" tabindex="0"></span>
+                  </th>
                   <th class="sortable" data-sort="assistant_type" id="col-assistant-header"><span data-i18n="col_assistant">Agent</span> <span class="sort-icon"></span></th>
                   <th class="sortable model-column" data-sort="model"><span data-i18n="col_model">Model</span> <span class="sort-icon"></span></th>
                   <th class="sortable" data-sort="max_turn_no"><span data-i18n="col_turns">Turn 數</span> <span class="sort-icon"></span></th>
@@ -976,7 +979,7 @@
         <!-- 步驟 1：複製專案到本地 -->
         <div class="modal-section">
           <h3 id="setup-step-clone" data-i18n="setup_step_clone"><span>01</span> 1. 複製專案到本地</h3>
-          <p class="modal-text" id="setup-step-clone-desc" data-i18n="setup_step_clone_desc">請在終端機中依序執行以下兩行指令；此寫法同時相容於 Bash、zsh 與 Windows PowerShell：</p>
+          <p class="modal-text" id="setup-step-clone-desc" data-i18n="setup_step_clone_desc">請在終端機中依序執行以下兩行 Bash 或 zsh 指令：</p>
           <div class="code-block-container">
             <button class="copy-code-btn" data-i18n="btn_copy_cmd" title="複製指令">複製指令</button>
             <pre><code>git clone https://github.com/fun-ed/TokenUsageInsights.git

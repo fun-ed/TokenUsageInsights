@@ -758,6 +758,40 @@ input {
   min-width: 940px;
 }
 
+.sessions-table .session-name-header,
+.sessions-table .session-name-cell {
+  width: var(--session-column-width, 320px);
+  min-width: var(--session-column-width, 320px);
+  max-width: var(--session-column-width, 320px);
+}
+
+.sessions-table .session-name-wrapper {
+  max-width: none;
+}
+
+.session-column-resizer {
+  position: absolute;
+  inset: 0 -5px 0 auto;
+  width: 12px;
+  cursor: col-resize;
+  touch-action: none;
+  z-index: 1;
+}
+
+.session-column-resizer::after {
+  content: "";
+  position: absolute;
+  inset: 20% auto 20% 5px;
+  width: 2px;
+  background: var(--accent-cyan);
+  opacity: 0.35;
+}
+
+.session-column-resizer:hover::after,
+.session-column-resizer:focus-visible::after {
+  opacity: 1;
+}
+
 /* 月/年報表堆疊後雖為全寬，仍不得沿用 940px 最小寬度，
    維持卡片可收縮、必要時交給 table-wrapper 內部捲動。 */
 .monthly-breakdown-grid .premium-table {

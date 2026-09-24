@@ -23,29 +23,28 @@ TokenUsageInsights is a local-first Rust/Axum dashboard with plain ES-module fro
 
 ## Fork release and upstream policy
 
-This fork owns the `v10.x.y` tag namespace. The current release is `v10.0.6`.
+This fork owns the `v10.x.y` tag namespace. The current release is `v10.0.7`.
 
 - Cargo and npm package metadata use `10.x.y`; release tags use matching `v10.x.y`.
 - Never reuse upstream `v1.x.y` release tags.
-- Use `https://github.com/doggy8088/TokenUsageInsights` as an upstream source. Fetch and review its diff before integrating it.
-- Merge compatible upstream fixes only after validation. Port optional upstream features as separate, reviewable commits.
-- Upstream sync is Unix-only for this fork: exclude Windows-only scripts, tests, workflows, installer paths, release assets, documentation, and platform-specific code when reviewing or porting upstream changes. If a change mixes platforms, extract only the Linux/macOS portion.
+- Use `https://github.com/doggy8088/TokenUsageInsights` as an upstream source. Inspect its remote commit/diff metadata without fetching the full tree; selectively port validated Linux/macOS fixes and optional features as separate, reviewable commits.
+- Upstream sync is Unix-only for this fork: exclude Windows-only scripts, tests, workflows, installer paths, release assets, documentation, and platform-specific code. If a change mixes platforms, extract only the Linux/macOS portion; never merge upstream wholesale.
 - Resolve conflicts in favor of this fork's local-first behavior, `v10.x.y` namespace, and fork-specific features such as multi-profile Claude discovery and the all-harness overview.
 
 ## Manual releases
 
 GitHub Actions workflows are intentionally absent. Build, verify, and upload release assets manually.
 
-### macOS Apple Silicon DMG
+### macOS Apple Silicon and Intel assets
 
 1. Confirm `main` is clean, the Cargo/npm versions match, and `vX.Y.Z` does not exist on `origin`.
-2. Run `TMPDIR=/private/tmp cargo fmt --check`, `cargo test --locked`, `RUSTFLAGS='-D warnings' cargo build --release --locked --all-targets`, `cargo clippy --all-targets --all-features --locked -- -D warnings`, `npm test`, and `git diff --check`.
-3. Stage `target/release/token-usage-insights`, `static/`, `shell/`, `scripts/`, `pricing.csv`, `README.md`, `LICENSE`, and a `VERSION` file in `token-usage-insights-vX.Y.Z-aarch64-apple-darwin/`. Mark the binary, `scripts/install.sh`, `scripts/get.sh`, and shell collectors executable.
-4. Create `token-usage-insights-vX.Y.Z-aarch64-apple-darwin.dmg` with `hdiutil create -format UDZO`, then write `SHA256SUMS` with `shasum -a 256`.
-5. Run the staged `scripts/install.sh` with isolated install and data directories. Start the installed executable and verify `/api/antigravity/pricing` plus SQLite creation.
-6. Create and push the annotated `vX.Y.Z` tag, create the public GitHub Release with zh-TW notes and a valid compare link, upload the DMG and `SHA256SUMS`, then download the uploaded checksum and verify it.
+2. Run `TMPDIR=/private/tmp cargo fmt --check`, `cargo test --locked`, `cargo clippy --all-targets --all-features --locked -- -D warnings`, `npm test`, and `git diff --check`. Build `aarch64-apple-darwin` and `x86_64-apple-darwin` with `RUSTFLAGS='-D warnings' cargo build --release --locked --target TARGET --bin token-usage-insights`.
+3. For each target, stage its `target/TARGET/release/token-usage-insights`, `static/`, `shell/`, `scripts/`, `pricing.csv`, `README.md`, `LICENSE`, and a `VERSION` file in `token-usage-insights-vX.Y.Z-TARGET/`. Mark the binary, `scripts/install.sh`, `scripts/get.sh`, and shell collectors executable.
+4. Create a target-specific `.tar.gz` containing the staged folder and a `.dmg` with `hdiutil create -format UDZO`; write a shared `SHA256SUMS` using `shasum -a 256` for every uploaded asset.
+5. Check each binary's architecture and run the staged `scripts/install.sh` with isolated install/data directories. Start the installed executable and verify `/api/antigravity/pricing` plus SQLite creation. Validate the matching `scripts/get.sh` archive path before documenting a one-line install.
+6. Create and push the annotated `vX.Y.Z` tag, create the public GitHub Release with zh-TW notes and a valid compare link, upload both targets' archives/DMGs and `SHA256SUMS`, then download the uploaded checksums and verify the assets.
 
-`npx` and `scripts/get.sh` download target-specific `.tar.gz` files, not DMGs. Publish matching tarballs with `SHA256SUMS` before claiming those installer paths work.
+`npx` and `scripts/get.sh` download target-specific `.tar.gz` files, not DMGs. Publish matching tarballs before claiming those installer paths work.
 
 ## Fork-specific product behavior
 

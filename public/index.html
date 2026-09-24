@@ -52,7 +52,7 @@
         "description": "本機優先的 AI Coding Agent Token 使用量與會話還原看板。",
         "url": "https://token.gh.miniasp.com/",
         "applicationCategory": "DeveloperApplication",
-        "operatingSystem": "Windows 10, Windows 11, macOS, Linux, WSL",
+        "operatingSystem": "macOS, Linux",
         "inLanguage": "zh-Hant-TW",
         "codeRepository": "https://github.com/fun-ed/TokenUsageInsights",
         "downloadUrl": "https://github.com/fun-ed/TokenUsageInsights/releases/latest",
@@ -328,18 +328,6 @@
               >
                 Linux / macOS
               </button>
-              <button
-                class="install-tab"
-                type="button"
-                role="tab"
-                id="tab-windows"
-                aria-selected="false"
-                aria-controls="panel-windows"
-                tabindex="-1"
-                data-command-tab="windows"
-              >
-                Windows PowerShell
-              </button>
             </div>
 
             <div class="command-panel" id="panel-npx" role="tabpanel" aria-labelledby="tab-npx" data-command-panel="npx">
@@ -350,17 +338,6 @@
               <code data-command>curl -fsSL https://raw.githubusercontent.com/fun-ed/TokenUsageInsights/main/scripts/get.sh | bash &amp;&amp; "$HOME/.local/bin/token-usage-insights"</code>
               <button class="copy-button" type="button" data-copy-command="unix" data-i18n="copy_command">複製指令</button>
             </div>
-            <div
-              class="command-panel"
-              id="panel-windows"
-              role="tabpanel"
-              aria-labelledby="tab-windows"
-              data-command-panel="windows"
-              hidden
-            >
-              <code data-command>irm https://raw.githubusercontent.com/fun-ed/TokenUsageInsights/main/scripts/get.ps1 | iex; &amp; "$HOME\bin\token-usage-insights.cmd"</code>
-              <button class="copy-button" type="button" data-copy-command="windows" data-i18n="copy_command">複製指令</button>
-            </div>
             <p class="copy-status" role="status" aria-live="polite"></p>
           </div>
 
@@ -370,7 +347,7 @@
           </div>
 
           <div class="platform-row" data-reveal>
-            <strong data-i18n="platform_support">Windows 10/11、macOS、Linux 與 WSL</strong>
+            <strong data-i18n="platform_support">macOS、Linux</strong>
             <span data-i18n="license">MIT License · Open source</span>
           </div>
         </div>

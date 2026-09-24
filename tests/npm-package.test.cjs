@@ -1,14 +1,12 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const { spawnSync } = require('node:child_process');
-const { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } = require('node:fs');
+const { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } = require('node:fs');
 const { tmpdir } = require('node:os');
 const { join } = require('node:path');
 const test = require('node:test');
 
 const {
-  WINDOWS_ZIP_SCRIPT,
   artifactName,
   cargoTarget,
   checksumForArtifact,
@@ -17,7 +15,6 @@ const {
   releaseBaseUrl,
   sha256,
   verifyChecksum,
-  windowsPowerShellEnvironment,
 } = require('../npm/install.cjs');
 const {
   assertVersionAlignment,
@@ -25,11 +22,10 @@ const {
   verifyReleaseAssets,
 } = require('../npm/prepublish-check.cjs');
 
-test('maps every supported Node platform to the release Rust target', () => {
+test('maps each supported Unix Node platform to the release Rust target', () => {
   assert.equal(cargoTarget('darwin', 'arm64'), 'aarch64-apple-darwin');
   assert.equal(cargoTarget('darwin', 'x64'), 'x86_64-apple-darwin');
   assert.equal(cargoTarget('linux', 'x64'), 'x86_64-unknown-linux-gnu');
-  assert.equal(cargoTarget('win32', 'x64'), 'x86_64-pc-windows-msvc');
   assert.throws(() => cargoTarget('linux', 'arm'), /不支援的平台/);
 });
 
@@ -39,15 +35,16 @@ test('uses the existing GitHub Release artifact contract', () => {
     'token-usage-insights-v1.2.3-x86_64-unknown-linux-gnu.tar.gz',
   );
   assert.equal(
-    artifactName('x86_64-pc-windows-msvc', '1.2.3'),
-    'token-usage-insights-v1.2.3-x86_64-pc-windows-msvc.zip',
+    artifactName('aarch64-apple-darwin', '1.2.3'),
+    'token-usage-insights-v1.2.3-aarch64-apple-darwin.tar.gz',
   );
   assert.equal(
     releaseBaseUrl('1.2.3'),
     'https://github.com/fun-ed/TokenUsageInsights/releases/download/v1.2.3',
   );
   const urls = expectedReleaseUrls('1.2.3');
-  assert.equal(urls.length, 5);
+  assert.equal(urls.length, 4);
+  assert.ok(urls.every((url) => url.endsWith('.tar.gz') || url.endsWith('/SHA256SUMS')));
   assert.ok(urls.at(-1).endsWith('/SHA256SUMS'));
 });
 
@@ -57,12 +54,12 @@ test('selects the named checksum and rejects missing or altered archives', () =>
     const archive = join(directory, 'sample.tar.gz');
     writeFileSync(archive, 'verified payload');
     const digest = sha256(archive);
-    const sums = `${'0'.repeat(64)}  other.zip\n${digest}  ./sample.tar.gz\n`;
+    const sums = `${'0'.repeat(64)}  other.tar.gz\n${digest}  ./sample.tar.gz\n`;
     assert.equal(checksumForArtifact(sums, 'sample.tar.gz'), digest);
     verifyChecksum(archive, sums);
     writeFileSync(archive, 'modified payload');
     assert.throws(() => verifyChecksum(archive, sums), /校驗失敗/);
-    assert.throws(() => checksumForArtifact(sums, 'missing.zip'), /找不到/);
+    assert.throws(() => checksumForArtifact(sums, 'missing.tar.gz'), /找不到/);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
@@ -80,9 +77,9 @@ test('finds and copies the complete dashboard release payload', () => {
     writeFileSync(join(release, 'static', 'index.html'), '<main></main>');
     writeFileSync(join(release, 'shell', 'statusline-token.sh'), '#!/bin/sh');
 
-    const root = findReleaseRoot(join(directory, 'archive'), 'token-usage-insights');
+    const root = findReleaseRoot(join(directory, 'archive'));
     assert.equal(root, release);
-    copyReleaseContents(root, destination, 'token-usage-insights');
+    copyReleaseContents(root, destination);
     assert.equal(readFileSync(join(destination, 'token-usage-insights'), 'utf8'), 'binary');
     assert.equal(readFileSync(join(destination, 'static', 'index.html'), 'utf8'), '<main></main>');
     assert.ok(readFileSync(join(destination, 'shell', 'statusline-token.sh'), 'utf8'));
@@ -118,9 +115,13 @@ test('keeps the release label visible at the bottom of the sidebar', () => {
   const appSource = readFileSync(join(__dirname, '..', 'static', 'app.js'), 'utf8');
   const redesignCss = readFileSync(join(__dirname, '..', 'static', 'css', 'redesign.css'), 'utf8');
   assert.match(indexHtml, /<span id="app-version">v—<\/span>/);
+  assert.match(indexHtml, /<time id="app-date"><\/time>/);
+  assert.doesNotMatch(indexHtml, /<time[^>]*datetime="20\d{2}-\d{2}-\d{2}"/);
   assert.doesNotMatch(indexHtml, /v1\.0\.0/);
   assert.match(appSource, /fetch\('\/api\/version', \{ cache: 'no-store' \}\)/);
   assert.match(appSource, /versionElement\.textContent = `v\$\{version\}`/);
+  assert.match(appSource, /updateAppDate\(\);/);
+  assert.match(appSource, /setInterval\(updateAppDate, 60_000\)/);
 
   const scrollAreaRule = redesignCss.match(/\.sidebar-scroll-area\s*\{([^}]*)\}/s);
   assert.ok(scrollAreaRule, 'sidebar content needs an independent scroll area');
@@ -140,83 +141,5 @@ test('release asset verification reports all failed URLs', async () => {
     retries: 1,
   }).catch((reason) => reason);
   assert.match(error.message, /v1\.2\.3/);
-  assert.equal((error.message.match(/HTTP 404/g) ?? []).length, 5);
-});
-
-test('strips inherited PSModulePath so Windows PowerShell 5.1 uses its own modules', () => {
-  const env = windowsPowerShellEnvironment('C:\\a.zip', 'C:\\out', {
-    PATH: 'x',
-    PSModulePath: 'C:\\Program Files\\PowerShell\\7\\Modules',
-    PsModulePath: 'mixed-case',
-  });
-  assert.equal(env.PATH, 'x');
-  assert.equal(env.TUI_ARCHIVE, 'C:\\a.zip');
-  assert.equal(env.TUI_DESTINATION, 'C:\\out');
-  assert.ok(!Object.keys(env).some((key) => key.toLowerCase() === 'psmodulepath'));
-});
-
-test('Windows zip fallback script does not rely on Microsoft.PowerShell.Archive', () => {
-  assert.doesNotMatch(WINDOWS_ZIP_SCRIPT, /Expand-Archive|Import-Module/);
-  assert.match(WINDOWS_ZIP_SCRIPT, /System\.IO\.Compression\.ZipFile/);
-});
-
-const pwsh = spawnSync('pwsh', ['-NoProfile', '-NonInteractive', '-Command', '$PSVersionTable.PSVersion.Major'], {
-  encoding: 'utf8',
-});
-const hasPwsh = !pwsh.error && pwsh.status === 0;
-
-test('Windows zip fallback script extracts archives and rejects unsafe entries', { skip: !hasPwsh && 'pwsh not installed' }, () => {
-  const directory = mkdtempSync(join(tmpdir(), 'tui-zip-'));
-  try {
-    const source = join(directory, 'src', 'token-usage-insights-v1.2.3-x86_64-pc-windows-msvc');
-    mkdirSync(join(source, 'static'), { recursive: true });
-    writeFileSync(join(source, 'token-usage-insights.exe'), 'bin');
-    writeFileSync(join(source, 'static', 'app.css'), 'css');
-    writeFileSync(join(source, 'pricing.csv'), 'pricing');
-    const archive = join(directory, 'release.zip');
-    const zip = spawnSync(
-      'pwsh',
-      ['-NoProfile', '-NonInteractive', '-Command', 'Compress-Archive -Path $env:SRC -DestinationPath $env:ZIP'],
-      { env: { ...process.env, SRC: join(directory, 'src', '*'), ZIP: archive }, encoding: 'utf8' },
-    );
-    assert.equal(zip.status, 0, zip.stderr);
-
-    const destination = join(directory, 'out');
-    mkdirSync(destination);
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      const result = spawnSync('pwsh', ['-NoProfile', '-NonInteractive', '-Command', WINDOWS_ZIP_SCRIPT], {
-        env: windowsPowerShellEnvironment(archive, destination),
-        encoding: 'utf8',
-      });
-      assert.equal(result.status, 0, result.stderr);
-    }
-    const root = findReleaseRoot(destination, 'token-usage-insights.exe');
-    assert.equal(readFileSync(join(root, 'static', 'app.css'), 'utf8'), 'css');
-
-    const unsafe = join(directory, 'unsafe.zip');
-    const forge = spawnSync(
-      'pwsh',
-      [
-        '-NoProfile',
-        '-NonInteractive',
-        '-Command',
-        [
-          'Add-Type -AssemblyName System.IO.Compression.FileSystem',
-          '$zip = [System.IO.Compression.ZipFile]::Open($env:ZIP, [System.IO.Compression.ZipArchiveMode]::Create)',
-          "$entry = $zip.CreateEntry('../escaped.txt')",
-          '$stream = $entry.Open(); $stream.WriteByte(65); $stream.Dispose(); $zip.Dispose()',
-        ].join('\n'),
-      ],
-      { env: { ...process.env, ZIP: unsafe }, encoding: 'utf8' },
-    );
-    assert.equal(forge.status, 0, forge.stderr);
-    const rejected = spawnSync('pwsh', ['-NoProfile', '-NonInteractive', '-Command', WINDOWS_ZIP_SCRIPT], {
-      env: windowsPowerShellEnvironment(unsafe, destination),
-      encoding: 'utf8',
-    });
-    assert.notEqual(rejected.status, 0);
-    assert.ok(!existsSync(join(directory, 'escaped.txt')));
-  } finally {
-    rmSync(directory, { recursive: true, force: true });
-  }
+  assert.equal((error.message.match(/HTTP 404/g) ?? []).length, expectedReleaseUrls('1.2.3').length);
 });

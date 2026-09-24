@@ -758,6 +758,18 @@ function updateLanguageUI() {
   updateCodexRateLimit();
 }
 
+function updateAppDate() {
+  const dateElement = document.getElementById('app-date');
+  if (!dateElement) return;
+
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+  const day = now.getDate();
+  dateElement.dateTime = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  dateElement.textContent = `(${year}/${month}/${day})`;
+}
+
 async function loadAppVersion() {
   const versionElement = document.getElementById('app-version');
   if (!versionElement) return;
@@ -782,6 +794,8 @@ async function loadAppVersion() {
 
 document.addEventListener('DOMContentLoaded', () => {
   void loadAppVersion();
+  updateAppDate();
+  setInterval(updateAppDate, 60_000);
   initApp();
 });
 
@@ -1478,6 +1492,7 @@ function initApp() {
 
   // 初始化表格欄位排序
   initTableSorting();
+  initSessionColumnResize();
 
   // 初始化單日圖表類型與 K 線時間刻度
   initDailyChartControls();
@@ -3719,6 +3734,55 @@ function renderSessionTrendChart(sessions) {
 // =========================================================================
 // 會話列表排序邏輯與事件監聽
 // =========================================================================
+function initSessionColumnResize() {
+  const table = document.querySelector('.sessions-table');
+  const header = table?.querySelector('.session-name-header');
+  const handle = document.getElementById('session-column-resizer');
+  if (!table || !header || !handle) return;
+
+  const minWidth = 220;
+  const maxWidth = 720;
+  const storageKey = 'session-column-width';
+  const setWidth = (width, persist = false) => {
+    const value = Math.max(minWidth, Math.min(maxWidth, Math.round(width)));
+    table.style.setProperty('--session-column-width', `${value}px`);
+    handle.setAttribute('aria-valuenow', String(value));
+    if (persist) localStorage.setItem(storageKey, String(value));
+  };
+  const savedWidth = Number(localStorage.getItem(storageKey));
+  if (savedWidth >= minWidth && savedWidth <= maxWidth) setWidth(savedWidth);
+
+  let startX = 0;
+  let startWidth = 0;
+  handle.addEventListener('pointerdown', event => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    startX = event.clientX;
+    startWidth = header.getBoundingClientRect().width;
+    handle.setPointerCapture(event.pointerId);
+  });
+  handle.addEventListener('pointermove', event => {
+    if (handle.hasPointerCapture(event.pointerId)) {
+      setWidth(startWidth + event.clientX - startX);
+    }
+  });
+  handle.addEventListener('pointerup', event => {
+    if (handle.hasPointerCapture(event.pointerId)) {
+      handle.releasePointerCapture(event.pointerId);
+      localStorage.setItem(storageKey, handle.getAttribute('aria-valuenow'));
+    }
+  });
+  handle.addEventListener('click', event => event.stopPropagation());
+  handle.addEventListener('keydown', event => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    event.preventDefault();
+    event.stopPropagation();
+    const step = event.key === 'ArrowRight' ? 32 : -32;
+    setWidth(Number(handle.getAttribute('aria-valuenow')) + step, true);
+  });
+}
+
 function initTableSorting() {
   const headers = document.querySelectorAll('.premium-table th.sortable');
   headers.forEach(th => {
@@ -6657,8 +6721,6 @@ async function loadSetupInfo(assistant = currentAssistant) {
     if (currentAssistant !== resolvedAssistant) return;
     currentSessionHomeDir = typeof data.home_dir === 'string' ? data.home_dir : currentSessionHomeDir;
     
-    const isWindows = data.platform === 'windows';
-    const quotePowerShell = value => `'${String(value).replace(/'/g, "''")}'`;
     const quoteShell = value => `'${String(value).replace(/'/g, `'"'"'`)}'`;
 
     setSetupModalTitle(resolvedAssistant);
@@ -6668,14 +6730,11 @@ async function loadSetupInfo(assistant = currentAssistant) {
       const targetScriptPath = assistantSetup.script_path || '';
       const sourceScriptPath = assistantSetup.source_script_path || '';
       const settingsPath = assistantSetup.settings_path || '';
-      const targetScriptCommand = isWindows
-        ? `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${targetScriptPath}" -Assistant ${resolvedAssistant}`
-        : targetScriptPath;
 
       const settingsJson = JSON.stringify({
         "statusLine": {
           "type": "command",
-          "command": targetScriptCommand,
+          "command": targetScriptPath,
           "padding": 1
         }
       }, null, 2);
@@ -6687,7 +6746,7 @@ async function loadSetupInfo(assistant = currentAssistant) {
         },
         "statusLine": {
           "type": "command",
-          "command": targetScriptCommand,
+          "command": targetScriptPath,
           "padding": 1
         }
       }, null, 2);
@@ -6752,25 +6811,17 @@ async function loadSetupInfo(assistant = currentAssistant) {
 
       const editCmdEl = document.getElementById('code-edit-settings');
       if (editCmdEl) {
-        editCmdEl.textContent = isWindows
-          ? `notepad ${quotePowerShell(settingsPath)}`
-          : `vi ${quoteShell(settingsPath)}`;
+        editCmdEl.textContent = `vi ${quoteShell(settingsPath)}`;
       }
 
       if (setupCmdEl) {
-        setupCmdEl.textContent = isWindows
-          ? `New-Item -ItemType Directory -Force -Path ${quotePowerShell(assistantSetup.dir_path)} | Out-Null; Copy-Item -LiteralPath ${quotePowerShell(sourceScriptPath)} -Destination ${quotePowerShell(targetScriptPath)} -Force`
-          : `mkdir -p ${quoteShell(assistantSetup.dir_path)} && cp ${quoteShell(sourceScriptPath)} ${quoteShell(targetScriptPath)} && chmod +x ${quoteShell(targetScriptPath)}`;
+        setupCmdEl.textContent = `mkdir -p ${quoteShell(assistantSetup.dir_path)} && cp ${quoteShell(sourceScriptPath)} ${quoteShell(targetScriptPath)} && chmod +x ${quoteShell(targetScriptPath)}`;
       }
       if (troubleshootAEl) {
-        troubleshootAEl.textContent = isWindows
-          ? `Write-Output '{}' | powershell.exe -NoProfile -ExecutionPolicy Bypass -File ${quotePowerShell(targetScriptPath)} -Assistant ${resolvedAssistant}`
-          : `echo '{}' | ${quoteShell(targetScriptPath)}`;
+        troubleshootAEl.textContent = `echo '{}' | ${quoteShell(targetScriptPath)}`;
       }
       if (troubleshootBEl) {
-        troubleshootBEl.textContent = isWindows
-          ? `Get-Content -Raw -LiteralPath ${quotePowerShell(settingsPath)} | ConvertFrom-Json | Out-Null`
-          : `jq . ${quoteShell(settingsPath)}`;
+        troubleshootBEl.textContent = `jq . ${quoteShell(settingsPath)}`;
       }
     } else if (resolvedAssistant === 'codex') {
       const homeLabelCodex = document.getElementById('lbl-detected-home-codex');

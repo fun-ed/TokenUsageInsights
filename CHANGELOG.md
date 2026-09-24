@@ -4,6 +4,22 @@
 
 ## [未發行]
 
+## [10.0.7] - 2026-09-24
+
+### 修正與改善
+
+- 看板側欄日期改用瀏覽器本地日期動態更新，不再顯示硬編碼的舊日期；版本仍由目前執行中的服務提供。
+- 修正 `scripts/get.sh` 的發行包安裝路徑，支援 `scripts/install.sh`；英文 README 補充從本 fork 下載及驗證 macOS CLI 的指令。
+- 安裝版優先載入執行檔旁的靜態資源，並讓 Unix 更新器驗證發行包內真正的 `scripts/install.sh`，避免在建置主機上誤用原始碼資料夾或拒絕合法壓縮包。
+- Claude Code 本地 JSONL 有新的檔案修改時間時，重新讀取已改名會話的 `custom-title` 並更新既有使用量列的名稱；本地檔案不存在時保留已匯入的歷史列。
+- 會話表格欄位預設加寬，支援滑鼠拖曳或方向鍵調整欄寬並儲存在瀏覽器；窄畫面仍在表格內水平捲動。
+- 移除 Windows 專用安裝、Collector、npm 下載與看板設定入口；大範圍 Rust 平台清理另行處理。
+
+### 發行資產
+
+- 從本機建置 Apple Silicon (`aarch64-apple-darwin`) 與 Intel (`x86_64-apple-darwin`) macOS 原始 CLI 二進位、完整 `.tar.gz` 安裝包及 DMG，隨資產附上 `SHA256SUMS`。未發行 Linux 二進位或 npm 套件。
+
+
 ## [10.0.6] - 2026-09-23
 
 ### 新增與改善
@@ -726,7 +742,9 @@
 - 修正行動版側邊欄遮擋、黑畫面、標題擠壓、圖表導覽索引與年度版面問題。
 - 修正並補齊多個 Gemini、Claude、GPT 與 GPT-OSS 模型的定價規則。
 
-[未發行]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.5...HEAD
+[未發行]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.7...HEAD
+[10.0.7]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.6...v10.0.7
+[10.0.6]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.5...v10.0.6
 [10.0.5]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.4...v10.0.5
 [10.0.4]: https://github.com/fun-ed/TokenUsageInsights/compare/v1.0.0...v10.0.4
 [1.0.0]: https://github.com/fun-ed/TokenUsageInsights/compare/v0.9.9...v1.0.0
