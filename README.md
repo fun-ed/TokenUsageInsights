@@ -8,7 +8,7 @@ English is the canonical README. Short translations are available in [繁體中�
 
 ## Install a precompiled CLI on macOS
 
-The [v10.0.8 release](https://github.com/fun-ed/TokenUsageInsights/releases/tag/v10.0.8) provides CLI packages for Apple Silicon (`aarch64-apple-darwin`) and Intel (`x86_64-apple-darwin`) Macs. No Rust toolchain is needed.
+The [v10.0.9 release](https://github.com/fun-ed/TokenUsageInsights/releases/tag/v10.0.9) provides CLI packages for Apple Silicon (`aarch64-apple-darwin`) and Intel (`x86_64-apple-darwin`) Macs. No Rust toolchain is needed.
 
 For a quick local install from this fork's latest release (not the upstream repository), run:
 
@@ -21,7 +21,7 @@ The installer selects the matching macOS CLI, copies the dashboard into `~/.loca
 To verify the checksum before installing, download the release package manually (set `target=x86_64-apple-darwin` on an Intel Mac):
 
 ```bash
-version=v10.0.8
+version=v10.0.9
 target=aarch64-apple-darwin
 archive="token-usage-insights-${version}-${target}.tar.gz"
 mkdir -p "$HOME/Downloads/token-usage-insights"
@@ -35,7 +35,7 @@ bash "token-usage-insights-${version}-${target}/scripts/install.sh"
 "$HOME/.local/bin/token-usage-insights"
 ```
 
-To invoke the CLI by name from zsh, add `export PATH="$HOME/.local/bin:$PATH"` to `~/.zshrc` and start a new terminal. Run the quick installer again to upgrade. Both architectures are also available as [Apple Silicon DMG](https://github.com/fun-ed/TokenUsageInsights/releases/download/v10.0.8/token-usage-insights-v10.0.8-aarch64-apple-darwin.dmg) and [Intel DMG](https://github.com/fun-ed/TokenUsageInsights/releases/download/v10.0.8/token-usage-insights-v10.0.8-x86_64-apple-darwin.dmg). For Linux, build from source unless a matching Linux asset is listed in the release.
+To invoke the CLI by name from zsh, add `export PATH="$HOME/.local/bin:$PATH"` to `~/.zshrc` and start a new terminal. Run the quick installer again to upgrade. Both architectures are also available as [Apple Silicon DMG](https://github.com/fun-ed/TokenUsageInsights/releases/download/v10.0.9/token-usage-insights-v10.0.9-aarch64-apple-darwin.dmg) and [Intel DMG](https://github.com/fun-ed/TokenUsageInsights/releases/download/v10.0.9/token-usage-insights-v10.0.9-x86_64-apple-darwin.dmg). For Linux, build from source unless a matching Linux asset is listed in the release.
 
 ## Import automatically in the background
 

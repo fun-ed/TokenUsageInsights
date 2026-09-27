@@ -4,6 +4,16 @@
 
 ## [未發行]
 
+## [10.0.9] - 2026-09-28
+
+### 修正
+
+- `scripts/install.sh --service` 在 macOS 升級既有 launchd agent 時，`bootout` 會在舊實例尚未卸載完成時就返回，緊接的 `bootstrap` 偶爾失敗並回報 `5: Input/output error`，導致服務停止。現在會等舊實例完全卸載（最多 60 秒），`bootstrap` 失敗時最多重試 5 次；仍失敗則以非零結束碼退出並提示手動指令。
+
+### 發行資產
+
+- 從本機建置 Apple Silicon (`aarch64-apple-darwin`) 與 Intel (`x86_64-apple-darwin`) macOS 原始 CLI 二進位、完整 `.tar.gz` 安裝包及 DMG，隨資產附上 `SHA256SUMS`。未發行 Linux 二進位或 npm 套件。
+
 ## [10.0.8] - 2026-09-28
 
 ### 平台與更新來源

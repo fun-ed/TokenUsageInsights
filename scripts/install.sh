@@ -361,8 +361,27 @@ PLIST
       plutil -lint "$launch_agent_file"
 
       # A previous instance may be loaded; bootout is intentionally harmless if it is not.
+      # bootout returns before launchd finishes unloading (the server waits for its sync
+      # to stop), and an immediate bootstrap then fails with "5: Input/output error".
       launchctl bootout "${launch_domain}/${launch_label}" >/dev/null 2>&1 || true
-      launchctl bootstrap "$launch_domain" "$launch_agent_file"
+      for _ in $(seq 1 60); do
+        launchctl print "${launch_domain}/${launch_label}" >/dev/null 2>&1 || break
+        sleep 1
+      done
+
+      bootstrapped=false
+      for attempt in 1 2 3 4 5; do
+        if launchctl bootstrap "$launch_domain" "$launch_agent_file"; then
+          bootstrapped=true
+          break
+        fi
+        echo "launchctl bootstrap failed (attempt ${attempt}/5); retrying..." >&2
+        sleep 2
+      done
+      if [[ "$bootstrapped" != true ]]; then
+        echo "Could not load the launchd agent. Retry with: launchctl bootstrap ${launch_domain} \"${launch_agent_file}\"" >&2
+        exit 1
+      fi
       ;;
     *)
       echo "--service is unsupported on $(uname -s). Supported platforms: Linux (systemd) and macOS (launchd)." >&2
