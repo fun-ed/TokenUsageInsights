@@ -2,6 +2,8 @@
 
 Token War Room is a local-first dashboard for AI coding-agent usage. It imports local usage records into SQLite and shows token counts, estimated costs, and session timelines.
 
+This repository is the `fun-ed` fork. Its behavior is defined by [docs/fork-spec.md](docs/fork-spec.md), not by the upstream project. It supports macOS and Linux only and has no CI/CD; releases are built and uploaded manually.
+
 English is the canonical README. Short translations are available in [繁體中文](README.zh-TW.md) and [简体中文](README.zh-CN.md).
 
 ## Install a precompiled CLI on macOS
@@ -35,6 +37,16 @@ bash "token-usage-insights-${version}-${target}/scripts/install.sh"
 
 To invoke the CLI by name from zsh, add `export PATH="$HOME/.local/bin:$PATH"` to `~/.zshrc` and start a new terminal. Run the quick installer again to upgrade. Both architectures are also available as [Apple Silicon DMG](https://github.com/fun-ed/TokenUsageInsights/releases/download/v10.0.7/token-usage-insights-v10.0.7-aarch64-apple-darwin.dmg) and [Intel DMG](https://github.com/fun-ed/TokenUsageInsights/releases/download/v10.0.7/token-usage-insights-v10.0.7-x86_64-apple-darwin.dmg). For Linux, build from source unless a matching Linux asset is listed in the release.
 
+## Import automatically in the background
+
+The dashboard imports new records while the server is running. To keep it running after login, install it as a user service from an extracted release package:
+
+```bash
+bash "token-usage-insights-${version}-${target}/scripts/install.sh" --service
+```
+
+On macOS this installs the launchd agent `com.tokenusageinsights`; on Linux it installs a systemd user service. The service listens on `0.0.0.0:3003` by default, which exposes the dashboard to your local network. Set `HOST=127.0.0.1` before the command to keep it local. Do not run `install.sh` from inside the install directory.
+
 ## Run from source
 
 ```bash
@@ -48,6 +60,14 @@ Open <http://localhost:3003>.
 ## What it reads
 
 The dashboard reads local data from Antigravity, Copilot, Codex, Claude Code, Cursor, Grok Build, Pi, OMP, Muse Code, and MiniMax Code. It supports macOS and Linux.
+
+### Claude Code profiles
+
+Claude Code usage is read from `~/.claude` and from every `~/.claude-profiles/<name>/` directory that contains `projects/`. New profiles are picked up on the next sync. The dashboard labels each session with its source: `Default` or the profile name, such as `work` or `p2`. Setting `CLAUDE_DIR` reads only that directory and skips profile discovery.
+
+Only transcripts that still exist can be imported. Claude Code deletes transcripts after 30 days by default, so set `"cleanupPeriodDays": 365` in each profile's `settings.json`.
+
+### Privacy and pricing
 
 It does not send usage logs to AI providers. Prices are estimates. When a source does not report a cost, the dashboard uses a matching local pricing rule. The server refreshes its models.dev price cache when available.
 

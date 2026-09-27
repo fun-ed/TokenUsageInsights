@@ -1,10 +1,11 @@
 # Repository Guidelines
 
 ## Project Overview
-TokenUsageInsights is a local-first Rust application that imports token-usage data from Antigravity, Copilot, Codex, Claude, Cursor, Grok, Pi, OMP, and Muse. It provides a CLI plus an Axum-served dashboard/API, normalizing source data into SQLite and calculating costs from `pricing.csv`.
+TokenUsageInsights is a local-first Rust application for macOS and Linux that imports token-usage data from Antigravity, Copilot, Codex, Claude Code (default root plus `~/.claude-profiles/*` profiles), Cursor, Grok, Pi, OMP, Muse, and MiniMax Code. It provides a CLI plus an Axum-served dashboard/API, normalizing source data into SQLite and calculating costs from `pricing.csv`.
 
 
-## Project Skill
+## Canonical Spec and Project Skill
+- `docs/fork-spec.md` is the canonical product and maintenance spec for this fork. It overrides upstream behavior, upstream docs, and older notes. Read it before any feature, release, or upstream-sync work.
 - For any repository change, read and apply `.agents/skills/token-usage-insights/SKILL.md`. It is the shared operational reference for local-data boundaries, Claude profile sources, all-harness reporting, fork versioning, and controlled upstream integration.
 
 ## Architecture & Data Flow
@@ -85,5 +86,5 @@ make all                         # fmt, check, test, release build
 ## Delivery and Release Guardrails
 - After editing and verification, create a detailed Traditional Chinese (zh-TW) Conventional Commit. Include the user impact, file-by-file changes, and commands/results; do not leave completed work uncommitted unless explicitly told otherwise.
 - PRs must state user-visible and schema/environment impacts, list verification, and include screenshots for dashboard changes.
-- **Fork versioning and upstream sync:** This fork reserves the `v10.x.y` release-tag namespace. Keep Cargo/npm package versions as `10.x.y` (without the tag prefix), use a matching `v10.x.y` tag only for releases, and never reuse upstream `v1.x.y` tags. Review `https://github.com/doggy8088/TokenUsageInsights` remotely before integrating changes; selectively port only Linux/macOS-compatible code, never merge Windows-only changes or pull Windows files into this fork. Preserve local-first behavior and fork-specific features.
+- **Fork versioning and upstream sync:** This fork reserves the `v10.x.y` release-tag namespace. Keep Cargo/npm package versions as `10.x.y` (without the tag prefix), use a matching `v10.x.y` tag only for releases, and never reuse upstream `v1.x.y` tags. Upstream `https://github.com/doggy8088/TokenUsageInsights` is a code source, not a spec source: review it remotely, port selected changes as separate commits, then apply the removal checklist in `docs/fork-spec.md` §4 (no CI/CD, no Windows scripts/code/docs, no upstream download sources) before committing. Never merge upstream wholesale.
 - For manual releases, synchronize `CHANGELOG.md`, Cargo/npm versions and lockfiles, README version examples, and release assets. Build and verify assets locally, upload them to a non-draft public GitHub Release with `SHA256SUMS`, and add real zh-TW release notes with the compare link. npm publishing is manual when needed.

@@ -7,7 +7,9 @@ description: Maintain TokenUsageInsights features, provider imports, dashboard r
 
 ## Orientation
 
-TokenUsageInsights is a local-first Rust/Axum dashboard with plain ES-module frontend assets. It imports local provider logs into SQLite and serves daily, monthly, and yearly reports.
+TokenUsageInsights is a local-first Rust/Axum dashboard with plain ES-module frontend assets. It imports local provider logs into SQLite and serves daily, monthly, and yearly reports. It supports macOS and Linux only.
+
+`docs/fork-spec.md` is the canonical spec. When it conflicts with upstream code, upstream docs, or older notes, follow the spec.
 
 - Entry/lifecycle: `src/main.rs`; routes use `/api/:assistant/...`.
 - Provider parsing and sync: `src/db.rs` and provider adapters; keep handlers thin.
@@ -27,9 +29,10 @@ This fork owns the `v10.x.y` tag namespace. The current release is `v10.0.7`.
 
 - Cargo and npm package metadata use `10.x.y`; release tags use matching `v10.x.y`.
 - Never reuse upstream `v1.x.y` release tags.
-- Use `https://github.com/doggy8088/TokenUsageInsights` as an upstream source. Inspect its remote commit/diff metadata without fetching the full tree; selectively port validated Linux/macOS fixes and optional features as separate, reviewable commits.
-- Upstream sync is Unix-only for this fork: exclude Windows-only scripts, tests, workflows, installer paths, release assets, documentation, and platform-specific code. If a change mixes platforms, extract only the Linux/macOS portion; never merge upstream wholesale.
-- Resolve conflicts in favor of this fork's local-first behavior, `v10.x.y` namespace, and fork-specific features such as multi-profile Claude discovery and the all-harness overview.
+- Use `https://github.com/doggy8088/TokenUsageInsights` only as a code source. Inspect its remote commit/diff metadata without fetching the full tree; selectively port validated Linux/macOS fixes and optional features as separate, reviewable commits.
+- After every port, apply `docs/fork-spec.md` §4 before committing: reject CI/CD files, Windows scripts, Windows `cfg` branches, Windows docs, extra README locales, upstream download sources, and upstream version numbers. Run the §4.3 checks. If a change mixes platforms, keep only the Linux/macOS portion.
+- Resolve conflicts in favor of the spec: local-first behavior, `v10.x.y`, multi-profile Claude discovery, the all-harness overview, and `fun-ed` release sources.
+- Pre-existing Windows and upstream-updater residue is listed in `docs/fork-spec.md` §5. Do not extend it; remove it only in a dedicated, tested cleanup commit.
 
 ## Manual releases
 
@@ -48,7 +51,9 @@ GitHub Actions workflows are intentionally absent. Build, verify, and upload rel
 
 ## Fork-specific product behavior
 
-- Claude Code scans the default config root and discovered `~/.claude-profiles/*/projects` profile roots. Profile sessions must retain independent source identity and path-safe transcript lookup.
+- Claude Code scans the default config root and discovered `~/.claude-profiles/*/projects` profile roots on every sync. Profile sessions must retain independent source identity (`claude-default`, `claude-profile:<name>`) and path-safe transcript lookup. Setting `CLAUDE_DIR` disables profile discovery, so the background service must not set it.
+- Automatic import requires the resident server: `scripts/install.sh --service` installs launchd `com.tokenusageinsights` on macOS or a systemd user service on Linux. Never run `install.sh` from inside the install directory; it deletes `static/` before copying.
+- Only surviving transcripts can be imported. Each Claude root needs `cleanupPeriodDays` of at least 365 to avoid the 30-day default deletion.
 - The sidebar **總覽** uses the pseudo-assistant `all` to combine daily, monthly, and yearly reports across every assistant and profile. It is read-only.
 - In total overview mode, preserve per-session assistant/profile badges and show the Harness ranking by total tokens with the existing agent icon metadata.
 
