@@ -406,47 +406,35 @@ async fn main() {
     if let updater::EnvironmentKind::StandardInstalled { install_dir, .. } =
         updater::detect_environment()
     {
-        // Windows 服務 runner 監管模式下，更新提交與備份清理由 runner 於新版進程確認健康就緒後執行；
-        // 此處提早提交會刪除備份而使 runner 失去回滾依據，無法在服務後續啟動失敗時還原舊版
-        // 僅 Windows 服務 runner 監管模式才由 runner 提交；Unix 即使在環境變數設定下也不可略過提交，
-        // 否則 .backup/.handing_off 會永久殘留，下次啟動將誤判為未完成的更新交易
-        if cfg!(windows) && updater::is_windows_service_runner() {
-            updater::log_update(
-                "INFO",
-                "STARTUP",
-                "偵測到 Windows 服務 runner 監管模式；更新提交與備份清理交由 runner 於健康驗證通過後執行",
-            );
-        } else {
-            // 移交提交會刪除唯一的回滾備份，因此延後到服務確實開始提供後才執行：
-            // 若 axum::serve 立即失敗或程序在就緒前退出，本任務會隨程序結束而不會誤提交
-            let commit_install_dir = install_dir.clone();
-            let commit_gate = handoff_commit_allowed.clone();
-            tokio::spawn(async move {
-                tokio::time::sleep(HANDOFF_COMMIT_DELAY).await;
-                if !commit_gate.load(std::sync::atomic::Ordering::SeqCst) {
-                    updater::log_update(
-                        "INFO",
-                        "STARTUP",
-                        "更新流程已開始；略過本世代之移交提交，改由新版程序於健康就緒後提交",
-                    );
+        // 移交提交會刪除唯一的回滾備份，因此延後到服務確實開始提供後才執行：
+        // 若 axum::serve 立即失敗或程序在就緒前退出，本任務會隨程序結束而不會誤提交
+        let commit_install_dir = install_dir.clone();
+        let commit_gate = handoff_commit_allowed.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(HANDOFF_COMMIT_DELAY).await;
+            if !commit_gate.load(std::sync::atomic::Ordering::SeqCst) {
+                updater::log_update(
+                    "INFO",
+                    "STARTUP",
+                    "更新流程已開始；略過本世代之移交提交，改由新版程序於健康就緒後提交",
+                );
+                return;
+            }
+            // 提交可能因其他更新程序持有更新鎖而暫時無法進行：改為有界重試，
+            // 避免移交交易與備份永久殘留而阻擋後續更新
+            for _ in 0..120 {
+                updater::complete_handoff_and_commit_if_needed(&commit_install_dir);
+                if !updater::has_pending_handoff_transaction(&commit_install_dir) {
                     return;
                 }
-                // 提交可能因其他更新程序持有更新鎖而暫時無法進行：改為有界重試，
-                // 避免移交交易與備份永久殘留而阻擋後續更新
-                for _ in 0..120 {
-                    updater::complete_handoff_and_commit_if_needed(&commit_install_dir);
-                    if !updater::has_pending_handoff_transaction(&commit_install_dir) {
-                        return;
-                    }
-                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                }
-                updater::log_update(
-                    "WARN",
-                    "STARTUP",
-                    "移交提交重試逾時；備份交易將由後續啟動或更新程序處理",
-                );
-            });
-        }
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            }
+            updater::log_update(
+                "WARN",
+                "STARTUP",
+                "移交提交重試逾時；備份交易將由後續啟動或更新程序處理",
+            );
+        });
     }
     axum::serve(listener, app)
         .with_graceful_shutdown(async move {
@@ -633,9 +621,6 @@ async fn shutdown_signal(
             std::future::pending::<()>().await;
         }
     };
-
-    #[cfg(not(unix))]
-    let terminate = std::future::pending::<()>();
 
     tokio::select! {
         _ = ctrl_c => {},

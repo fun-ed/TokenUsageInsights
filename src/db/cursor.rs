@@ -161,8 +161,6 @@ pub(super) fn parse_cursor_agent_kv_model_signature(raw: &[u8]) -> Option<(Strin
 fn cursor_model_source_id(path: &Path) -> String {
     let resolved = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
     let normalized = resolved.to_string_lossy().replace('\\', "/");
-    #[cfg(windows)]
-    let normalized = normalized.to_lowercase();
     format!("{:016x}", hash_fnv1a_64(&normalized))
 }
 

@@ -417,11 +417,6 @@ pub fn get_insights_dir() -> PathBuf {
         return path;
     }
 
-    #[cfg(windows)]
-    if let Some(data_dir) = dirs::data_local_dir() {
-        return data_dir.join("TokenUsageInsights");
-    }
-
     if let Some(home) = dirs::home_dir() {
         return home.join(".token-usage-insights");
     }
@@ -642,11 +637,6 @@ fn move_file_with_copy_fallback(source: &Path, destination: &Path) -> Result<(),
 fn legacy_unified_database_paths() -> Vec<PathBuf> {
     let mut paths = Vec::new();
     if let Some(home) = dirs::home_dir() {
-        #[cfg(windows)]
-        paths.push(
-            home.join(".token-usage-insights")
-                .join("token_usage_insights.db"),
-        );
         paths.push(
             home.join(".gemini")
                 .join("antigravity-cli")
@@ -1153,8 +1143,6 @@ pub fn init_db(conn: &Connection) -> Result<(), String> {
                         AND (
                                transcript_path LIKE '%.claude/%'
                             OR transcript_path LIKE '%/claude/%'
-                            OR transcript_path LIKE '%.claude\\%'
-                            OR transcript_path LIKE '%\\claude\\%'
                         )
                     )
                )
@@ -1192,9 +1180,7 @@ pub fn init_db(conn: &Connection) -> Result<(), String> {
                 OR filename LIKE 'copilot:%'
                 OR filename LIKE 'vscode:%'
                 OR filename LIKE 'codex:sessions/%'
-                OR filename LIKE 'codex:sessions\\%'
                 OR filename LIKE 'codex:archived_sessions/%'
-                OR filename LIKE 'codex:archived_sessions\\%'
                 OR filename LIKE 'claude:%'
                 OR filename LIKE 'cursor:%'",
             [],
@@ -1834,9 +1820,7 @@ fn run_codex_parser_migration(conn: &mut Connection) -> Result<(), String> {
         tx.execute(
             "DELETE FROM sync_state
              WHERE filename LIKE 'codex:sessions/%'
-                OR filename LIKE 'codex:sessions\\%'
-                OR filename LIKE 'codex:archived_sessions/%'
-                OR filename LIKE 'codex:archived_sessions\\%'",
+                OR filename LIKE 'codex:archived_sessions/%'",
             [],
         )
         .map_err(|e| format!("清除 Codex 同步狀態失敗: {}", e))?;
@@ -1899,9 +1883,7 @@ fn run_codex_source_kind_migration(conn: &mut Connection) -> Result<(), String> 
     tx.execute(
         "DELETE FROM sync_state
          WHERE filename LIKE 'codex:sessions/%'
-            OR filename LIKE 'codex:sessions\\%'
-            OR filename LIKE 'codex:archived_sessions/%'
-            OR filename LIKE 'codex:archived_sessions\\%'",
+            OR filename LIKE 'codex:archived_sessions/%'",
         [],
     )
     .map_err(|error| format!("清除 Codex 來源分類同步狀態失敗: {error}"))?;
@@ -1978,40 +1960,6 @@ fn encode_registered_path(path: &Path) -> Vec<u8> {
 fn decode_registered_path(bytes: Vec<u8>) -> Option<PathBuf> {
     use std::os::unix::ffi::OsStringExt;
     Some(PathBuf::from(std::ffi::OsString::from_vec(bytes)))
-}
-
-#[cfg(windows)]
-fn encode_registered_path(path: &Path) -> Vec<u8> {
-    use std::os::windows::ffi::OsStrExt;
-    path.as_os_str()
-        .encode_wide()
-        .flat_map(u16::to_le_bytes)
-        .collect()
-}
-
-#[cfg(windows)]
-fn decode_registered_path(bytes: Vec<u8>) -> Option<PathBuf> {
-    use std::os::windows::ffi::OsStringExt;
-    let chunks = bytes.chunks_exact(2);
-    if !chunks.remainder().is_empty() {
-        return None;
-    }
-    let path = std::ffi::OsString::from_wide(
-        &chunks
-            .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
-            .collect::<Vec<_>>(),
-    );
-    Some(PathBuf::from(path))
-}
-
-#[cfg(not(any(unix, windows)))]
-fn encode_registered_path(path: &Path) -> Vec<u8> {
-    path.to_string_lossy().into_owned().into_bytes()
-}
-
-#[cfg(not(any(unix, windows)))]
-fn decode_registered_path(bytes: Vec<u8>) -> Option<PathBuf> {
-    String::from_utf8(bytes).ok().map(PathBuf::from)
 }
 
 /// Sync token usage from the Copilot App (Tauri desktop application).
@@ -3689,28 +3637,12 @@ fn write_copilot_cli_agent_cursor(
     Ok(())
 }
 
-fn codex_transcript_path_key_for_platform(path: &str, is_windows: bool) -> String {
-    if is_windows {
-        path.replace('\\', "/").to_ascii_lowercase()
-    } else {
-        path.to_string()
-    }
-}
-
-fn codex_transcript_path_key(path: &str) -> String {
-    codex_transcript_path_key_for_platform(path, cfg!(windows))
-}
-
 fn group_codex_transcript_paths(
     paths: impl IntoIterator<Item = String>,
-    is_windows: bool,
 ) -> HashMap<String, Vec<String>> {
     let mut grouped_paths: HashMap<String, Vec<String>> = HashMap::new();
     for path in paths {
-        grouped_paths
-            .entry(codex_transcript_path_key_for_platform(&path, is_windows))
-            .or_default()
-            .push(path);
+        grouped_paths.entry(path.clone()).or_default().push(path);
     }
     grouped_paths
 }
@@ -3731,7 +3663,7 @@ fn load_codex_transcript_paths(conn: &Connection) -> Result<HashMap<String, Vec<
         let path = row.map_err(|error| format!("解析 Codex transcript 路徑失敗: {error}"))?;
         paths.push(path);
     }
-    Ok(group_codex_transcript_paths(paths, cfg!(windows)))
+    Ok(group_codex_transcript_paths(paths))
 }
 
 fn codex_transcript_needs_sync(
@@ -3789,8 +3721,7 @@ fn sync_codex_usage_logs(conn: &mut Connection) -> Result<(), String> {
         };
         let current_size = metadata.len();
         let transcript_path = filepath.to_string_lossy().into_owned();
-        let transcript_path_key = codex_transcript_path_key(&transcript_path);
-        let known_transcript_paths = transcript_paths.get(&transcript_path_key);
+        let known_transcript_paths = transcript_paths.get(&transcript_path);
         let transcript_is_current = known_transcript_paths.is_some();
 
         if codex_transcript_needs_sync(current_size, last_synced_state, transcript_is_current) {
@@ -3940,8 +3871,6 @@ fn migrate_legacy_claude_usage_entries(conn: &Connection) -> Result<usize, Strin
            AND (
                 transcript_path LIKE '%.claude/%'
              OR transcript_path LIKE '%/claude/%'
-             OR transcript_path LIKE '%.claude\\%'
-             OR transcript_path LIKE '%\\claude\\%'
            )",
         [],
     )
@@ -8027,15 +7956,9 @@ mod tests {
         }
         conn.execute(
             "INSERT INTO sync_state (filename, last_synced_size, last_synced_time) VALUES (?, 10, 0)",
-            params![r"codex:sessions\2026\07\10\legacy.jsonl"],
+            params!["codex:sessions/2026/07/10/legacy.jsonl"],
         )
         .unwrap();
-        #[cfg(windows)]
-        let stale_transcript_path = child_path
-            .to_string_lossy()
-            .replace('\\', "/")
-            .to_uppercase();
-        #[cfg(not(windows))]
         let stale_transcript_path = child_path.to_string_lossy().into_owned();
         conn.execute(
             "INSERT INTO usage_entries (
@@ -8112,7 +8035,7 @@ mod tests {
             .unwrap();
         let legacy_state_count: u64 = conn
             .query_row(
-                "SELECT COUNT(*) FROM sync_state WHERE filename LIKE 'codex:sessions\\%'",
+                "SELECT COUNT(*) FROM sync_state WHERE filename = 'codex:sessions/2026/07/10/legacy.jsonl'",
                 [],
                 |row| row.get(0),
             )
@@ -8594,16 +8517,11 @@ mod tests {
             [],
         )
         .unwrap();
-        for key in [
-            "codex:sessions/2026/07/session.jsonl",
-            r"codex:sessions\2026\07\session.jsonl",
-        ] {
-            conn.execute(
-                "INSERT INTO sync_state (filename, last_synced_size, last_synced_time) VALUES (?, 10, 0)",
-                params![key],
-            )
-            .unwrap();
-        }
+        conn.execute(
+            "INSERT INTO sync_state (filename, last_synced_size, last_synced_time) VALUES ('codex:sessions/2026/07/session.jsonl', 10, 0)",
+            [],
+        )
+        .unwrap();
         conn.execute(
             "INSERT INTO sync_state (filename, last_synced_size, last_synced_time) VALUES ('codex:claude:legacy.jsonl', 10, 0)",
             [],
@@ -8692,9 +8610,7 @@ mod tests {
         init_db(&conn).unwrap();
         for key in [
             "codex:sessions/2026/07/active.jsonl",
-            r"codex:sessions\2026\07\active.jsonl",
             "codex:archived_sessions/archived.jsonl",
-            r"codex:archived_sessions\archived.jsonl",
             "codex:claude:legacy.jsonl",
         ] {
             conn.execute(
@@ -8796,18 +8712,6 @@ mod tests {
     }
 
     #[test]
-    fn windows_codex_transcript_paths_keep_original_values_for_indexed_deletion() {
-        let stored_path =
-            "C:/USERS/RUNNER/APPDATA/LOCAL/TEMP/CODEX/SESSIONS/SESSION.JSONL".to_string();
-        let current_path = r"c:\users\runner\appdata\local\temp\codex\sessions\session.jsonl";
-
-        let grouped_paths = group_codex_transcript_paths([stored_path.clone()], true);
-        let current_key = codex_transcript_path_key_for_platform(current_path, true);
-
-        assert_eq!(grouped_paths.get(&current_key), Some(&vec![stored_path]));
-    }
-
-    #[test]
     fn sync_codex_usage_logs_records_empty_transcript_state() {
         let _guard = ENV_LOCK.lock().unwrap();
         let old_codex_dir = std::env::var("CODEX_DIR").ok();
@@ -8871,23 +8775,19 @@ mod tests {
     }
 
     #[test]
-    fn claude_migration_recognizes_windows_and_unix_transcript_paths() {
+    fn claude_migration_recognizes_unix_transcript_paths() {
         let conn = Connection::open_in_memory().unwrap();
         init_db(&conn).unwrap();
-        for (session_id, transcript_path) in [
-            ("windows", r"C:\Users\name\.claude\projects\session.jsonl"),
-            ("unix", "/home/name/.claude/projects/session.jsonl"),
-        ] {
-            conn.execute(
-                "INSERT INTO usage_entries (
-                    assistant_type, timestamp, date, session_id, turn_no, transcript_path
-                 ) VALUES ('codex', '2026-07-10T00:00:00Z', '2026-07-10', ?, 1, ?)",
-                params![session_id, transcript_path],
-            )
-            .unwrap();
-        }
+        conn.execute(
+            "INSERT INTO usage_entries (
+                assistant_type, timestamp, date, session_id, turn_no, transcript_path
+             ) VALUES ('codex', '2026-07-10T00:00:00Z', '2026-07-10', 'unix', 1,
+                '/home/name/.claude/projects/session.jsonl')",
+            [],
+        )
+        .unwrap();
 
-        assert_eq!(migrate_legacy_claude_usage_entries(&conn).unwrap(), 2);
+        assert_eq!(migrate_legacy_claude_usage_entries(&conn).unwrap(), 1);
         let migrated: u64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM usage_entries WHERE assistant_type = 'claude'",
@@ -8895,7 +8795,7 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(migrated, 2);
+        assert_eq!(migrated, 1);
     }
 
     #[test]

@@ -136,21 +136,6 @@ struct OperationLogEntry {
 pub fn discover_workspace_storage_roots() -> Vec<PathBuf> {
     let mut roots = Vec::new();
 
-    #[cfg(target_os = "windows")]
-    {
-        let base = std::env::var_os("APPDATA")
-            .map(PathBuf::from)
-            .or_else(dirs::config_dir);
-        if let Some(base) = base {
-            roots.push(base.join("Code").join("User").join("workspaceStorage"));
-            roots.push(
-                base.join("Code - Insiders")
-                    .join("User")
-                    .join("workspaceStorage"),
-            );
-        }
-    }
-
     #[cfg(target_os = "macos")]
     {
         if let Some(base) = dirs::data_dir() {

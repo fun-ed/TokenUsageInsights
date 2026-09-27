@@ -79,9 +79,8 @@ rg -n 'doggy8088' scripts npm README*.md package.json   # 應無輸出
 
 另外要跑 `AGENTS.md` 規定的 Rust 與 npm 驗證。
 
-## 5. 待清除的既有殘留
+## 5. 既有殘留清除紀錄
 
-以下內容早於本規格就已存在，會保留到有專門的清理 commit 為止。清理時要一起補測試。
-
-- `src/updater.rs`：`GITHUB_OWNER` 仍是 `doggy8088`，`update` 指令與背景 auto-update 會查詢 upstream release。因為 semver 比較（upstream `1.x` < `10.x`），目前不會被覆蓋，但更新來源應改成 `fun-ed` 或停用。檔內也有大量 Windows service runner 邏輯。
-- Windows 分支：`src/browser.rs`、`src/paths.rs`、`src/main.rs`（Windows 服務 runner）、`src/handlers/daily.rs`、`src/db/cursor.rs`、`src/vscode.rs`、`src/db.rs`；`static/app.js` 的 Windows 路徑判斷。
+- v10.0.8 已移除 Rust 與看板中所有 Windows 分支，包括 `cfg(windows)`、`cfg!(windows)`、Windows 行程查詢、PowerShell 服務 runner、ZIP 發行包、`.exe` 命名、`%USERPROFILE%` 展開、WSL `cmd.exe` 開啟瀏覽器、Windows 路徑正規化與相關測試，也移除了 `zip` 相依套件。
+- v10.0.8 起 `src/updater.rs` 的 `GITHUB_OWNER` 為 `fun-ed`，`update` 與背景 auto-update 只查詢本 fork 的 release。
+- 之後不得重新引入上述任何項目；同步 upstream 時依 §4 檢查。

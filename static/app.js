@@ -3856,23 +3856,14 @@ function normalizeSessionCwd(value) {
   let path = String(value || '').trim();
   if (!path) return '';
 
-  const usesWindowsSeparators = /^[a-zA-Z]:[\\/]/.test(path) || path.includes('\\');
-  if (usesWindowsSeparators) {
-    path = path.replace(/[\\/]+/g, '\\');
-    if (!/^[a-zA-Z]:\\$/.test(path) && !/^\\\\[^\\]+\\[^\\]+\\?$/.test(path)) {
-      path = path.replace(/\\+$/, '');
-    }
-  } else {
-    path = path.replace(/\/{2,}/g, '/');
-    if (path !== '/') path = path.replace(/\/+$/, '');
-  }
+  path = path.replace(/\/{2,}/g, '/');
+  if (path !== '/') path = path.replace(/\/+$/, '');
 
   return path;
 }
 
 function sessionCwdMatchKey(value) {
-  const path = normalizeSessionCwd(value);
-  return /^[a-zA-Z]:\\/.test(path) ? path.toLocaleLowerCase('en-US') : path;
+  return normalizeSessionCwd(value);
 }
 
 function abbreviateHomePath(value) {
@@ -3886,7 +3877,7 @@ function abbreviateHomePath(value) {
   if (!pathKey.startsWith(homeKey)) return path;
 
   const suffix = path.slice(homeDir.length);
-  return suffix.startsWith('/') || suffix.startsWith('\\') ? `~${suffix}` : path;
+  return suffix.startsWith('/') ? `~${suffix}` : path;
 }
 
 function resetSessionCwdFilter() {
@@ -3903,7 +3894,7 @@ function resolveSessionCwdMatchKeyFromUrl(rawValue, homeDir) {
 
   // 支援 ~ 與 ~/path 的家目錄縮寫寫法
   let expanded = raw;
-  if (raw === '~' || raw.startsWith('~/') || raw.startsWith('~\\')) {
+  if (raw === '~' || raw.startsWith('~/')) {
     const normalizedHome = normalizeSessionCwd(homeDir);
     if (normalizedHome) {
       expanded = raw === '~' ? normalizedHome : normalizedHome + raw.slice(1);
@@ -4011,14 +4002,14 @@ function updateSessionCwdFilterOptions(sessions) {
         resolvedKey = requested.directKey;
       } else {
         // 尾碼比對需對齊路徑分隔邊界，避免 TokenUsageInsights 誤配 myTokenUsageInsights。
-        // 一律用不分大小寫比對（Windows 路徑不分大小寫；POSIX 的混用大小寫情境極少，且仍需唯一比對才會採用）。
+        // 一律用不分大小寫比對（macOS 預設檔案系統不分大小寫；仍需唯一比對才會採用）。
         // 當輸入恰好等於完整 key 時，邊界索引為 -1，charAt(-1) 回傳 ''，視為完全比對通過。
         const lowerInput = requested.normalizedInput.toLocaleLowerCase('en-US');
         const matchesPathBoundary = (key) => {
           const lowerKey = key.toLocaleLowerCase('en-US');
           if (!lowerKey.endsWith(lowerInput)) return false;
           const boundary = lowerKey.charAt(lowerKey.length - lowerInput.length - 1);
-          return boundary === '' || boundary === '/' || boundary === '\\';
+          return boundary === '' || boundary === '/';
         };
         const suffixMatches = directories.filter(directory => (
           matchesPathBoundary(directory.matchKey)

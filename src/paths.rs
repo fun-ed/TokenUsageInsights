@@ -2,9 +2,8 @@ use std::path::{Path, PathBuf};
 
 /// Resolve a configured path without requiring it to exist yet.
 ///
-/// Besides native absolute/relative paths, this accepts the common `~`, `$HOME`,
-/// and `%USERPROFILE%` prefixes so values copied from shell configuration work on
-/// Windows as well as Unix-like systems.
+/// Besides native absolute/relative paths, this accepts the common `~` and
+/// `$HOME` prefixes so values copied from shell configuration work.
 pub fn env_path(name: &str) -> Option<PathBuf> {
     let value = std::env::var_os(name)?;
     if value.is_empty() {
@@ -22,32 +21,10 @@ fn expand_common_prefix(path: PathBuf) -> PathBuf {
         return home.unwrap_or(path);
     }
 
-    for prefix in ["~/", "~\\", "$HOME/", "$HOME\\"] {
+    for prefix in ["~/", "$HOME/"] {
         if let Some(rest) = raw.strip_prefix(prefix) {
             if let Some(home) = &home {
                 return home.join(rest);
-            }
-        }
-    }
-
-    for variable in ["USERPROFILE", "LOCALAPPDATA", "APPDATA"] {
-        let prefix = format!("%{variable}%");
-        if raw.eq_ignore_ascii_case(&prefix) {
-            if let Some(value) = std::env::var_os(variable) {
-                return PathBuf::from(value);
-            }
-        }
-
-        for separator in ['/', '\\'] {
-            let prefix_with_separator = format!("{prefix}{separator}");
-            if raw
-                .get(..prefix_with_separator.len())
-                .map(|candidate| candidate.eq_ignore_ascii_case(&prefix_with_separator))
-                .unwrap_or(false)
-            {
-                if let Some(value) = std::env::var_os(variable) {
-                    return PathBuf::from(value).join(&raw[prefix_with_separator.len()..]);
-                }
             }
         }
     }
@@ -113,18 +90,24 @@ pub fn copilot_app_dir() -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-    // Only used by the Windows-specific test below; avoids an unused-import
-    // warning (which is a hard error under `-D warnings`) on other platforms.
-    #[cfg(windows)]
     use super::*;
 
-    #[cfg(windows)]
     #[test]
-    fn native_windows_drive_and_unc_paths_are_preserved() {
-        let drive_path = PathBuf::from(r"C:\Users\測試 使用者\.codex\sessions");
-        let unc_path = PathBuf::from(r"\\server\AI Data\使用量");
+    fn home_prefixes_expand_and_absolute_paths_are_preserved() {
+        let home = dirs::home_dir().expect("home dir");
 
-        assert_eq!(expand_common_prefix(drive_path.clone()), drive_path);
-        assert_eq!(expand_common_prefix(unc_path.clone()), unc_path);
+        assert_eq!(expand_common_prefix(PathBuf::from("~")), home);
+        assert_eq!(
+            expand_common_prefix(PathBuf::from("~/a/b")),
+            home.join("a/b")
+        );
+        assert_eq!(
+            expand_common_prefix(PathBuf::from("$HOME/a")),
+            home.join("a")
+        );
+        assert_eq!(
+            expand_common_prefix(PathBuf::from("/var/data")),
+            PathBuf::from("/var/data")
+        );
     }
 }

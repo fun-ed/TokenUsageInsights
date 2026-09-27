@@ -1,5 +1,6 @@
 - Fork releases use matching `10.x.y` Cargo/npm versions and annotated `v10.x.y` tags; no GitHub Actions. Process: `.agents/skills/token-usage-insights/SKILL.md` "Manual releases"; policy: `mem:fork_spec`.
-- Current release: `v10.0.7` with macOS `aarch64-apple-darwin` and `x86_64-apple-darwin` `.tar.gz` + `.dmg` and `SHA256SUMS`. No Linux asset; README says build from source on Linux unless a matching tarball is published.
-- `scripts/get.sh` and `npm/install.cjs` download from `fun-ed/TokenUsageInsights`; keep them off upstream.
+- Latest published release: `v10.0.7` with macOS `aarch64-apple-darwin` and `x86_64-apple-darwin` `.tar.gz` + `.dmg` and `SHA256SUMS`. No Linux asset.
+- Package version `10.0.8` (Windows removal, updater → `fun-ed`) is committed but not released; README install examples intentionally still point at `v10.0.7` until `v10.0.8` assets exist. Update README version examples in the release commit.
+- `scripts/get.sh`, `npm/install.cjs`, and `src/updater.rs` download from `fun-ed/TokenUsageInsights`; keep them off upstream.
 - Root `README.md` is the canonical English README and states the fork spec, profile discovery, `--service` auto-import, and retention advice. Keep only `README.md`, `README.zh-TW.md`, `README.zh-CN.md`; zh variants are short summaries.
 - npm registry publication is manual and was not verified for v10.0.7.

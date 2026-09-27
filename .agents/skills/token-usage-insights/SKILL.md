@@ -25,14 +25,14 @@ TokenUsageInsights is a local-first Rust/Axum dashboard with plain ES-module fro
 
 ## Fork release and upstream policy
 
-This fork owns the `v10.x.y` tag namespace. The current release is `v10.0.7`.
+This fork owns the `v10.x.y` tag namespace. The latest published release is `v10.0.7`; package version `10.0.8` is committed but not yet released.
 
 - Cargo and npm package metadata use `10.x.y`; release tags use matching `v10.x.y`.
 - Never reuse upstream `v1.x.y` release tags.
 - Use `https://github.com/doggy8088/TokenUsageInsights` only as a code source. Inspect its remote commit/diff metadata without fetching the full tree; selectively port validated Linux/macOS fixes and optional features as separate, reviewable commits.
 - After every port, apply `docs/fork-spec.md` §4 before committing: reject CI/CD files, Windows scripts, Windows `cfg` branches, Windows docs, extra README locales, upstream download sources, and upstream version numbers. Run the §4.3 checks. If a change mixes platforms, keep only the Linux/macOS portion.
 - Resolve conflicts in favor of the spec: local-first behavior, `v10.x.y`, multi-profile Claude discovery, the all-harness overview, and `fun-ed` release sources.
-- Pre-existing Windows and upstream-updater residue is listed in `docs/fork-spec.md` §5. Do not extend it; remove it only in a dedicated, tested cleanup commit.
+- v10.0.8 removed every Windows branch and pointed the updater at `fun-ed` (`docs/fork-spec.md` §5). Do not reintroduce them.
 
 ## Manual releases
 

@@ -73,14 +73,6 @@ fn open_browser_in_background(url: String) {
                 .stdout(Stdio::null())
                 .stderr(Stdio::null());
 
-            #[cfg(windows)]
-            {
-                use std::os::windows::process::CommandExt;
-
-                const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-                process.creation_flags(CREATE_NO_WINDOW);
-            }
-
             match process.status() {
                 Ok(status) if status.success() => return,
                 Ok(status) => failures.push(format!(
@@ -108,33 +100,13 @@ fn browser_commands(url: &str) -> Vec<BrowserCommand> {
 
 #[cfg(target_os = "linux")]
 fn browser_commands(url: &str) -> Vec<BrowserCommand> {
-    if is_wsl() {
-        vec![
-            BrowserCommand::new("cmd.exe", ["/C", "start", "", url]),
-            BrowserCommand::new("wslview", [url]),
-            BrowserCommand::new("xdg-open", [url]),
-        ]
-    } else {
-        vec![
-            BrowserCommand::new("xdg-open", [url]),
-            BrowserCommand::new("gio", ["open", url]),
-        ]
-    }
+    vec![
+        BrowserCommand::new("xdg-open", [url]),
+        BrowserCommand::new("gio", ["open", url]),
+    ]
 }
 
-#[cfg(target_os = "linux")]
-fn is_wsl() -> bool {
-    std::env::var_os("WSL_DISTRO_NAME").is_some()
-        || std::fs::read_to_string("/proc/sys/kernel/osrelease")
-            .is_ok_and(|release| release.to_ascii_lowercase().contains("microsoft"))
-}
-
-#[cfg(windows)]
-fn browser_commands(url: &str) -> Vec<BrowserCommand> {
-    vec![BrowserCommand::new("cmd.exe", ["/C", "start", "", url])]
-}
-
-#[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 fn browser_commands(_url: &str) -> Vec<BrowserCommand> {
     Vec::new()
 }

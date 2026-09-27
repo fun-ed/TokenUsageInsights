@@ -7,7 +7,7 @@ use chrono::Utc;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
-const GITHUB_OWNER: &str = "doggy8088";
+const GITHUB_OWNER: &str = "fun-ed";
 const GITHUB_REPO: &str = "TokenUsageInsights";
 pub(crate) const APP_NAME: &str = "token-usage-insights";
 const USER_AGENT: &str = "token-usage-insights-updater";
@@ -43,25 +43,6 @@ fn is_process_alive(pid: u32) -> bool {
         let err = std::io::Error::last_os_error().raw_os_error();
         err != Some(libc::ESRCH)
     }
-}
-
-#[cfg(windows)]
-fn is_process_alive(pid: u32) -> bool {
-    let output = std::process::Command::new("tasklist")
-        .args(["/FI", &format!("PID eq {pid}"), "/FO", "CSV", "/NH"])
-        .output();
-    if let Ok(out) = output {
-        let text = String::from_utf8_lossy(&out.stdout);
-        let pid_token = format!("\"{pid}\"");
-        text.lines().any(|line| line.contains(&pid_token))
-    } else {
-        true
-    }
-}
-
-#[cfg(not(any(unix, windows)))]
-fn is_process_alive(_pid: u32) -> bool {
-    false
 }
 
 #[cfg(target_vendor = "apple")]
@@ -134,102 +115,6 @@ fn get_process_exe_path(pid: u32) -> Option<PathBuf> {
     None
 }
 
-#[cfg(windows)]
-type WinHandle = *mut std::ffi::c_void;
-
-#[cfg(windows)]
-const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
-#[cfg(windows)]
-const PROCESS_QUERY_INFORMATION: u32 = 0x0400;
-#[cfg(windows)]
-const PROCESS_VM_READ: u32 = 0x0010;
-
-#[cfg(windows)]
-#[repr(C)]
-struct UnicodeString {
-    length: u16,
-    maximum_length: u16,
-    buffer: *mut u16,
-}
-
-#[cfg(windows)]
-#[repr(C)]
-struct ProcessBasicInformation {
-    exit_status: i32,
-    peb_base_address: *mut std::ffi::c_void,
-    affinity_mask: usize,
-    base_priority: i32,
-    unique_process_id: usize,
-    inherited_from_unique_process_id: usize,
-}
-
-#[cfg(windows)]
-type NtQueryInformationProcessFn = unsafe extern "system" fn(
-    process_handle: WinHandle,
-    process_information_class: u32,
-    process_information: *mut std::ffi::c_void,
-    process_information_length: u32,
-    return_length: *mut u32,
-) -> i32;
-
-#[cfg(windows)]
-extern "system" {
-    fn OpenProcess(dwDesiredAccess: u32, bInheritHandle: i32, dwProcessId: u32) -> WinHandle;
-    fn QueryFullProcessImageNameW(
-        hProcess: WinHandle,
-        dwFlags: u32,
-        lpExeName: *mut u16,
-        lpdwSize: *mut u32,
-    ) -> i32;
-    fn CloseHandle(hObject: WinHandle) -> i32;
-    fn GetModuleHandleA(lpModuleName: *const u8) -> WinHandle;
-    fn GetProcAddress(hModule: WinHandle, lpProcName: *const u8) -> *mut std::ffi::c_void;
-    fn LocalFree(hMem: WinHandle) -> WinHandle;
-    fn ReadProcessMemory(
-        hProcess: WinHandle,
-        lpBaseAddress: *const std::ffi::c_void,
-        lpBuffer: *mut std::ffi::c_void,
-        nSize: usize,
-        lpNumberOfBytesRead: *mut usize,
-    ) -> i32;
-}
-
-#[cfg(windows)]
-#[link(name = "shell32")]
-extern "system" {
-    fn CommandLineToArgvW(lpCmdLine: *const u16, pNumArgs: *mut i32) -> *mut *mut u16;
-}
-
-#[cfg(windows)]
-fn get_process_exe_path(pid: u32) -> Option<PathBuf> {
-    use std::os::windows::ffi::OsStringExt;
-
-    unsafe {
-        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
-        if handle.is_null() {
-            return None;
-        }
-        let mut buf = vec![0u16; 1024];
-        let mut size = buf.len() as u32;
-        let success = QueryFullProcessImageNameW(handle, 0, buf.as_mut_ptr(), &mut size);
-        CloseHandle(handle);
-
-        if success != 0 && size > 0 {
-            let os_str = std::ffi::OsString::from_wide(&buf[..size as usize]);
-            let p = PathBuf::from(os_str);
-            if p.exists() {
-                return Some(p);
-            }
-        }
-        None
-    }
-}
-
-#[cfg(not(any(unix, windows)))]
-fn get_process_exe_path(_pid: u32) -> Option<PathBuf> {
-    None
-}
-
 fn matches_install_dir(exe_path: &Path, install_dir: &Path) -> bool {
     let is_direct_child = if let (Ok(can_exe), Ok(can_dir)) =
         (fs::canonicalize(exe_path), fs::canonicalize(install_dir))
@@ -259,9 +144,7 @@ fn matches_install_dir(exe_path: &Path, install_dir: &Path) -> bool {
 
     if let Some(file_name) = exe_path.file_name().and_then(|n| n.to_str()) {
         let clean = file_name.replace('_', "-");
-        clean == APP_NAME
-            || clean == format!("{APP_NAME}.exe")
-            || clean.starts_with(&format!("{APP_NAME}-"))
+        clean == APP_NAME || clean.starts_with(&format!("{APP_NAME}-"))
     } else {
         false
     }
@@ -366,184 +249,8 @@ fn get_process_cmdline(pid: u32) -> Option<Vec<String>> {
     Some(text.split_whitespace().map(|s| s.to_string()).collect())
 }
 
-#[cfg(windows)]
-fn get_process_cmdline(pid: u32) -> Option<Vec<String>> {
-    use std::os::windows::ffi::OsStringExt;
-
-    unsafe {
-        let ntdll = GetModuleHandleA(b"ntdll.dll\0".as_ptr());
-        if ntdll.is_null() {
-            return None;
-        }
-        let func_ptr = GetProcAddress(ntdll, b"NtQueryInformationProcess\0".as_ptr());
-        if func_ptr.is_null() {
-            return None;
-        }
-        let nt_query: NtQueryInformationProcessFn = std::mem::transmute(func_ptr);
-
-        let mut handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
-        if handle.is_null() {
-            handle = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, 0, pid);
-        }
-        if handle.is_null() {
-            return None;
-        }
-
-        // ProcessCommandLineInformation = 60
-        let mut buf = vec![0u8; 32768];
-        let mut return_len = 0u32;
-        let status = nt_query(
-            handle,
-            60,
-            buf.as_mut_ptr() as *mut std::ffi::c_void,
-            buf.len() as u32,
-            &mut return_len,
-        );
-        CloseHandle(handle);
-
-        if status != 0 {
-            return None;
-        }
-
-        let p_unicode = buf.as_ptr() as *const UnicodeString;
-        let byte_len = (*p_unicode).length as usize;
-        let char_len = byte_len / 2;
-        let str_ptr = (*p_unicode).buffer;
-
-        if str_ptr.is_null() || char_len == 0 {
-            return None;
-        }
-
-        let buf_start = buf.as_ptr() as usize;
-        let buf_end = buf_start + buf.len();
-        let ptr_val = str_ptr as usize;
-        if ptr_val < buf_start || ptr_val + byte_len > buf_end {
-            return None;
-        }
-
-        let mut wide_chars: Vec<u16> = std::slice::from_raw_parts(str_ptr, char_len).to_vec();
-        wide_chars.push(0);
-
-        let mut num_args = 0i32;
-        let argv_ptr = CommandLineToArgvW(wide_chars.as_ptr(), &mut num_args);
-        if argv_ptr.is_null() || num_args <= 0 {
-            return None;
-        }
-
-        let mut args = Vec::new();
-        for i in 0..num_args as usize {
-            let arg_ptr = *argv_ptr.add(i);
-            if !arg_ptr.is_null() {
-                let mut len = 0;
-                while *arg_ptr.add(len) != 0 {
-                    len += 1;
-                }
-                let arg_slice = std::slice::from_raw_parts(arg_ptr, len);
-                let os_str = std::ffi::OsString::from_wide(arg_slice);
-                args.push(os_str.to_string_lossy().to_string());
-            }
-        }
-        LocalFree(argv_ptr as WinHandle);
-
-        if args.is_empty() {
-            None
-        } else {
-            Some(args)
-        }
-    }
-}
-
-#[cfg(windows)]
-fn get_process_ppid(pid: u32) -> Option<u32> {
-    unsafe {
-        let ntdll = GetModuleHandleA(b"ntdll.dll\0".as_ptr());
-        if ntdll.is_null() {
-            return None;
-        }
-        let func_ptr = GetProcAddress(ntdll, b"NtQueryInformationProcess\0".as_ptr());
-        if func_ptr.is_null() {
-            return None;
-        }
-        let nt_query: NtQueryInformationProcessFn = std::mem::transmute(func_ptr);
-
-        let mut handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
-        if handle.is_null() {
-            handle = OpenProcess(PROCESS_QUERY_INFORMATION, 0, pid);
-        }
-        if handle.is_null() {
-            return None;
-        }
-
-        let mut pbi = std::mem::zeroed::<ProcessBasicInformation>();
-        let mut return_len = 0u32;
-        let status = nt_query(
-            handle,
-            0, // ProcessBasicInformation
-            &mut pbi as *mut _ as *mut std::ffi::c_void,
-            std::mem::size_of::<ProcessBasicInformation>() as u32,
-            &mut return_len,
-        );
-        CloseHandle(handle);
-
-        if status == 0 && pbi.inherited_from_unique_process_id != 0 {
-            Some(pbi.inherited_from_unique_process_id as u32)
-        } else {
-            None
-        }
-    }
-}
-
-#[cfg(windows)]
-fn get_process_supervisor_pid(pid: u32) -> Option<u32> {
-    if let Some(ppid) = get_process_ppid(pid) {
-        if is_process_alive(ppid) {
-            if let Some(parent_exe) = get_process_exe_path(ppid) {
-                let file_name = parent_exe
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("")
-                    .to_lowercase();
-                if file_name == "powershell.exe" || file_name == "pwsh.exe" {
-                    if let Some(cmd) = get_process_cmdline(ppid) {
-                        if cmd
-                            .iter()
-                            .any(|arg| arg.to_lowercase().contains("run-service.ps1"))
-                        {
-                            return Some(ppid);
-                        }
-                    }
-                }
-            }
-        }
-    }
-    None
-}
-
-#[cfg(not(windows))]
 fn get_process_supervisor_pid(_pid: u32) -> Option<u32> {
     None
-}
-
-#[cfg(windows)]
-fn is_process_supervised(pid: u32, _install_dir: &Path) -> bool {
-    if get_process_supervisor_pid(pid).is_some() {
-        return true;
-    }
-    if let Some(ppid) = get_process_ppid(pid) {
-        if is_process_alive(ppid) {
-            if let Some(parent_exe) = get_process_exe_path(ppid) {
-                let file_name = parent_exe
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("")
-                    .to_lowercase();
-                if file_name == "services.exe" {
-                    return true;
-                }
-            }
-        }
-    }
-    false
 }
 
 #[cfg(target_os = "linux")]
@@ -677,16 +384,6 @@ fn check_launchd_supervised_new_pid(old_pid: u32) -> Option<u32> {
     None
 }
 
-#[cfg(not(any(unix, windows)))]
-fn get_process_cmdline(_pid: u32) -> Option<Vec<String>> {
-    None
-}
-
-#[cfg(not(any(unix, windows)))]
-fn is_process_supervised(_pid: u32, _install_dir: &Path) -> bool {
-    false
-}
-
 #[allow(dead_code)] // 供各平台進程檢測與重啟函式比對關鍵環境變數
 const RELEVANT_ENV_VARS: &[&str] = &[
     "PORT",
@@ -797,271 +494,6 @@ fn get_process_cwd(pid: u32) -> Option<PathBuf> {
             }
         }
     }
-    None
-}
-
-#[cfg(windows)]
-fn get_process_relevant_envs(pid: u32) -> Option<Vec<(String, String)>> {
-    unsafe {
-        let ntdll = GetModuleHandleA(b"ntdll.dll\0".as_ptr());
-        if ntdll.is_null() {
-            return None;
-        }
-        let func_ptr = GetProcAddress(ntdll, b"NtQueryInformationProcess\0".as_ptr());
-        if func_ptr.is_null() {
-            return None;
-        }
-        let nt_query: NtQueryInformationProcessFn = std::mem::transmute(func_ptr);
-
-        let handle = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, 0, pid);
-        if handle.is_null() {
-            return None;
-        }
-
-        let mut pbi = std::mem::zeroed::<ProcessBasicInformation>();
-        let mut return_len = 0u32;
-        let status = nt_query(
-            handle,
-            0, // ProcessBasicInformation
-            &mut pbi as *mut _ as *mut std::ffi::c_void,
-            std::mem::size_of::<ProcessBasicInformation>() as u32,
-            &mut return_len,
-        );
-
-        if status != 0 || pbi.peb_base_address.is_null() {
-            CloseHandle(handle);
-            return None;
-        }
-
-        #[cfg(target_pointer_width = "64")]
-        let (proc_params_offset, env_offset) = (0x20usize, 0x80usize);
-        #[cfg(target_pointer_width = "32")]
-        let (proc_params_offset, env_offset) = (0x10usize, 0x48usize);
-
-        let peb_ptr = pbi.peb_base_address as usize;
-        let mut params_ptr: *mut std::ffi::c_void = std::ptr::null_mut();
-        let mut bytes_read = 0usize;
-
-        let ok1 = ReadProcessMemory(
-            handle,
-            (peb_ptr + proc_params_offset) as *const std::ffi::c_void,
-            &mut params_ptr as *mut _ as *mut std::ffi::c_void,
-            std::mem::size_of::<*mut std::ffi::c_void>(),
-            &mut bytes_read,
-        );
-
-        if ok1 == 0 || params_ptr.is_null() {
-            CloseHandle(handle);
-            return None;
-        }
-
-        let mut env_ptr: *mut std::ffi::c_void = std::ptr::null_mut();
-        let ok2 = ReadProcessMemory(
-            handle,
-            (params_ptr as usize + env_offset) as *const std::ffi::c_void,
-            &mut env_ptr as *mut _ as *mut std::ffi::c_void,
-            std::mem::size_of::<*mut std::ffi::c_void>(),
-            &mut bytes_read,
-        );
-
-        if ok2 == 0 || env_ptr.is_null() {
-            CloseHandle(handle);
-            return None;
-        }
-
-        // 循環逐頁讀取完整以雙重 NUL 結尾的環境變數區塊。
-        // 若在緩衝區上限或讀取錯誤前未出現雙重 NUL 結尾，拒絕不完整的捕獲以防重啟時遺漏關鍵環境變數。
-        let mut all_u16: Vec<u16> = Vec::new();
-        let mut curr_ptr = env_ptr as usize;
-        let mut block_terminated = false;
-        const MAX_ENV_BYTES: usize = 128 * 1024; // 上限 128 KB，防範異常超大或損壞區塊
-
-        while all_u16.len() * 2 < MAX_ENV_BYTES {
-            let bytes_to_page_end = 4096 - (curr_ptr & 0xFFF);
-            let read_size = bytes_to_page_end.max(512).min(4096);
-            let mut page_buf = vec![0u8; read_size];
-            let mut chunk_bytes_read = 0usize;
-
-            let ok = ReadProcessMemory(
-                handle,
-                curr_ptr as *const std::ffi::c_void,
-                page_buf.as_mut_ptr() as *mut std::ffi::c_void,
-                read_size,
-                &mut chunk_bytes_read,
-            );
-
-            if ok == 0 || chunk_bytes_read < 2 {
-                break;
-            }
-
-            let u16_chunk: &[u16] =
-                std::slice::from_raw_parts(page_buf.as_ptr() as *const u16, chunk_bytes_read / 2);
-            all_u16.extend_from_slice(u16_chunk);
-            curr_ptr += chunk_bytes_read;
-
-            // 檢查是否已出現雙重 NUL 結尾
-            let mut start = 0;
-            for i in 0..all_u16.len() {
-                if all_u16[i] == 0 {
-                    if i == start {
-                        block_terminated = true;
-                        break;
-                    }
-                    start = i + 1;
-                }
-            }
-
-            if block_terminated {
-                break;
-            }
-
-            if chunk_bytes_read < read_size {
-                break;
-            }
-        }
-        CloseHandle(handle);
-
-        if !block_terminated {
-            return None;
-        }
-
-        let mut results = Vec::new();
-        let mut start = 0;
-        for i in 0..all_u16.len() {
-            if all_u16[i] == 0 {
-                if i > start {
-                    let entry = String::from_utf16_lossy(&all_u16[start..i]);
-                    if let Some((k, v)) = entry.split_once('=') {
-                        if RELEVANT_ENV_VARS.contains(&k) {
-                            results.push((k.to_string(), v.to_string()));
-                        }
-                    }
-                } else {
-                    break;
-                }
-                start = i + 1;
-            }
-        }
-        Some(results)
-    }
-}
-
-#[cfg(windows)]
-fn get_process_cwd(pid: u32) -> Option<PathBuf> {
-    use std::os::windows::ffi::OsStringExt;
-
-    unsafe {
-        let ntdll = GetModuleHandleA(b"ntdll.dll\0".as_ptr());
-        if ntdll.is_null() {
-            return None;
-        }
-        let func_ptr = GetProcAddress(ntdll, b"NtQueryInformationProcess\0".as_ptr());
-        if func_ptr.is_null() {
-            return None;
-        }
-        let nt_query: NtQueryInformationProcessFn = std::mem::transmute(func_ptr);
-
-        let mut handle = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, 0, pid);
-        if handle.is_null() {
-            handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
-        }
-        if handle.is_null() {
-            return None;
-        }
-
-        let mut pbi = std::mem::zeroed::<ProcessBasicInformation>();
-        let mut return_len = 0u32;
-        let status = nt_query(
-            handle,
-            0, // ProcessBasicInformation
-            &mut pbi as *mut _ as *mut std::ffi::c_void,
-            std::mem::size_of::<ProcessBasicInformation>() as u32,
-            &mut return_len,
-        );
-
-        if status != 0 || pbi.peb_base_address.is_null() {
-            CloseHandle(handle);
-            return None;
-        }
-
-        #[cfg(target_pointer_width = "64")]
-        let (proc_params_offset, curdir_offset) = (0x20usize, 0x38usize);
-        #[cfg(target_pointer_width = "32")]
-        let (proc_params_offset, curdir_offset) = (0x10usize, 0x24usize);
-
-        let peb_ptr = pbi.peb_base_address as usize;
-        let mut params_ptr: *mut std::ffi::c_void = std::ptr::null_mut();
-        let mut bytes_read = 0usize;
-
-        let ok1 = ReadProcessMemory(
-            handle,
-            (peb_ptr + proc_params_offset) as *const std::ffi::c_void,
-            &mut params_ptr as *mut _ as *mut std::ffi::c_void,
-            std::mem::size_of::<*mut std::ffi::c_void>(),
-            &mut bytes_read,
-        );
-
-        if ok1 == 0 || params_ptr.is_null() {
-            CloseHandle(handle);
-            return None;
-        }
-
-        let mut unicode_str = UnicodeString {
-            length: 0,
-            maximum_length: 0,
-            buffer: std::ptr::null_mut(),
-        };
-
-        let ok2 = ReadProcessMemory(
-            handle,
-            (params_ptr as usize + curdir_offset) as *const std::ffi::c_void,
-            &mut unicode_str as *mut _ as *mut std::ffi::c_void,
-            std::mem::size_of::<UnicodeString>(),
-            &mut bytes_read,
-        );
-
-        if ok2 == 0 || unicode_str.buffer.is_null() || unicode_str.length == 0 {
-            CloseHandle(handle);
-            return None;
-        }
-
-        let char_len = (unicode_str.length as usize) / 2;
-        if char_len > 4096 {
-            CloseHandle(handle);
-            return None;
-        }
-
-        let mut wide_buf = vec![0u16; char_len];
-        let ok3 = ReadProcessMemory(
-            handle,
-            unicode_str.buffer as *const std::ffi::c_void,
-            wide_buf.as_mut_ptr() as *mut std::ffi::c_void,
-            unicode_str.length as usize,
-            &mut bytes_read,
-        );
-        CloseHandle(handle);
-
-        if ok3 == 0 || bytes_read < unicode_str.length as usize {
-            return None;
-        }
-
-        let os_str = std::ffi::OsString::from_wide(&wide_buf);
-        let path = PathBuf::from(os_str.to_string_lossy().trim().to_string());
-        if path.is_dir() {
-            Some(path)
-        } else {
-            None
-        }
-    }
-}
-
-#[cfg(not(any(unix, windows)))]
-fn get_process_relevant_envs(_pid: u32) -> Option<Vec<(String, String)>> {
-    None
-}
-
-#[cfg(not(any(unix, windows)))]
-fn get_process_cwd(_pid: u32) -> Option<PathBuf> {
     None
 }
 
@@ -1265,15 +697,10 @@ pub fn current_target_triple() -> Option<&'static str> {
     {
         Some("x86_64-apple-darwin")
     }
-    #[cfg(all(target_os = "windows", target_arch = "x86_64", target_env = "msvc"))]
-    {
-        Some("x86_64-pc-windows-msvc")
-    }
     #[cfg(not(any(
         all(target_os = "linux", target_arch = "x86_64", target_env = "gnu"),
         all(target_os = "macos", target_arch = "aarch64"),
         all(target_os = "macos", target_arch = "x86_64"),
-        all(target_os = "windows", target_arch = "x86_64", target_env = "msvc"),
     )))]
     {
         None
@@ -1285,18 +712,8 @@ pub fn standard_install_dir() -> Option<PathBuf> {
         return Some(custom);
     }
 
-    #[cfg(windows)]
-    {
-        if let Some(local_app_data) = dirs::data_local_dir() {
-            return Some(local_app_data.join("TokenUsageInsights"));
-        }
-    }
-
-    #[cfg(not(windows))]
-    {
-        if let Some(home) = dirs::home_dir() {
-            return Some(home.join(".local").join("share").join(APP_NAME));
-        }
+    if let Some(home) = dirs::home_dir() {
+        return Some(home.join(".local").join("share").join(APP_NAME));
     }
 
     None
@@ -1346,7 +763,7 @@ pub(crate) fn detect_environment_with_path(exe_path: &Path) -> EnvironmentKind {
         }
     }
 
-    // 4. 檢查安裝標記檔（由 install.sh 或 install.ps1 寫入的自訂安裝目錄）
+    // 4. 檢查安裝標記檔（由 install.sh 寫入的自訂安裝目錄）
     let marker_path = exe_dir.join(".install_marker");
     if let Ok(meta) = fs::symlink_metadata(&marker_path) {
         if meta.is_file() && !meta.file_type().is_symlink() {
@@ -1415,16 +832,7 @@ pub fn is_newer_version(remote: &str, current: &str) -> bool {
 
 pub fn archive_filename(tag: &str, target: &str) -> String {
     let tag = tag.trim();
-
-    #[cfg(windows)]
-    {
-        format!("{APP_NAME}-{tag}-{target}.zip")
-    }
-
-    #[cfg(not(windows))]
-    {
-        format!("{APP_NAME}-{tag}-{target}.tar.gz")
-    }
+    format!("{APP_NAME}-{tag}-{target}.tar.gz")
 }
 
 pub fn parse_checksum(sums_text: &str, target_filename: &str) -> Option<String> {
@@ -1529,14 +937,6 @@ pub fn parse_config_yaml(content: &str) -> (Option<bool>, Option<i64>) {
 pub fn load_update_config() -> (Option<bool>, Option<i64>) {
     let mut candidates = vec![crate::db::get_insights_dir().join("config.yaml")];
 
-    #[cfg(windows)]
-    if let Some(data_dir) = dirs::data_local_dir() {
-        let def = data_dir.join("TokenUsageInsights").join("config.yaml");
-        if !candidates.contains(&def) {
-            candidates.push(def);
-        }
-    }
-    #[cfg(not(windows))]
     if let Some(home) = dirs::home_dir() {
         let def = home.join(".token-usage-insights").join("config.yaml");
         if !candidates.contains(&def) {
@@ -1585,90 +985,6 @@ fn unlock_file(file: &fs::File) -> Result<(), std::io::Error> {
     }
 }
 
-#[cfg(windows)]
-fn try_lock_file_exclusive(file: &fs::File) -> Result<bool, std::io::Error> {
-    use std::os::windows::io::AsRawHandle;
-    type Handle = *mut std::ffi::c_void;
-
-    #[repr(C)]
-    struct Overlapped {
-        internal: usize,
-        internal_high: usize,
-        offset: u32,
-        offset_high: u32,
-        event: Handle,
-    }
-
-    const LOCKFILE_FAIL_IMMEDIATELY: u32 = 0x00000001;
-    const LOCKFILE_EXCLUSIVE_LOCK: u32 = 0x00000002;
-    const ERROR_LOCK_VIOLATION: i32 = 33;
-
-    extern "system" {
-        fn LockFileEx(
-            hFile: Handle,
-            dwFlags: u32,
-            dwReserved: u32,
-            nNumberOfBytesToLockLow: u32,
-            nNumberOfBytesToLockHigh: u32,
-            lpOverlapped: *mut Overlapped,
-        ) -> i32;
-    }
-    let handle = file.as_raw_handle() as Handle;
-    let mut overlapped = std::mem::MaybeUninit::<Overlapped>::zeroed();
-    let ret = unsafe {
-        LockFileEx(
-            handle,
-            LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY,
-            0,
-            1,
-            0,
-            overlapped.as_mut_ptr(),
-        )
-    };
-    if ret != 0 {
-        Ok(true)
-    } else {
-        let err = std::io::Error::last_os_error();
-        if err.raw_os_error() == Some(ERROR_LOCK_VIOLATION) {
-            Ok(false)
-        } else {
-            Err(err)
-        }
-    }
-}
-
-#[cfg(windows)]
-fn unlock_file(file: &fs::File) -> Result<(), std::io::Error> {
-    use std::os::windows::io::AsRawHandle;
-    type Handle = *mut std::ffi::c_void;
-    extern "system" {
-        fn UnlockFile(
-            hFile: Handle,
-            dwFileOffsetLow: u32,
-            dwFileOffsetHigh: u32,
-            nNumberOfBytesToLockLow: u32,
-            nNumberOfBytesToLockHigh: u32,
-        ) -> i32;
-    }
-    let handle = file.as_raw_handle() as Handle;
-    let ret = unsafe { UnlockFile(handle, 0, 0, 1, 0) };
-    if ret != 0 {
-        Ok(())
-    } else {
-        Err(std::io::Error::last_os_error())
-    }
-}
-
-#[cfg(not(any(unix, windows)))]
-fn try_lock_file_exclusive(_file: &fs::File) -> Result<bool, std::io::Error> {
-    Ok(true)
-}
-
-#[cfg(not(any(unix, windows)))]
-fn unlock_file(_file: &fs::File) -> Result<(), std::io::Error> {
-    Ok(())
-}
-
 #[derive(Debug)]
 struct UpdateLock {
     _lock_path: PathBuf,
@@ -1683,26 +999,10 @@ impl UpdateLock {
     fn try_acquire(install_dir: &Path) -> Result<Self, String> {
         let lock_path = Self::lock_path(install_dir);
         if let Ok(meta) = fs::symlink_metadata(&lock_path) {
-            #[cfg(windows)]
-            {
-                use std::os::windows::fs::MetadataExt;
-                const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x00000400;
-                if meta.file_type().is_symlink()
-                    || (meta.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT) != 0
-                    || !meta.is_file()
-                {
-                    return Err(format!(
-                        "拒絕在符號連結、重剖析點或非正規檔案上建立更新鎖 ({lock_path:?})；更新中止以確保安全"
-                    ));
-                }
-            }
-            #[cfg(not(windows))]
-            {
-                if meta.file_type().is_symlink() || !meta.is_file() {
-                    return Err(format!(
-                        "拒絕在符號連結或非正規檔案上建立更新鎖 ({lock_path:?})；更新中止以確保安全"
-                    ));
-                }
+            if meta.file_type().is_symlink() || !meta.is_file() {
+                return Err(format!(
+                    "拒絕在符號連結或非正規檔案上建立更新鎖 ({lock_path:?})；更新中止以確保安全"
+                ));
             }
         }
 
@@ -1713,13 +1013,6 @@ impl UpdateLock {
         {
             use std::os::unix::fs::OpenOptionsExt;
             options.custom_flags(libc::O_NOFOLLOW);
-        }
-
-        #[cfg(windows)]
-        {
-            use std::os::windows::fs::OpenOptionsExt;
-            const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x00200000;
-            options.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
         }
 
         let file = options
@@ -1740,31 +1033,6 @@ impl UpdateLock {
             if sym_meta.file_type().is_symlink()
                 || sym_meta.dev() != handle_meta.dev()
                 || sym_meta.ino() != handle_meta.ino()
-            {
-                return Err(format!(
-                    "偵測到更新鎖定檔路徑在開啟後被置換或為符號連結 ({lock_path:?})；更新中止以確保安全"
-                ));
-            }
-        }
-
-        #[cfg(windows)]
-        {
-            use std::os::windows::fs::MetadataExt;
-            const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x00000400;
-            let handle_meta = file
-                .metadata()
-                .map_err(|e| format!("無法讀取開啟之更新鎖定檔元資料 ({lock_path:?}): {e}"))?;
-            if !handle_meta.is_file()
-                || (handle_meta.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT) != 0
-            {
-                return Err(format!(
-                    "開啟的更新鎖定檔為符號連結、重剖析點或非正規檔案 ({lock_path:?})"
-                ));
-            }
-            let sym_meta = fs::symlink_metadata(&lock_path)
-                .map_err(|e| format!("無法重新確認更新鎖定檔路徑元資料 ({lock_path:?}): {e}"))?;
-            if sym_meta.file_type().is_symlink()
-                || (sym_meta.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT) != 0
             {
                 return Err(format!(
                     "偵測到更新鎖定檔路徑在開啟後被置換或為符號連結 ({lock_path:?})；更新中止以確保安全"
@@ -1794,22 +1062,8 @@ impl UpdateLock {
         let lock_path = Self::lock_path(install_dir);
         match fs::symlink_metadata(&lock_path) {
             Ok(meta) => {
-                #[cfg(windows)]
-                {
-                    use std::os::windows::fs::MetadataExt;
-                    const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x00000400;
-                    if meta.file_type().is_symlink()
-                        || (meta.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT) != 0
-                        || !meta.is_file()
-                    {
-                        return true;
-                    }
-                }
-                #[cfg(not(windows))]
-                {
-                    if meta.file_type().is_symlink() || !meta.is_file() {
-                        return true;
-                    }
+                if meta.file_type().is_symlink() || !meta.is_file() {
+                    return true;
                 }
             }
             Err(_) => {
@@ -1827,13 +1081,6 @@ impl UpdateLock {
         {
             use std::os::unix::fs::OpenOptionsExt;
             options.custom_flags(libc::O_NOFOLLOW);
-        }
-
-        #[cfg(windows)]
-        {
-            use std::os::windows::fs::OpenOptionsExt;
-            const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x00200000;
-            options.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
         }
 
         let file = match options.open(&lock_path) {
@@ -1855,26 +1102,6 @@ impl UpdateLock {
                     {
                         return true;
                     }
-                }
-            }
-        }
-
-        #[cfg(windows)]
-        {
-            use std::os::windows::fs::MetadataExt;
-            const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x00000400;
-            if let Ok(handle_meta) = file.metadata() {
-                if !handle_meta.is_file()
-                    || (handle_meta.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT) != 0
-                {
-                    return true;
-                }
-            }
-            if let Ok(sym_meta) = fs::symlink_metadata(&lock_path) {
-                if sym_meta.file_type().is_symlink()
-                    || (sym_meta.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT) != 0
-                {
-                    return true;
                 }
             }
         }
@@ -1944,44 +1171,6 @@ impl Drop for TempDirGuard {
     }
 }
 
-#[cfg(windows)]
-fn atomic_rename_overwrite(src: &Path, dst: &Path) -> Result<(), std::io::Error> {
-    use std::os::windows::ffi::OsStrExt;
-    let mut src_wide: Vec<u16> = src.as_os_str().encode_wide().collect();
-    src_wide.push(0);
-    let mut dst_wide: Vec<u16> = dst.as_os_str().encode_wide().collect();
-    dst_wide.push(0);
-
-    const MOVEFILE_REPLACE_EXISTING: u32 = 0x00000001;
-    const MOVEFILE_WRITE_THROUGH: u32 = 0x00000008;
-
-    extern "system" {
-        fn MoveFileExW(
-            lpExistingFileName: *const u16,
-            lpNewFileName: *const u16,
-            dwFlags: u32,
-        ) -> i32;
-    }
-
-    let ret = unsafe {
-        MoveFileExW(
-            src_wide.as_ptr(),
-            dst_wide.as_ptr(),
-            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
-        )
-    };
-
-    if ret != 0 {
-        return Ok(());
-    }
-
-    if dst.exists() {
-        let _ = fs::remove_file(dst);
-    }
-    fs::rename(src, dst)
-}
-
-#[cfg(not(windows))]
 fn atomic_rename_overwrite(src: &Path, dst: &Path) -> Result<(), std::io::Error> {
     fs::rename(src, dst)
 }
@@ -2032,7 +1221,7 @@ fn safe_write_file(dst: &Path, content: &[u8]) -> Result<(), String> {
     Ok(())
 }
 
-fn extract_archive(archive_path: &Path, dest_dir: &Path, is_zip: bool) -> Result<(), String> {
+fn extract_archive(archive_path: &Path, dest_dir: &Path) -> Result<(), String> {
     use std::io::Read;
     fs::create_dir_all(dest_dir).map_err(|e| format!("建立解壓縮目錄失敗: {e}"))?;
 
@@ -2041,144 +1230,81 @@ fn extract_archive(archive_path: &Path, dest_dir: &Path, is_zip: bool) -> Result
 
     let mut total_bytes: u64 = 0;
 
-    if is_zip {
-        let mut archive =
-            zip::ZipArchive::new(file).map_err(|e| format!("解析 ZIP 封裝失敗: {e}"))?;
-        if archive.len() > MAX_EXTRACTED_ENTRIES {
+    let tar_gz = flate2::read::GzDecoder::new(file);
+    let mut archive = tar::Archive::new(tar_gz);
+    let mut count: usize = 0;
+
+    for entry in archive
+        .entries()
+        .map_err(|e| format!("讀取 tar 項目清單失敗: {e}"))?
+    {
+        count = count.saturating_add(1);
+        if count > MAX_EXTRACTED_ENTRIES {
             return Err(format!(
-                "ZIP 壓縮包項目數超過安全上限 ({MAX_EXTRACTED_ENTRIES})"
+                "tar.gz 壓縮包項目數超過安全上限 ({MAX_EXTRACTED_ENTRIES})"
             ));
         }
+        let mut entry = entry.map_err(|e| format!("讀取 tar 項目失敗: {e}"))?;
+        let path = entry
+            .path()
+            .map_err(|e| format!("讀取 tar 路徑失敗: {e}"))?
+            .to_path_buf();
 
-        for i in 0..archive.len() {
-            let mut entry = archive
-                .by_index(i)
-                .map_err(|e| format!("讀取 ZIP 項目失敗: {e}"))?;
-            let enclosed = entry
-                .enclosed_name()
-                .ok_or_else(|| "ZIP 內含無效相對路徑".to_string())?
-                .to_path_buf();
-            let outpath = dest_dir.join(&enclosed);
-            if !outpath.starts_with(dest_dir) {
-                return Err(format!(
-                    "ZIP 包含超出解壓目錄的不安全檔案路徑: {enclosed:?}"
-                ));
-            }
-
-            if let Some(mode) = entry.unix_mode() {
-                if mode & 0o170000 == 0o120000 {
-                    return Err(format!("ZIP 包含不安全的符號連結: {:?}", entry.name()));
-                }
-            }
-
-            if entry.is_dir() {
-                fs::create_dir_all(&outpath)
-                    .map_err(|e| format!("建立目錄失敗 ({outpath:?}): {e}"))?;
-            } else {
-                if let Some(parent) = outpath.parent() {
-                    fs::create_dir_all(parent)
-                        .map_err(|e| format!("建立上層目錄失敗 ({parent:?}): {e}"))?;
-                }
-                let mut outfile = fs::File::create(&outpath)
-                    .map_err(|e| format!("建立檔案失敗 ({outpath:?}): {e}"))?;
-                let mut buffer = [0u8; 8192];
-                loop {
-                    let n = entry
-                        .read(&mut buffer)
-                        .map_err(|e| format!("解壓讀取失敗: {e}"))?;
-                    if n == 0 {
-                        break;
-                    }
-                    total_bytes = total_bytes.saturating_add(n as u64);
-                    if total_bytes > MAX_EXTRACTED_BYTES {
-                        return Err(format!(
-                            "解壓縮展開大小超過安全上限 ({MAX_EXTRACTED_BYTES} 位元組)"
-                        ));
-                    }
-                    outfile
-                        .write_all(&buffer[..n])
-                        .map_err(|e| format!("寫入解壓檔案失敗: {e}"))?;
-                }
-            }
-        }
-    } else {
-        let tar_gz = flate2::read::GzDecoder::new(file);
-        let mut archive = tar::Archive::new(tar_gz);
-        let mut count: usize = 0;
-
-        for entry in archive
-            .entries()
-            .map_err(|e| format!("讀取 tar 項目清單失敗: {e}"))?
+        if path.is_absolute()
+            || path.to_string_lossy().starts_with('/')
+            || path.to_string_lossy().starts_with('\\')
+            || path.components().any(|c| {
+                matches!(
+                    c,
+                    std::path::Component::ParentDir
+                        | std::path::Component::RootDir
+                        | std::path::Component::Prefix(..)
+                )
+            })
         {
-            count = count.saturating_add(1);
-            if count > MAX_EXTRACTED_ENTRIES {
-                return Err(format!(
-                    "tar.gz 壓縮包項目數超過安全上限 ({MAX_EXTRACTED_ENTRIES})"
-                ));
-            }
-            let mut entry = entry.map_err(|e| format!("讀取 tar 項目失敗: {e}"))?;
-            let path = entry
-                .path()
-                .map_err(|e| format!("讀取 tar 路徑失敗: {e}"))?
-                .to_path_buf();
+            return Err(format!("tar 包含不安全的檔案路徑: {path:?}"));
+        }
+        let entry_type = entry.header().entry_type();
+        if entry_type.is_symlink() || entry_type.is_hard_link() {
+            return Err(format!("tar 包含不安全的連結項目: {path:?}"));
+        }
+        let outpath = dest_dir.join(&path);
+        if !outpath.starts_with(dest_dir) {
+            return Err(format!("tar 包含超出解壓目錄的不安全檔案路徑: {path:?}"));
+        }
 
-            if path.is_absolute()
-                || path.to_string_lossy().starts_with('/')
-                || path.to_string_lossy().starts_with('\\')
-                || path.components().any(|c| {
-                    matches!(
-                        c,
-                        std::path::Component::ParentDir
-                            | std::path::Component::RootDir
-                            | std::path::Component::Prefix(..)
-                    )
-                })
+        if entry.header().entry_type().is_dir() {
+            fs::create_dir_all(&outpath).map_err(|e| format!("建立目錄失敗 ({outpath:?}): {e}"))?;
+        } else {
+            if let Some(parent) = outpath.parent() {
+                fs::create_dir_all(parent)
+                    .map_err(|e| format!("建立上層目錄失敗 ({parent:?}): {e}"))?;
+            }
+            let mut outfile = fs::File::create(&outpath)
+                .map_err(|e| format!("建立檔案失敗 ({outpath:?}): {e}"))?;
+            let mut buffer = [0u8; 8192];
+            loop {
+                let n = entry
+                    .read(&mut buffer)
+                    .map_err(|e| format!("解壓讀取失敗: {e}"))?;
+                if n == 0 {
+                    break;
+                }
+                total_bytes = total_bytes.saturating_add(n as u64);
+                if total_bytes > MAX_EXTRACTED_BYTES {
+                    return Err(format!(
+                        "解壓縮展開大小超過安全上限 ({MAX_EXTRACTED_BYTES} 位元組)"
+                    ));
+                }
+                outfile
+                    .write_all(&buffer[..n])
+                    .map_err(|e| format!("寫入解壓檔案失敗: {e}"))?;
+            }
+            #[cfg(unix)]
             {
-                return Err(format!("tar 包含不安全的檔案路徑: {path:?}"));
-            }
-            let entry_type = entry.header().entry_type();
-            if entry_type.is_symlink() || entry_type.is_hard_link() {
-                return Err(format!("tar 包含不安全的連結項目: {path:?}"));
-            }
-            let outpath = dest_dir.join(&path);
-            if !outpath.starts_with(dest_dir) {
-                return Err(format!("tar 包含超出解壓目錄的不安全檔案路徑: {path:?}"));
-            }
-
-            if entry.header().entry_type().is_dir() {
-                fs::create_dir_all(&outpath)
-                    .map_err(|e| format!("建立目錄失敗 ({outpath:?}): {e}"))?;
-            } else {
-                if let Some(parent) = outpath.parent() {
-                    fs::create_dir_all(parent)
-                        .map_err(|e| format!("建立上層目錄失敗 ({parent:?}): {e}"))?;
-                }
-                let mut outfile = fs::File::create(&outpath)
-                    .map_err(|e| format!("建立檔案失敗 ({outpath:?}): {e}"))?;
-                let mut buffer = [0u8; 8192];
-                loop {
-                    let n = entry
-                        .read(&mut buffer)
-                        .map_err(|e| format!("解壓讀取失敗: {e}"))?;
-                    if n == 0 {
-                        break;
-                    }
-                    total_bytes = total_bytes.saturating_add(n as u64);
-                    if total_bytes > MAX_EXTRACTED_BYTES {
-                        return Err(format!(
-                            "解壓縮展開大小超過安全上限 ({MAX_EXTRACTED_BYTES} 位元組)"
-                        ));
-                    }
-                    outfile
-                        .write_all(&buffer[..n])
-                        .map_err(|e| format!("寫入解壓檔案失敗: {e}"))?;
-                }
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::PermissionsExt;
-                    if let Ok(mode) = entry.header().mode() {
-                        let _ = fs::set_permissions(&outpath, fs::Permissions::from_mode(mode));
-                    }
+                use std::os::unix::fs::PermissionsExt;
+                if let Ok(mode) = entry.header().mode() {
+                    let _ = fs::set_permissions(&outpath, fs::Permissions::from_mode(mode));
                 }
             }
         }
@@ -2256,12 +1382,7 @@ fn is_stale_temp_artifact(name: &str) -> bool {
 /// 備份清單必須包含的最低限度項目：平台執行檔與靜態資源。
 /// 缺少這些項目代表清單遭截斷或竄改，還原時第一階段會移除安裝目錄的執行檔而無法復原
 fn required_install_baseline() -> Vec<&'static str> {
-    let exec_name = if cfg!(windows) {
-        "token-usage-insights.exe"
-    } else {
-        APP_NAME
-    };
-    vec![exec_name, "static"]
+    vec![APP_NAME, "static"]
 }
 
 /// 寫入更新移交標記（`.backup/.handing_off`）。
@@ -2276,14 +1397,11 @@ fn write_handoff_marker(backup_dir: &Path) -> Result<(), String> {
 
 const MANAGED_ITEMS: &[&str] = &[
     APP_NAME,
-    #[cfg(windows)]
-    "token-usage-insights.exe",
     "static",
     "pricing.csv",
     "shell",
     "scripts",
     "install.sh",
-    "install.ps1",
     "VERSION",
     "README.md",
     "LICENSE",
@@ -3063,7 +2181,6 @@ pub(crate) async fn run_update_in_dir(
     println!("✅ SHA256 校驗通過！");
     log_update("INFO", "VERIFY", "SHA256 校驗通過");
 
-    let is_zip = asset.name.ends_with(".zip");
     let extract_dir = tmp_guard.path.join("extracted");
     println!("📦 正在解壓縮檔案...");
 
@@ -3075,15 +2192,13 @@ pub(crate) async fn run_update_in_dir(
         let remote_version = remote_version.to_string();
         let cancel_flag = options.cancel_flag.clone();
         move || -> Result<bool, UpdateError> {
-            if let Err(e) = extract_archive(&archive_path, &extract_dir, is_zip) {
+            if let Err(e) = extract_archive(&archive_path, &extract_dir) {
                 log_update("ERROR", "EXTRACT", &e);
                 return Err(UpdateError::Failure(e));
             }
 
             // 尋找解壓後的根目錄（可能有一層子目錄）
-            let release_root = if extract_dir.join(APP_NAME).exists()
-                || extract_dir.join(format!("{APP_NAME}.exe")).exists()
-            {
+            let release_root = if extract_dir.join(APP_NAME).exists() {
                 extract_dir
             } else {
                 let mut found = None;
@@ -3091,9 +2206,7 @@ pub(crate) async fn run_update_in_dir(
                     for entry in entries.flatten() {
                         if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
                             let sub = entry.path();
-                            if sub.join(APP_NAME).exists()
-                                || sub.join(format!("{APP_NAME}.exe")).exists()
-                            {
+                            if sub.join(APP_NAME).exists() {
                                 found = Some(sub);
                                 break;
                             }
@@ -3110,11 +2223,7 @@ pub(crate) async fn run_update_in_dir(
                 }
             };
 
-            let exec_name = if cfg!(windows) {
-                format!("{APP_NAME}.exe")
-            } else {
-                APP_NAME.to_string()
-            };
+            let exec_name = APP_NAME.to_string();
 
             // 驗證解壓後的發行包是否包含所有必要資源，避免不完整安裝造成混合版本
             let required_items = [
@@ -3292,40 +2401,6 @@ fn stop_running_dashboard_instances(install_dir: &Path) -> Result<DashboardProce
         }
     }
 
-    #[cfg(windows)]
-    {
-        let exec_name = format!("{APP_NAME}.exe");
-        let output = std::process::Command::new("tasklist")
-            .args([
-                "/FI",
-                &format!("IMAGENAME eq {exec_name}"),
-                "/FO",
-                "CSV",
-                "/NH",
-            ])
-            .output()
-            .map_err(|e| format!("列舉 Windows 進程失敗: {e}"))?;
-        if !output.status.success() {
-            let err_text = String::from_utf8_lossy(&output.stderr);
-            return Err(format!(
-                "tasklist 命令執行失敗 (exit code: {:?}): {err_text}",
-                output.status.code()
-            ));
-        }
-        let text = String::from_utf8_lossy(&output.stdout);
-        for line in text.lines() {
-            let parts: Vec<&str> = line.split(',').collect();
-            if parts.len() >= 2 {
-                let pid_str = parts[1].trim().trim_matches('"');
-                if let Ok(pid) = pid_str.parse::<u32>() {
-                    if pid != my_pid {
-                        candidate_pids.insert(pid);
-                    }
-                }
-            }
-        }
-    }
-
     // 3. 嚴格驗證候選 PID：必須為活躍進程且執行檔路徑確認位於 install_dir，並過濾短暫 CLI 指令進程（Fail-Closed 原則）
     let mut stopped_specs = Vec::new();
     #[cfg(unix)]
@@ -3429,66 +2504,6 @@ fn stop_running_dashboard_instances(install_dir: &Path) -> Result<DashboardProce
         }
     }
 
-    // 若在 Windows 環境且有受到 run-service.ps1 監管之服務進程，寫入服務重啟協商標記檔，讓 run-service.ps1 能在新版就緒後重啟
-    let restart_pending_file = install_dir.join(".service_restart_pending");
-    #[cfg(windows)]
-    {
-        let had_supervised = stopped_specs.iter().any(|s| s.is_supervised);
-        if had_supervised {
-            safe_write_file(&restart_pending_file, b"1").map_err(|e| {
-                let err = format!("無法寫入服務重啟協商標記檔 ({restart_pending_file:?}): {e}");
-                log_update("ERROR", "STOP_SERVICE", &err);
-                err
-            })?;
-
-            // 針對 Windows 監管進程，必須明確等待所有受監管子進程完全終止，防範檔案替換時發生共享衝突 (sharing violation)
-            let supervised_pids: Vec<u32> = stopped_specs
-                .iter()
-                .filter(|s| s.is_supervised)
-                .map(|s| s.pid)
-                .collect();
-
-            if !supervised_pids.is_empty() {
-                log_update(
-                    "INFO",
-                    "STOP_SERVICE",
-                    &format!("等待 Windows 監管服務子進程安全退出: {supervised_pids:?}"),
-                );
-
-                let wait_start = Instant::now();
-                let sup_timeout = Duration::from_secs(30);
-                let mut remaining_sup = supervised_pids;
-
-                while !remaining_sup.is_empty() {
-                    remaining_sup.retain(|&pid| is_process_alive(pid));
-                    if remaining_sup.is_empty() {
-                        break;
-                    }
-
-                    if wait_start.elapsed() >= sup_timeout {
-                        // 同樣不強制終止：監管進程可能仍在等待資料庫寫入結束，強制終止會破壞資料完整性
-                        let err = format!(
-                            "等待 Windows 監管服務進程 (PID: {remaining_sup:?}) 完成優雅停機逾時（{} 秒），未強制終止以避免中斷進行中的資料庫寫入；更新中止以保護資料完整性",
-                            sup_timeout.as_secs()
-                        );
-                        log_update("ERROR", "STOP_SERVICE", &err);
-                        let _ = fs::remove_file(&restart_pending_file);
-                        rollback_stopped_dashboard_instances(&stopped_specs, install_dir);
-                        return Err(err);
-                    }
-
-                    std::thread::sleep(Duration::from_millis(100));
-                }
-
-                log_update(
-                    "INFO",
-                    "STOP_SERVICE",
-                    "所有 Windows 監管服務子進程已確認完全退出",
-                );
-            }
-        }
-    }
-
     if pids_to_stop.is_empty() {
         return Ok(DashboardProcessPlan {
             stopped_specs,
@@ -3503,17 +2518,11 @@ fn stop_running_dashboard_instances(install_dir: &Path) -> Result<DashboardProce
         &format!("協調停止執行中之服務進程: {pids_to_stop:?}"),
     );
 
-    // 4. 發送初次溫和退出訊號 (Unix: SIGTERM, Windows: taskkill 無 /F)
+    // 4. 發送初次溫和退出訊號 (SIGTERM)
     for &pid in &pids_to_stop {
         #[cfg(unix)]
         unsafe {
             libc::kill(pid as libc::pid_t, libc::SIGTERM);
-        }
-        #[cfg(windows)]
-        {
-            let _ = std::process::Command::new("taskkill")
-                .args(["/PID", &pid.to_string(), "/T"])
-                .output();
         }
     }
 
@@ -3536,7 +2545,6 @@ fn stop_running_dashboard_instances(install_dir: &Path) -> Result<DashboardProce
                 timeout.as_secs()
             );
             log_update("ERROR", "STOP_SERVICE", &err);
-            let _ = fs::remove_file(&restart_pending_file);
             rollback_stopped_dashboard_instances(&stopped_specs, install_dir);
             return Err(err);
         }
@@ -3601,11 +2609,7 @@ fn restart_dashboard_instance(
     spec: &StoppedProcessSpec,
     install_dir: &Path,
 ) -> Result<u32, String> {
-    let exec_name = if cfg!(windows) {
-        format!("{APP_NAME}.exe")
-    } else {
-        APP_NAME.to_string()
-    };
+    let exec_name = APP_NAME.to_string();
     let exe = if spec.exe_path.exists() {
         spec.exe_path.clone()
     } else {
@@ -3655,13 +2659,6 @@ fn restart_dashboard_instance(
     cmd.stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
-
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
-        cmd.creation_flags(CREATE_NO_WINDOW);
-    }
 
     let mut child = cmd
         .spawn()
@@ -3720,809 +2717,6 @@ fn restart_dashboard_instance(
     Ok(child_pid)
 }
 
-#[cfg(windows)]
-fn is_any_dashboard_running_in_dir(install_dir: &Path) -> bool {
-    let my_pid = std::process::id();
-    let mut server_pids = std::collections::HashSet::new();
-
-    let pid_file = install_dir.join(".server.pid");
-    if let Ok(content) = fs::read_to_string(&pid_file) {
-        if let Ok(pid) = content.trim().parse::<u32>() {
-            if pid != my_pid && is_process_alive(pid) {
-                server_pids.insert(pid);
-                if let Some(exe_path) = get_process_exe_path(pid) {
-                    if matches_install_dir(&exe_path, install_dir)
-                        && is_dashboard_server_process(pid, &server_pids)
-                    {
-                        return true;
-                    }
-                }
-            }
-        }
-    }
-    let insights_pid = crate::db::get_insights_dir().join(".server.pid");
-    if let Ok(content) = fs::read_to_string(&insights_pid) {
-        if let Ok(pid) = content.trim().parse::<u32>() {
-            if pid != my_pid && is_process_alive(pid) {
-                server_pids.insert(pid);
-                if let Some(exe_path) = get_process_exe_path(pid) {
-                    if matches_install_dir(&exe_path, install_dir)
-                        && is_dashboard_server_process(pid, &server_pids)
-                    {
-                        return true;
-                    }
-                }
-            }
-        }
-    }
-    let exec_name = format!("{APP_NAME}.exe");
-    if let Ok(output) = std::process::Command::new("tasklist")
-        .args([
-            "/FI",
-            &format!("IMAGENAME eq {exec_name}"),
-            "/FO",
-            "CSV",
-            "/NH",
-        ])
-        .output()
-    {
-        let text = String::from_utf8_lossy(&output.stdout);
-        for line in text.lines() {
-            let parts: Vec<&str> = line.split(',').collect();
-            if parts.len() >= 2 {
-                let pid_str = parts[1].trim().trim_matches('"');
-                if let Ok(pid) = pid_str.parse::<u32>() {
-                    if pid == my_pid || !is_process_alive(pid) {
-                        continue;
-                    }
-                    if let Some(exe_path) = get_process_exe_path(pid) {
-                        if matches_install_dir(&exe_path, install_dir)
-                            && is_dashboard_server_process(pid, &server_pids)
-                        {
-                            return true;
-                        }
-                    }
-                }
-            }
-        }
-    }
-    false
-}
-
-#[allow(dead_code)] // 於 Windows 服務重啟流程使用，並於跨平台單元測試驗證環境變數與參數傳遞
-fn configure_windows_runner_command(
-    cmd: &mut std::process::Command,
-    runner_script: &Path,
-    install_dir: &Path,
-    spec: &StoppedProcessSpec,
-) {
-    cmd.args([
-        "-NoProfile",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-WindowStyle",
-        "Hidden",
-        "-File",
-    ]);
-    cmd.arg(runner_script);
-    cmd.args(["-InstallDir"]);
-    cmd.arg(install_dir);
-
-    let get_env = |target: &str| -> Option<&str> {
-        spec.envs
-            .iter()
-            .find(|(k, _)| k == target)
-            .map(|(_, v)| v.as_str())
-    };
-
-    if let Some(host) = get_env("HOST") {
-        cmd.args(["-HostAddress", host]);
-    }
-    if let Some(port) = get_env("PORT") {
-        cmd.args(["-Port", port]);
-    }
-    if let Some(auto_update) = get_env("TOKEN_USAGE_INSIGHTS_AUTO_UPDATE") {
-        cmd.args(["-AutoUpdate", auto_update]);
-    }
-    if let Some(interval) = get_env("TOKEN_USAGE_INSIGHTS_UPDATE_INTERVAL_HOURS") {
-        cmd.args(["-UpdateIntervalHours", interval]);
-    }
-
-    let cwd = match &spec.cwd {
-        Some(c) => c.as_path(),
-        None => install_dir,
-    };
-    cmd.current_dir(cwd);
-
-    // 先從繼承的環境中移除所有相關環境變數，確保守護進程不受更新器自身環境污染
-    for &key in RELEVANT_ENV_VARS {
-        cmd.env_remove(key);
-    }
-    // 套用從目標進程記憶體讀取的原始環境變數 (含 INSIGHTS_DIR, 自訂資料庫路徑等)
-    for (k, v) in &spec.envs {
-        cmd.env(k, v);
-    }
-
-    cmd.stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null());
-}
-
-/// 環境變數名稱僅允許 `[A-Za-z_][A-Za-z0-9_]*`：避免任何字元被插值進 PowerShell 腳本而改變其行為
-fn is_safe_env_var_name(name: &str) -> bool {
-    let mut chars = name.chars();
-    match chars.next() {
-        Some(c) if c.is_ascii_alphabetic() || c == '_' => {}
-        _ => return false,
-    }
-    chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
-}
-
-#[allow(dead_code)] // 於 Windows 移交重啟流程使用，並於跨平台單元測試驗證腳本產生與命令列跳脫
-fn build_windows_deferred_restart_script(
-    updater_pid: u32,
-    install_dir: &Path,
-    exe_path: &Path,
-    expected_version: &str,
-    spec: Option<&StoppedProcessSpec>,
-) -> Result<String, String> {
-    let fallback_args = vec![APP_NAME.to_string()];
-    let (child_args, envs, cwd, restart_service) = match spec {
-        Some(s) => {
-            let args = match &s.args {
-                Some(a) => a,
-                None if s.is_server => &fallback_args,
-                None => {
-                    return Err(
-                        "無法可靠取得先前進程之命令列參數，略過自動重啟以防組態重設".to_string()
-                    );
-                }
-            };
-
-            let child = if args.len() > 1 { &args[1..] } else { &[] };
-            if child.iter().any(|arg| is_cli_subcommand(arg)) {
-                return Err("先前進程包含非看板 CLI 子命令，略過自動重啟".to_string());
-            }
-
-            let c = match &s.cwd {
-                Some(c) => c.as_path(),
-                None => install_dir,
-            };
-            (child, s.envs.as_slice(), c, true)
-        }
-        None => (&[][..], &[][..], install_dir, false),
-    };
-
-    let expected_clean = expected_version.trim().trim_start_matches(['v', 'V']);
-
-    let mut ps_script = String::new();
-    ps_script.push_str(&format!("$updaterPid = {updater_pid};\n"));
-    ps_script.push_str(&format!(
-        "$installDir = '{}';\n",
-        install_dir.to_string_lossy().replace('\'', "''")
-    ));
-    ps_script.push_str(&format!(
-        "$exePath = '{}';\n",
-        exe_path.to_string_lossy().replace('\'', "''")
-    ));
-    ps_script.push_str(&format!(
-        "$expectedVersion = '{}';\n",
-        expected_clean.replace('\'', "''")
-    ));
-    ps_script.push_str(&format!(
-        "$cwd = '{}';\n",
-        cwd.to_string_lossy().replace('\'', "''")
-    ));
-    ps_script.push_str(&format!(
-        "$restartService = {};\n",
-        if restart_service { "$true" } else { "$false" }
-    ));
-
-    ps_script.push_str("$argList = @(");
-    for (idx, arg) in child_args.iter().enumerate() {
-        if idx > 0 {
-            ps_script.push_str(", ");
-        }
-        ps_script.push_str(&format!("'{}'", arg.replace('\'', "''")));
-    }
-    ps_script.push_str(");\n");
-
-    // 先從繼承的環境中清除所有相關環境變數，防止移交進程受到更新器自身的環境變數污染
-    for &key in RELEVANT_ENV_VARS {
-        ps_script.push_str(&format!(
-            "Remove-Item -LiteralPath 'env:{}' -ErrorAction SilentlyContinue;\n",
-            key
-        ));
-    }
-    // 再套用先前進程保留之完整環境變數：
-    // 僅允許白名單中的變數名稱（並再次檢查名稱格式），避免非預期鍵名被插值進 PowerShell 而改寫產生之腳本
-    for (k, v) in envs {
-        if !RELEVANT_ENV_VARS.contains(&k.as_str()) || !is_safe_env_var_name(k) {
-            continue;
-        }
-        ps_script.push_str(&format!("$env:{} = '{}';\n", k, v.replace('\'', "''")));
-    }
-
-    ps_script.push_str(r#"
-# 1. 等待更新程序退出
-while (Get-Process -Id $updaterPid -ErrorAction SilentlyContinue) {
-    Start-Sleep -Milliseconds 100
-}
-
-# 2. 等待更新鎖 (.update.lock) 釋放
-$lockFile = Join-Path $installDir '.update.lock'
-$waitCount = 0
-while ($waitCount -lt 300) {
-    $isLocked = $false
-    if (Test-Path -LiteralPath $lockFile) {
-        try {
-            $stream = [System.IO.File]::Open($lockFile, [System.IO.FileMode]::Open, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::ReadWrite)
-            try {
-                $stream.Lock(0, 1)
-                $stream.Unlock(0, 1)
-            } catch {
-                $isLocked = $true
-            } finally {
-                $stream.Dispose()
-            }
-        } catch {
-            $isLocked = $true
-        }
-    }
-    if (-not $isLocked) { break }
-    Start-Sleep -Milliseconds 100
-    $waitCount++
-}
-
-$logDir = Join-Path $installDir 'logs'
-if (!(Test-Path -LiteralPath $logDir)) {
-    New-Item -ItemType Directory -Force -Path $logDir | Out-Null
-}
-$logFile = Join-Path $installDir 'update.log'
-
-if ($isLocked) {
-    $logTime = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
-    Add-Content -LiteralPath $logFile -Value "[$logTime] [ERROR] [RESTART] 移交守護進程等待更新鎖釋放逾時，中止啟動以保留復原標記供後續救援。"
-    exit 1
-}
-
-# 3. 等待 self_replace 臨時置換檔完全清理且執行檔可獨占讀取
-$readyCount = 0
-$exeReady = $false
-while ($readyCount -lt 150) {
-    if (Test-Path -LiteralPath $exePath) {
-        try {
-            $exeStream = [System.IO.File]::Open($exePath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::Read)
-            $exeStream.Dispose()
-            $tempFiles = @(Get-ChildItem -LiteralPath $installDir -Filter '*.__temp__.exe' -ErrorAction SilentlyContinue)
-            $relocatedFiles = @(Get-ChildItem -LiteralPath $installDir -Filter '*.__relocated__.exe' -ErrorAction SilentlyContinue)
-            if ($tempFiles.Count -eq 0 -and $relocatedFiles.Count -eq 0) {
-                $exeReady = $true
-                break
-            }
-        } catch {}
-    }
-    Start-Sleep -Milliseconds 100
-    $readyCount++
-}
-
-if (-not $exeReady) {
-    $logTime = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
-    Add-Content -LiteralPath $logFile -Value "[$logTime] [ERROR] [RESTART] 移交守護進程等待執行檔就緒逾時，中止啟動以保留復原標記供後續救援。"
-    exit 1
-}
-
-# 4. 驗證執行檔版本是否已為新版
-$versionMatched = $false
-$vCheckCount = 0
-while ($vCheckCount -lt 50) {
-    try {
-        $pinfo = New-Object System.Diagnostics.ProcessStartInfo
-        $pinfo.FileName = $exePath
-        $pinfo.Arguments = '--version'
-        $pinfo.RedirectStandardOutput = $true
-        $pinfo.RedirectStandardError = $true
-        $pinfo.UseShellExecute = $false
-        $pinfo.CreateNoWindow = $true
-
-        $proc = New-Object System.Diagnostics.Process
-        $proc.StartInfo = $pinfo
-        if ($proc.Start()) {
-            if ($proc.WaitForExit(3000)) {
-                $stdout = $proc.StandardOutput.ReadToEnd()
-                $stderr = $proc.StandardError.ReadToEnd()
-                $out = if ($stdout) { $stdout.Trim() } else { $stderr.Trim() }
-                $tokens = $out -split '\s+'
-                $actualVer = if ($tokens.Count -gt 0) { $tokens[-1].TrimStart('v').TrimStart('V') } else { '' }
-                if ($actualVer -eq $expectedVersion) {
-                    $versionMatched = $true
-                    break
-                }
-            } else {
-                try { $proc.Kill() } catch {}
-            }
-        }
-    } catch {}
-    Start-Sleep -Milliseconds 100
-    $vCheckCount++
-}
-
-# 5. 依版本驗證結果啟動新版並進行健康確認，確認健康始清理備份；若啟動失敗或版本不符則自備份自動回滾
-$backupDir = Join-Path $installDir '.backup'
-$manifestPath = Join-Path $backupDir '.manifest'
-$logTime = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
-
-$startupSuccess = $false
-$childProc = $null
-if ($versionMatched) {
-    if ($restartService) {
-        Add-Content -LiteralPath $logFile -Value "[$logTime] [INFO] [RESTART] 移交守護進程已確認新版執行檔版本 ($expectedVersion)，正在啟動新版看板進程..."
-        $childProc = if ($argList.Count -gt 0) {
-            Start-Process -FilePath $exePath -ArgumentList $argList -WorkingDirectory $cwd -WindowStyle Hidden -PassThru
-        } else {
-            Start-Process -FilePath $exePath -WorkingDirectory $cwd -WindowStyle Hidden -PassThru
-        }
-
-        if ($childProc) {
-            $pidFile = Join-Path $installDir '.server.pid'
-            $hWait = 0
-            $dwellWait = 0
-            while ($hWait -lt 200) {
-                if ($childProc.HasExited) {
-                    break
-                }
-                if (Test-Path -LiteralPath $pidFile) {
-                    try {
-                        $pidContent = (Get-Content -LiteralPath $pidFile -Raw).Trim()
-                        if ($pidContent -eq "$($childProc.Id)" -and -not $childProc.HasExited) {
-                            # 僅出現 PID 不足以代表啟動完成：新版會在建立 PID 守衛後才進入服務迴圈。
-                            # 因此改以「子程序持續存活達觀察窗口」或「新版自行完成提交（.committed 或已清理備份）」作為健康證據
-                            if ((Test-Path -LiteralPath (Join-Path $backupDir '.committed')) -or (-not (Test-Path -LiteralPath $backupDir))) {
-                                $startupSuccess = $true
-                                break
-                            }
-                            $dwellWait++
-                            if ($dwellWait -ge 30) {
-                                $startupSuccess = $true
-                                break
-                            }
-                        }
-                    } catch {}
-                }
-                Start-Sleep -Milliseconds 100
-                $hWait++
-            }
-        }
-    } else {
-        Add-Content -LiteralPath $logFile -Value "[$logTime] [INFO] [RESTART] 移交守護進程已確認新版執行檔版本 ($expectedVersion)，非服務程序無需重啟進程。"
-        $startupSuccess = $true
-    }
-} else {
-    Add-Content -LiteralPath $logFile -Value "[$logTime] [ERROR] [RESTART] 移交守護進程驗證新版執行檔版本失敗 (預期 $expectedVersion)，中止啟動以防載入舊版。"
-}
-
-if ($startupSuccess) {
-    $logTime = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
-    $readyMsg = if ($childProc) { "新版看板進程已確認健康就緒 (PID: $($childProc.Id))" } else { "新版執行檔已確認置換就緒" }
-    Add-Content -LiteralPath $logFile -Value "[$logTime] [INFO] [RESTART] $readyMsg，標記更新提交並清理備份目錄..."
-    $committedMarker = Join-Path $backupDir '.committed'
-    $commitSuccess = $false
-    try {
-        Set-Content -LiteralPath $committedMarker -Value 'committed' -Force
-        $commitSuccess = (Test-Path -LiteralPath $committedMarker)
-    } catch {
-        $commitSuccess = $false
-    }
-    if ((-not $commitSuccess) -and (-not (Test-Path -LiteralPath $backupDir))) {
-        # 新版服務已自行完成提交並清理備份目錄：視為提交成功，無需重複處理
-        $commitSuccess = $true
-    }
-    if ($commitSuccess) {
-        $handoffMarker = Join-Path $backupDir '.handing_off'
-        if (Test-Path -LiteralPath $handoffMarker) {
-            Remove-Item -LiteralPath $handoffMarker -Force -ErrorAction SilentlyContinue
-        }
-        if (Test-Path -LiteralPath $backupDir) {
-            try {
-                Remove-Item -LiteralPath $backupDir -Recurse -Force -ErrorAction Stop
-            } catch {
-                $logTime = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
-                Add-Content -LiteralPath $logFile -Value "[$logTime] [WARN] [RESTART] 清理備份目錄失敗: $_，嘗試改名隔離..."
-            }
-        }
-        if (Test-Path -LiteralPath $backupDir) {
-            $quarantineName = '.backup-quarantined-' + [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-            $quarantineDir = Join-Path $installDir $quarantineName
-            try {
-                Move-Item -LiteralPath $backupDir -Destination $quarantineDir -Force -ErrorAction Stop
-                $logTime = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
-                Add-Content -LiteralPath $logFile -Value "[$logTime] [INFO] [RESTART] 備份目錄已成功改名隔離至 $quarantineName"
-            } catch {
-                $logTime = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
-                Add-Content -LiteralPath $logFile -Value "[$logTime] [ERROR] [RESTART] 備份目錄隔離失敗: $_"
-            }
-        }
-        if (Test-Path -LiteralPath $backupDir) {
-            $logTime = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
-            Add-Content -LiteralPath $logFile -Value "[$logTime] [ERROR] [RESTART] 備份目錄無法清理或隔離 ($backupDir)，將阻擋後續原地更新；終止並進入診斷失敗狀態。"
-            if ($childProc -and -not $childProc.HasExited) {
-                try { Stop-Process -Id $childProc.Id -Force } catch {}
-            }
-            exit 1
-        }
-    } else {
-        $logTime = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
-        Add-Content -LiteralPath $logFile -Value "[$logTime] [ERROR] [RESTART] 寫入提交標記失敗；終止進程並保留備份目錄以供救援安全處置。"
-        if ($childProc -and -not $childProc.HasExited) {
-            try { Stop-Process -Id $childProc.Id -Force } catch {}
-        }
-        exit 1
-    }
-} else {
-    $logTime = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
-    Add-Content -LiteralPath $logFile -Value "[$logTime] [ERROR] [RESTART] 新版看板進程啟動後異常或未能及時就緒，執行自備份自動回滾..."
-    if ($childProc -and -not $childProc.HasExited) {
-        try { Stop-Process -Id $childProc.Id -Force } catch {}
-        try { $null = $childProc.WaitForExit(3000) } catch {}
-    }
-    # 先驗證備份根目錄本身為正規目錄：符號連結、重剖析點或非目錄會讓讀取清單與複製操作落在無關目錄上
-    $backupItem = Get-Item -LiteralPath $backupDir -Force -ErrorAction SilentlyContinue
-    $backupSafe = $false
-    if ($backupItem) {
-        $backupSafe = $backupItem.PSIsContainer -and (-not ($backupItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint))
-    }
-    if (-not $backupSafe) {
-        $logTime = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
-        Add-Content -LiteralPath $logFile -Value "[$logTime] [ERROR] [RESTART] 備份目錄為符號連結、重剖析點或非正規目錄 ($backupDir)，拒絕還原以確保安全。"
-        $directMarker = Join-Path $installDir '.rollback_failed'
-        Set-Content -LiteralPath $directMarker -Value "unsafe backup directory (symbolic link, reparse point or non-directory): $backupDir" -Force -ErrorAction SilentlyContinue
-    }
-    if ($backupSafe -and (Test-Path -LiteralPath $manifestPath)) {
-        try {
-            $originalItems = @(Get-Content -LiteralPath $manifestPath | ForEach-Object { $_.Trim() } | Where-Object { $_ })
-            $managedItems = @('token-usage-insights', 'token-usage-insights.exe', 'static', 'pricing.csv', 'shell', 'scripts', 'install.sh', 'install.ps1', 'VERSION', 'README.md', 'LICENSE', '.install_marker', '.service.env')
-            # 驗證備份清單僅包含受管理項目，防範遭竄改的清單以相對或絕對路徑跳出安裝目錄
-            foreach ($rel in $originalItems) {
-                if ($managedItems -notcontains $rel) {
-                    throw "備份清單包含非受管理項目 ($rel)，拒絕還原以防範路徑穿越攻擊"
-                }
-            }
-            # 清單必須包含平台執行檔與靜態資源，否則截斷或遭竄改的清單會在移除執行檔後無法還原
-            foreach ($required in @('token-usage-insights.exe', 'static')) {
-                if ($originalItems -notcontains $required) {
-                    throw "備份清單缺少必要項目 ($required)，拒絕還原以避免安裝目錄失去執行檔或基礎資源"
-                }
-            }
-            # 驗證清單項目皆確實存在於備份目錄，避免截斷或遭竄改的備份被誤判為還原成功而留下混合版本
-            foreach ($rel in $originalItems) {
-                $relSrcPath = Join-Path $backupDir $rel
-                if (-not (Test-Path -LiteralPath $relSrcPath)) {
-                    throw "備份清單項目不存在於備份目錄 ($rel)，拒絕還原以避免留下混合版本安裝"
-                }
-                $relSrcItem = Get-Item -LiteralPath $relSrcPath -Force
-                if ($relSrcItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
-                    throw "備份清單項目為符號連結或重剖析點 ($rel)，拒絕還原以確保安全"
-                }
-            }
-            foreach ($m in $managedItems) {
-                if ($originalItems -notcontains $m) {
-                    $p = Join-Path $installDir $m
-                    if (Test-Path -LiteralPath $p) {
-                        Remove-Item -LiteralPath $p -Recurse -Force -ErrorAction Stop
-                    }
-                }
-            }
-            foreach ($rel in $originalItems) {
-                $src = Join-Path $backupDir $rel
-                $dst = Join-Path $installDir $rel
-                if (Test-Path -LiteralPath $src) {
-                    if (Test-Path -LiteralPath $dst) {
-                        Remove-Item -LiteralPath $dst -Recurse -Force -ErrorAction Stop
-                    }
-                    $parent = Split-Path -Parent $dst
-                    if ($parent -and -not (Test-Path -LiteralPath $parent)) {
-                        New-Item -ItemType Directory -Force -Path $parent | Out-Null
-                    }
-                    Copy-Item -LiteralPath $src -Destination $dst -Force -Recurse -ErrorAction Stop
-                }
-            }
-
-            $restoredHealthy = $false
-            $restoredProc = $null
-            if ($restartService) {
-                Add-Content -LiteralPath $logFile -Value "[$logTime] [INFO] [RESTART] 已成功自備份還原檔案，正在重新啟動原版服務..."
-                $restoredProc = if ($argList.Count -gt 0) {
-                    Start-Process -FilePath $exePath -ArgumentList $argList -WorkingDirectory $cwd -WindowStyle Hidden -PassThru
-                } else {
-                    Start-Process -FilePath $exePath -WorkingDirectory $cwd -WindowStyle Hidden -PassThru
-                }
-
-                if ($restoredProc) {
-                    $pidFile = Join-Path $installDir '.server.pid'
-                    $rWait = 0
-                    while ($rWait -lt 50) {
-                        if ($restoredProc.HasExited) {
-                            break
-                        }
-                        if (Test-Path -LiteralPath $pidFile) {
-                            try {
-                                $pidContent = (Get-Content -LiteralPath $pidFile -Raw).Trim()
-                                if ($pidContent -eq "$($restoredProc.Id)" -and -not $restoredProc.HasExited) {
-                                    $restoredHealthy = $true
-                                    break
-                                }
-                            } catch {}
-                        }
-                        Start-Sleep -Milliseconds 100
-                        $rWait++
-                    }
-                }
-            } else {
-                Add-Content -LiteralPath $logFile -Value "[$logTime] [INFO] [RESTART] 已成功自備份還原檔案，非服務程序無需重啟原版服務。"
-                $restoredHealthy = $true
-            }
-
-            if ($restoredHealthy) {
-                $pidMsg = if ($restoredProc) { " (PID: $($restoredProc.Id))" } else { "" }
-                Add-Content -LiteralPath $logFile -Value "[$logTime] [INFO] [RESTART] 原版服務已確認健康就緒$pidMsg，標記提交並清理更新備份目錄..."
-                $committedMarker = Join-Path $backupDir '.committed'
-                $commitSuccess = $false
-                try {
-                    Set-Content -LiteralPath $committedMarker -Value 'committed' -Force
-                    $commitSuccess = (Test-Path -LiteralPath $committedMarker)
-                } catch {
-                    $commitSuccess = $false
-                }
-                if ($commitSuccess) {
-                    if (Test-Path -LiteralPath $backupDir) {
-                        try {
-                            Remove-Item -LiteralPath $backupDir -Recurse -Force -ErrorAction Stop
-                        } catch {
-                            $logTime = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
-                            Add-Content -LiteralPath $logFile -Value "[$logTime] [WARN] [RESTART] 清理已還原備份目錄失敗: $_，嘗試改名隔離..."
-                        }
-                    }
-                    if (Test-Path -LiteralPath $backupDir) {
-                        $restoredName = '.backup-restored-' + [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-                        $restoredDir = Join-Path $installDir $restoredName
-                        try {
-                            Move-Item -LiteralPath $backupDir -Destination $restoredDir -Force -ErrorAction Stop
-                            $logTime = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
-                            Add-Content -LiteralPath $logFile -Value "[$logTime] [INFO] [RESTART] 備份目錄已成功改名隔離至 $restoredName"
-                        } catch {
-                            $logTime = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
-                            Add-Content -LiteralPath $logFile -Value "[$logTime] [ERROR] [RESTART] 備份目錄隔離失敗: $_"
-                        }
-                    }
-                    if (Test-Path -LiteralPath $backupDir) {
-                        $logTime = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
-                        Add-Content -LiteralPath $logFile -Value "[$logTime] [ERROR] [RESTART] 備份目錄無法清理或隔離 ($backupDir)，終止進程進入可診斷狀態。"
-                        if ($restoredProc -and -not $restoredProc.HasExited) {
-                            try { Stop-Process -Id $restoredProc.Id -Force } catch {}
-                        }
-                        exit 1
-                    }
-                } else {
-                    $logTime = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
-                    Add-Content -LiteralPath $logFile -Value "[$logTime] [ERROR] [RESTART] 寫入原版提交標記失敗；終止進程進入可診斷狀態。"
-                    if ($restoredProc -and -not $restoredProc.HasExited) {
-                        try { Stop-Process -Id $restoredProc.Id -Force } catch {}
-                    }
-                    exit 1
-                }
-            } else {
-                $failedMarker = Join-Path $backupDir '.rollback_failed'
-                Set-Content -LiteralPath $failedMarker -Value "restored service failed to become healthy" -Force -ErrorAction SilentlyContinue
-                $directMarker = Join-Path $installDir '.rollback_failed'
-                Set-Content -LiteralPath $directMarker -Value "restored service failed to become healthy" -Force -ErrorAction SilentlyContinue
-                Add-Content -LiteralPath $logFile -Value "[$logTime] [ERROR] [RESTART] 原版服務啟動後未就緒；保留備份與失敗標記供手動修復。"
-            }
-        } catch {
-            $failedMarker = Join-Path $backupDir '.rollback_failed'
-            Set-Content -LiteralPath $failedMarker -Value "deferred restart rollback failed: $_" -Force -ErrorAction SilentlyContinue
-            $directMarker = Join-Path $installDir '.rollback_failed'
-            Set-Content -LiteralPath $directMarker -Value "deferred restart rollback failed: $_" -Force -ErrorAction SilentlyContinue
-            Add-Content -LiteralPath $logFile -Value "[$logTime] [ERROR] [RESTART] 回滾失敗: $_；保留備份供手動修復。"
-        }
-    }
-}
-"#);
-
-    Ok(ps_script)
-}
-
-#[cfg(windows)]
-fn schedule_windows_deferred_restart(
-    spec: Option<&StoppedProcessSpec>,
-    install_dir: &Path,
-    expected_version: &str,
-) -> Result<(), String> {
-    let my_pid = std::process::id();
-    let exec_name = format!("{APP_NAME}.exe");
-    let exe = match spec {
-        Some(s) if s.exe_path.exists() => s.exe_path.clone(),
-        _ => install_dir.join(&exec_name),
-    };
-
-    let ps_script =
-        build_windows_deferred_restart_script(my_pid, install_dir, &exe, expected_version, spec)?;
-
-    let mut cmd = std::process::Command::new("powershell.exe");
-    cmd.args([
-        "-NoProfile",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-WindowStyle",
-        "Hidden",
-        "-Command",
-        &ps_script,
-    ]);
-
-    use std::os::windows::process::CommandExt;
-    const CREATE_NO_WINDOW: u32 = 0x08000000;
-    cmd.creation_flags(CREATE_NO_WINDOW);
-
-    cmd.stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null());
-
-    cmd.spawn()
-        .map_err(|e| format!("啟動 Windows 移交重啟進程失敗: {e}"))?;
-
-    Ok(())
-}
-
-#[cfg(windows)]
-fn restart_windows_supervised_service(
-    spec: &StoppedProcessSpec,
-    install_dir: &Path,
-    is_current_exe: bool,
-    expected_version: &str,
-) -> Result<Option<u32>, String> {
-    log_update(
-        "INFO",
-        "RESTART",
-        &format!(
-            "正在為監管進程 (原 PID: {}) 協調重啟或移交服務管理器...",
-            spec.pid
-        ),
-    );
-
-    // 若原服務守護進程 (PowerShell runner) 仍活躍，代表其正持有 .service_restart_pending 標記並等待 .update.lock 釋放；
-    // 將該守護進程指定為唯一重啟權擁有者，避免啟動第二個 runner 或看板進程造成端口衝突與重複執行
-    if let Some(sup_pid) = spec.supervisor_pid {
-        if is_process_alive(sup_pid) {
-            log_update(
-                "INFO",
-                "RESTART",
-                &format!(
-                    "偵測到原服務守護進程 (PID: {sup_pid}) 仍活躍並正在等待更新鎖釋放；交由其獨佔自動重啟權，略過外部重複重啟"
-                ),
-            );
-            println!(
-                "🔄 服務守護進程 (PID: {sup_pid}) 仍在運行，將在更新鎖釋放後自動重新啟動看板服務。"
-            );
-            return Ok(None);
-        }
-    }
-
-    // 1. 先等待短暫時間 (1.5 秒)，檢查 runner 是否仍在運行並已透過協商標記自動重啟看板
-    let start_wait = Instant::now();
-    while start_wait.elapsed() < Duration::from_millis(1500) {
-        if is_any_dashboard_running_in_dir(install_dir) {
-            println!("🔄 服務管理器已自動重新啟動 Token 戰情室背景看板服務。");
-            log_update("INFO", "RESTART", "服務管理器已自動重新啟動背景看板服務");
-            return Ok(None);
-        }
-        std::thread::sleep(Duration::from_millis(100));
-    }
-
-    // 2. 若看板尚未運行，代表先前為舊版 runner（在子進程終止時已退出）或管理器未自動恢復；
-    // 執行相容交接：依序嘗試以工作排程器 (Scheduled Task) 或重新啟動 run-service.ps1 守護進程
-    println!("🔄 偵測到服務管理器尚未自動重啟，正在啟動相容移交重啟服務...");
-    log_update(
-        "INFO",
-        "RESTART",
-        "服務管理器尚未自動重啟，執行相容移交重啟 (ScheduledTask / run-service.ps1)",
-    );
-
-    let mut started = false;
-    let mut runner_pid = None;
-
-    // 2a. 嘗試以工作排程器啟動 (TaskName: TokenUsageInsights_<USERNAME> 或 TokenUsageInsights)
-    let username = std::env::var("USERNAME").unwrap_or_default();
-    let mut task_candidates = Vec::new();
-    if !username.is_empty() {
-        task_candidates.push(format!("TokenUsageInsights_{username}"));
-    }
-    task_candidates.push("TokenUsageInsights".to_string());
-
-    for task_name in task_candidates {
-        let output = std::process::Command::new("schtasks")
-            .args(["/Run", "/TN", &task_name])
-            .output();
-        if let Ok(out) = output {
-            if out.status.success() {
-                log_update(
-                    "INFO",
-                    "RESTART",
-                    &format!("成功透過工作排程器 ({task_name}) 啟動服務"),
-                );
-                started = true;
-                break;
-            }
-        }
-    }
-
-    // 2b. 若工作排程器無法啟動（例如使用啟動資料夾 Startup 捷徑安裝之環境），啟動 run-service.ps1 作為守護進程
-    if !started {
-        let runner_script = install_dir.join("scripts").join("run-service.ps1");
-        if runner_script.exists() {
-            let mut cmd = std::process::Command::new("powershell.exe");
-            configure_windows_runner_command(&mut cmd, &runner_script, install_dir, spec);
-
-            use std::os::windows::process::CommandExt;
-            const CREATE_NO_WINDOW: u32 = 0x08000000;
-            cmd.creation_flags(CREATE_NO_WINDOW);
-
-            if let Ok(child) = cmd.spawn() {
-                log_update(
-                    "INFO",
-                    "RESTART",
-                    "已透過 PowerShell 背景啟動 run-service.ps1 守護進程",
-                );
-                runner_pid = Some(child.id());
-                started = true;
-            } else {
-                log_update(
-                    "WARN",
-                    "RESTART",
-                    "啟動 run-service.ps1 失敗，嘗試直接啟動看板進程",
-                );
-            }
-        }
-    }
-
-    // 2c. 若以上皆未成功，回退直接以 restart_dashboard_instance 或移交守護啟動看板進程
-    if !started {
-        if is_current_exe {
-            schedule_windows_deferred_restart(Some(spec), install_dir, expected_version)?;
-            return Ok(None);
-        }
-        return restart_dashboard_instance(spec, install_dir).map(Some);
-    }
-
-    // 若為當前執行檔更新，run-service.ps1 會等待更新鎖釋放後才啟動新版，此處直接回傳 runner_pid 不提前超時回退
-    if is_current_exe {
-        log_update(
-            "INFO",
-            "RESTART",
-            "已成功啟動服務移交 (ScheduledTask / run-service.ps1)，將於更新程序退出並釋放更新鎖後自動載入新版",
-        );
-        println!("🔄 已成功移交服務管理器，將於更新程序退出後自動載入新版看板服務。");
-        return Ok(runner_pid);
-    }
-
-    // 3. 等待確認新進程是否成功啟動 (最多等待 5 秒)
-    let verify_start = Instant::now();
-    while verify_start.elapsed() < Duration::from_secs(5) {
-        if is_any_dashboard_running_in_dir(install_dir) {
-            println!("🔄 已確認服務已成功重新啟動。");
-            log_update("INFO", "RESTART", "已確認監管服務重新啟動成功");
-            return Ok(runner_pid);
-        }
-        std::thread::sleep(Duration::from_millis(200));
-    }
-
-    // 若 5 秒後仍未偵測到看板運行，嘗試直接啟動看板作為最後保障
-    log_update(
-        "WARN",
-        "RESTART",
-        "服務移交後 5 秒內未偵測到看板進程，執行直接啟動",
-    );
-    restart_dashboard_instance(spec, install_dir).map(Some)
-}
-
 fn apply_installation_with_rollback(
     release_root: &Path,
     install_dir: &Path,
@@ -4544,9 +2738,8 @@ fn apply_installation_with_rollback(
     let process_plan = match stop_running_dashboard_instances(install_dir) {
         Ok(plan) => plan,
         Err(err) => {
-            // 清理已建立之備份目錄與可能寫入的協商標記檔，避免殘留 .backup 阻止後續更新
+            // 清理已建立之備份目錄，避免殘留 .backup 阻止後續更新
             let _ = fs::remove_dir_all(backup_dir);
-            let _ = fs::remove_file(install_dir.join(".service_restart_pending"));
             log_update(
                 "ERROR",
                 "STOP_SERVICE",
@@ -4559,11 +2752,7 @@ fn apply_installation_with_rollback(
     println!("🚀 正在安裝新版檔案至 {:?} ...", install_dir);
     log_update("INFO", "INSTALL", &format!("開始替換至 {install_dir:?}"));
 
-    let exec_name = if cfg!(windows) {
-        format!("{APP_NAME}.exe")
-    } else {
-        APP_NAME.to_string()
-    };
+    let exec_name = APP_NAME.to_string();
 
     let target_exe = install_dir.join(&exec_name);
     let current_exe = std::env::current_exe().ok();
@@ -4581,30 +2770,12 @@ fn apply_installation_with_rollback(
             return Err(format!("來源缺少可執行檔: {src_exe:?}"));
         }
 
-        // 跨平台安全替換執行檔（Windows 使用 self_replace 或安全重命名）
+        // 安全替換執行檔：執行中的程序使用 self_replace，其餘使用安全重命名
         if is_current_exe {
             self_replace::self_replace(&src_exe)
                 .map_err(|e| format!("執行中的程序替換失敗: {e}"))?;
         } else {
-            #[cfg(windows)]
-            {
-                let old_exe = target_exe.with_extension(format!("old.{}.tmp", std::process::id()));
-                let _ = fs::remove_file(&old_exe);
-                if target_exe.exists() {
-                    fs::rename(&target_exe, &old_exe)
-                        .map_err(|e| format!("Windows 執行檔換名失敗: {e}"))?;
-                }
-                if let Err(e) = fs::copy(&src_exe, &target_exe) {
-                    let _ = fs::rename(&old_exe, &target_exe);
-                    return Err(format!("寫入新執行檔失敗: {e}"));
-                }
-                let _ = fs::remove_file(&old_exe);
-            }
-
-            #[cfg(not(windows))]
-            {
-                safe_replace_file(&src_exe, &target_exe)?;
-            }
+            safe_replace_file(&src_exe, &target_exe)?;
         }
 
         #[cfg(unix)]
@@ -4656,7 +2827,6 @@ fn apply_installation_with_rollback(
             "README.md",
             "LICENSE",
             "install.sh",
-            "install.ps1",
         ] {
             let src = release_root.join(file);
             let dst = install_dir.join(file);
@@ -4678,9 +2848,6 @@ fn apply_installation_with_rollback(
                 return Err("更新已取消（檔案替換期間收到終止訊號），將回復先前版本".to_string());
             }
         }
-
-        // 寫入更新就緒標記，供 Windows 服務守護進程確認新執行檔已完全寫入就緒
-        safe_write_file(&install_dir.join(".update_ready"), b"ready")?;
 
         // 寫入移交標記：必須早於釋放更新鎖與任何重啟動作。寫入失敗時由下方的安裝失敗路徑
         // 執行完整回滾，避免留下「新版已安裝但無法辨識交易狀態」的半套安裝
@@ -4715,30 +2882,7 @@ fn apply_installation_with_rollback(
             // 逐一處理先前停止之進程，獨立處理監管與非監管進程
             for spec in &process_plan.stopped_specs {
                 if spec.is_supervised {
-                    #[cfg(windows)]
-                    {
-                        log_update(
-                            "INFO",
-                            "ROLLBACK",
-                            &format!("回滾完成，保留標記由 Windows 服務管理器自動重啟監管進程 (原 PID: {})", spec.pid),
-                        );
-                    }
                 } else {
-                    #[cfg(windows)]
-                    if is_current_exe {
-                        let original_version =
-                            fs::read_to_string(install_dir.join("VERSION")).unwrap_or_default();
-                        let _ = schedule_windows_deferred_restart(
-                            Some(spec),
-                            install_dir,
-                            &original_version,
-                        );
-                        println!(
-                            "🔄 回滾完成，已排定於更新程序退出後重新啟動 PID {} 對應之原版背景看板服務。",
-                            spec.pid
-                        );
-                        continue;
-                    }
                     match restart_dashboard_instance(spec, install_dir) {
                         Ok(_) => {
                             println!(
@@ -4766,23 +2910,6 @@ fn apply_installation_with_rollback(
                             );
                         }
                     }
-                }
-            }
-
-            #[cfg(windows)]
-            {
-                let has_supervised = process_plan.stopped_specs.iter().any(|s| s.is_supervised);
-                if !has_supervised {
-                    let _ = fs::remove_file(install_dir.join(".service_restart_pending"));
-                }
-                if is_current_exe
-                    && !process_plan.stopped_specs.iter().any(|s| !s.is_supervised)
-                    && !is_windows_service_runner()
-                    && !process_plan.stopped_specs.iter().any(|s| s.is_supervised)
-                {
-                    let original_version =
-                        fs::read_to_string(install_dir.join("VERSION")).unwrap_or_default();
-                    let _ = schedule_windows_deferred_restart(None, install_dir, &original_version);
                 }
             }
         }
@@ -4885,64 +3012,7 @@ fn apply_installation_with_rollback(
     // 2. 逐一處理先前停止之進程，獨立處理監管與非監管進程（保留備份直至重啟確認成功）
     for spec in &process_plan.stopped_specs {
         if spec.is_supervised {
-            #[cfg(windows)]
-            {
-                match restart_windows_supervised_service(
-                    spec,
-                    install_dir,
-                    is_current_exe,
-                    &expected_version,
-                ) {
-                    Ok(maybe_pid) => {
-                        if let Some(pid) = maybe_pid {
-                            spawned_pids.push(pid);
-                        }
-                        server_restarted = true;
-                    }
-                    Err(restart_err) => {
-                        let msg = format!(
-                            "重啟 Windows 監管服務 (原 PID: {}) 失敗: {restart_err}",
-                            spec.pid
-                        );
-                        eprintln!("⚠️ 更新完成，但無法重新啟動 Windows 監管服務 (原 PID: {}): {restart_err}；請手動啟動服務。", spec.pid);
-                        log_update("ERROR", "RESTART", &msg);
-                        restart_errors.push(msg);
-                    }
-                }
-            }
         } else {
-            #[cfg(windows)]
-            if is_current_exe {
-                match schedule_windows_deferred_restart(Some(spec), install_dir, &expected_version)
-                {
-                    Ok(_) => {
-                        println!(
-                            "🔄 已排定於更新程序退出後由移交守護進程自動啟動 PID {} 對應之新版背景看板服務。",
-                            spec.pid
-                        );
-                        log_update(
-                            "INFO",
-                            "RESTART",
-                            &format!(
-                                "更新成功，已排定於更新程序退出並釋放執行檔後由移交守護進程啟動新版看板 (原 PID: {}, 目標版本: {expected_version})",
-                                spec.pid
-                            ),
-                        );
-                        server_restarted = true;
-                    }
-                    Err(err) => {
-                        let msg = format!(
-                            "排定 Windows 移交重啟進程 (原 PID: {}) 失敗: {err}",
-                            spec.pid
-                        );
-                        eprintln!("⚠️ 更新完成，但無法排定移交重啟 (原 PID: {}): {err}；請於更新後手動啟動看板服務。", spec.pid);
-                        log_update("ERROR", "RESTART", &msg);
-                        restart_errors.push(msg);
-                    }
-                }
-                continue;
-            }
-
             match restart_dashboard_instance(spec, install_dir) {
                 Ok(child_pid) => {
                     spawned_pids.push(child_pid);
@@ -4972,70 +3042,6 @@ fn apply_installation_with_rollback(
         }
     }
 
-    #[cfg(windows)]
-    if is_current_exe
-        && !process_plan.stopped_specs.iter().any(|s| !s.is_supervised)
-        && !is_windows_service_runner()
-        && !process_plan.stopped_specs.iter().any(|s| s.is_supervised)
-    {
-        let current_spec = if is_current_process_server() {
-            Some(StoppedProcessSpec {
-                pid: std::process::id(),
-                is_supervised: false,
-                supervisor_pid: None,
-                is_server: true,
-                exe_path: target_exe.clone(),
-                args: Some(std::env::args().collect()),
-                envs: std::env::vars().collect(),
-                cwd: std::env::current_dir().ok(),
-            })
-        } else {
-            None
-        };
-        match schedule_windows_deferred_restart(
-            current_spec.as_ref(),
-            install_dir,
-            &expected_version,
-        ) {
-            Ok(_) => {
-                if current_spec.is_some() {
-                    server_restarted = true;
-                    println!(
-                        "🔄 已排定移交守護進程於更新程序退出後重新啟動新版看板服務並驗證健康就緒。"
-                    );
-                    log_update(
-                        "INFO",
-                        "RESTART",
-                        &format!("已排定移交守護進程於更新程序退出後重啟新版看板 (目標版本: {expected_version}) 並驗證健康就緒後清理備份"),
-                    );
-                } else {
-                    println!("🔄 已排定移交守護進程於更新程序退出後驗證新版執行檔置換並完成提交。");
-                    log_update(
-                        "INFO",
-                        "RESTART",
-                        &format!("已排定移交守護進程於更新程序退出後驗證新版執行檔 (目標版本: {expected_version}) 並提交清理備份"),
-                    );
-                }
-            }
-            Err(err) => {
-                let msg = format!("排定 Windows 移交驗證進程失敗: {err}");
-                eprintln!(
-                    "⚠️ 更新檔案寫入完成，但排定移交驗證進程失敗: {err}；請手動確認新版狀態。"
-                );
-                log_update("ERROR", "RESTART", &msg);
-                restart_errors.push(msg);
-            }
-        }
-    }
-
-    #[cfg(windows)]
-    {
-        let has_supervised = process_plan.stopped_specs.iter().any(|s| s.is_supervised);
-        if !has_supervised {
-            let _ = fs::remove_file(install_dir.join(".service_restart_pending"));
-        }
-    }
-
     // 3. 若重啟失敗，此時備份依然完整留存，執行安全自動回滾恢復原版本並重新啟動原服務
     if !restart_errors.is_empty() {
         let combined = restart_errors.join("; ");
@@ -5059,11 +3065,8 @@ fn apply_installation_with_rollback(
         );
 
         // 回滾前先終止本輪重啟已成功啟動之新版子進程及可能已由 Unix 監管者重啟之新版進程，避免新舊進程同時存活導致連接埠衝突或重複執行
-        // 僅 Unix 需追加監管進程 PID（讀取 .server.pid 並確認監管者），Windows 端僅停止 spawned_pids，故不需要可變綁定
         #[cfg(unix)]
         let mut rollback_stop_pids = spawned_pids.clone();
-        #[cfg(not(unix))]
-        let rollback_stop_pids = spawned_pids.clone();
         #[cfg(unix)]
         {
             for &sup_pid in &process_plan.supervised_unix_pids {
@@ -5099,12 +3102,6 @@ fn apply_installation_with_rollback(
                 #[cfg(unix)]
                 unsafe {
                     libc::kill(stop_pid as libc::pid_t, libc::SIGTERM);
-                }
-                #[cfg(windows)]
-                {
-                    let _ = std::process::Command::new("taskkill")
-                        .args(["/PID", &stop_pid.to_string(), "/T", "/F"])
-                        .output();
                 }
             }
         }
@@ -5154,14 +3151,6 @@ fn apply_installation_with_rollback(
             // 重新啟動先前版本的進程
             for spec in &process_plan.stopped_specs {
                 if spec.is_supervised {
-                    #[cfg(windows)]
-                    {
-                        log_update(
-                            "INFO",
-                            "ROLLBACK",
-                            &format!("回滾完成，保留標記由 Windows 服務管理器自動重啟監管進程 (原 PID: {})", spec.pid),
-                        );
-                    }
                     #[cfg(unix)]
                     {
                         if is_process_alive(spec.pid) {
@@ -5180,17 +3169,6 @@ fn apply_installation_with_rollback(
                         }
                     }
                 } else {
-                    #[cfg(windows)]
-                    if is_current_exe {
-                        let original_version =
-                            fs::read_to_string(install_dir.join("VERSION")).unwrap_or_default();
-                        let _ = schedule_windows_deferred_restart(
-                            Some(spec),
-                            install_dir,
-                            &original_version,
-                        );
-                        continue;
-                    }
                     let _ = restart_dashboard_instance(spec, install_dir);
                 }
             }
@@ -5236,41 +3214,6 @@ fn apply_installation_with_rollback(
                 }
             }
 
-            #[cfg(windows)]
-            {
-                let has_supervised = process_plan.stopped_specs.iter().any(|s| s.is_supervised);
-                if !has_supervised {
-                    let _ = fs::remove_file(install_dir.join(".service_restart_pending"));
-                }
-                if is_current_exe
-                    && !process_plan.stopped_specs.iter().any(|s| !s.is_supervised)
-                    && !is_windows_service_runner()
-                    && !process_plan.stopped_specs.iter().any(|s| s.is_supervised)
-                {
-                    let original_version =
-                        fs::read_to_string(install_dir.join("VERSION")).unwrap_or_default();
-                    let current_spec = if is_current_process_server() {
-                        Some(StoppedProcessSpec {
-                            pid: std::process::id(),
-                            is_supervised: false,
-                            supervisor_pid: None,
-                            is_server: true,
-                            exe_path: target_exe.clone(),
-                            args: Some(std::env::args().collect()),
-                            envs: std::env::vars().collect(),
-                            cwd: std::env::current_dir().ok(),
-                        })
-                    } else {
-                        None
-                    };
-                    let _ = schedule_windows_deferred_restart(
-                        current_spec.as_ref(),
-                        install_dir,
-                        &original_version,
-                    );
-                }
-            }
-
             return Err(UpdateError::Failure(format!(
                 "更新檔案替換成功，但重啟新版服務失敗 ({combined})；已自動回滾至先前版本並恢復原服務。"
             )));
@@ -5279,21 +3222,12 @@ fn apply_installation_with_rollback(
 
     // 4. 重啟確認成功後，才標記提交並清理備份目錄
     let is_async_restart = {
-        #[cfg(windows)]
-        {
-            is_windows_service_runner()
-                || process_plan.stopped_specs.iter().any(|s| s.is_supervised)
-                || is_current_exe
-        }
-        #[cfg(not(windows))]
-        {
-            // 被重啟的看板進程會在完成啟動（綁定連接埠並建立 PID 守衛）後自行提交移交交易；
-            // 若由本行程立即提交，新版稍後啟動失敗時將失去唯一的回滾來源。
-            // 因此除了「目前行程本身即看板」之外，任何已重啟的看板服務或已通知重啟的監管進程都改走移交提交
-            (is_current_exe && is_current_process_server())
-                || !process_plan.supervised_unix_pids.is_empty()
-                || process_plan.stopped_specs.iter().any(|s| s.is_server)
-        }
+        // 被重啟的看板進程會在完成啟動（綁定連接埠並建立 PID 守衛）後自行提交移交交易；
+        // 若由本行程立即提交，新版稍後啟動失敗時將失去唯一的回滾來源。
+        // 因此除了「目前行程本身即看板」之外，任何已重啟的看板服務或已通知重啟的監管進程都改走移交提交
+        (is_current_exe && is_current_process_server())
+            || !process_plan.supervised_unix_pids.is_empty()
+            || process_plan.stopped_specs.iter().any(|s| s.is_server)
     };
 
     if is_async_restart {
@@ -5437,32 +3371,8 @@ pub async fn wait_for_parent_exit_if_requested() {
 }
 
 pub(crate) fn get_target_exe(install_dir: &Path) -> PathBuf {
-    let exec_name = if cfg!(windows) {
-        format!("{APP_NAME}.exe")
-    } else {
-        APP_NAME.to_string()
-    };
+    let exec_name = APP_NAME.to_string();
     install_dir.join(exec_name)
-}
-
-#[allow(dead_code)] // 於 Windows 服務重啟流程、主程序移交提交判定與跨平台單元測試使用
-pub(crate) fn is_windows_service_runner() -> bool {
-    if let Ok(val) = std::env::var("TOKEN_USAGE_INSIGHTS_SERVICE") {
-        let clean = val.trim();
-        if clean == "0" || clean.eq_ignore_ascii_case("false") {
-            return false;
-        }
-        if clean == "1" || clean.eq_ignore_ascii_case("true") {
-            return true;
-        }
-    }
-    #[cfg(windows)]
-    {
-        if get_process_supervisor_pid(std::process::id()).is_some() {
-            return true;
-        }
-    }
-    false
 }
 
 pub(crate) fn restart_current_process(exe_path: &Path, args: &[String]) -> ! {
@@ -5501,66 +3411,6 @@ pub(crate) fn restart_current_process(exe_path: &Path, args: &[String]) -> ! {
             }
         }
         std::process::exit(1);
-    }
-
-    #[cfg(windows)]
-    {
-        if is_windows_service_runner() {
-            if let Some(parent) = exe.parent() {
-                let ready_marker = parent.join(".update_ready");
-                let _ = safe_write_file(&ready_marker, b"ready");
-            }
-            log_update(
-                "INFO",
-                "STARTUP_RESTART",
-                "以退出碼 75 請求 Windows 服務管理器重啟新版程序",
-            );
-            std::process::exit(75);
-        } else {
-            // 檢查是否已有移交守護進程排定接手重啟；若已有排定，退出目前進程由移交守護進程負責啟動與驗證健康
-            if let Some(parent) = exe.parent() {
-                let handoff_marker = parent.join(".backup").join(".handing_off");
-                if handoff_marker.exists() && is_current_process_server() {
-                    log_update(
-                        "INFO",
-                        "STARTUP_RESTART",
-                        "移交守護進程已排定接手新版進程啟動與健康驗證，目前進程安全退出以釋放資源",
-                    );
-                    std::process::exit(0);
-                }
-            }
-            let mut cmd = std::process::Command::new(exe);
-            if args.len() > 1 {
-                cmd.args(&args[1..]);
-            }
-            cmd.env("_TOKEN_USAGE_INSIGHTS_RESTARTED", "1");
-            let parent_pid = std::process::id();
-            cmd.env("_TOKEN_USAGE_INSIGHTS_WAIT_PID", parent_pid.to_string());
-            use std::os::windows::process::CommandExt;
-            const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
-            cmd.creation_flags(CREATE_NEW_PROCESS_GROUP);
-            match cmd.spawn() {
-                Ok(_) => {
-                    log_update(
-                        "INFO",
-                        "STARTUP_RESTART",
-                        "已啟動新進程，目前進程安全退出以釋放連接埠與資源",
-                    );
-                    std::process::exit(0);
-                }
-                Err(err) => {
-                    eprintln!("❌ 自動重啟進程失敗: {err}；請手動重新啟動程序。");
-                    log_update("ERROR", "STARTUP_RESTART", &format!("重啟進程失敗: {err}"));
-                    std::process::exit(1);
-                }
-            }
-        }
-    }
-
-    #[cfg(not(any(unix, windows)))]
-    {
-        let _ = exe;
-        std::process::exit(0);
     }
 }
 
@@ -6080,7 +3930,7 @@ mod tests {
         let sums = r#"
 4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945  ./token-usage-insights-v0.9.5-aarch64-apple-darwin.tar.gz
 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 *token-usage-insights-v0.9.5-x86_64-apple-darwin.tar.gz
-a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2  token-usage-insights-v0.9.5-x86_64-pc-windows-msvc.zip
+a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2  token-usage-insights-v0.9.5-x86_64-unknown-linux-gnu.tar.gz
 "#;
         assert_eq!(
             parse_checksum(
@@ -6099,7 +3949,7 @@ a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2  token-usage-in
         assert_eq!(
             parse_checksum(
                 sums,
-                "token-usage-insights-v0.9.5-x86_64-pc-windows-msvc.zip"
+                "token-usage-insights-v0.9.5-x86_64-unknown-linux-gnu.tar.gz"
             ),
             Some("a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2".to_string())
         );
@@ -6145,28 +3995,14 @@ a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2  token-usage-in
         let target = "aarch64-apple-darwin";
         let filename_v = archive_filename("v0.9.5", target);
         let filename_raw = archive_filename("0.9.5", target);
-        #[cfg(windows)]
-        {
-            assert_eq!(
-                filename_v,
-                "token-usage-insights-v0.9.5-aarch64-apple-darwin.zip"
-            );
-            assert_eq!(
-                filename_raw,
-                "token-usage-insights-0.9.5-aarch64-apple-darwin.zip"
-            );
-        }
-        #[cfg(not(windows))]
-        {
-            assert_eq!(
-                filename_v,
-                "token-usage-insights-v0.9.5-aarch64-apple-darwin.tar.gz"
-            );
-            assert_eq!(
-                filename_raw,
-                "token-usage-insights-0.9.5-aarch64-apple-darwin.tar.gz"
-            );
-        }
+        assert_eq!(
+            filename_v,
+            "token-usage-insights-v0.9.5-aarch64-apple-darwin.tar.gz"
+        );
+        assert_eq!(
+            filename_raw,
+            "token-usage-insights-0.9.5-aarch64-apple-darwin.tar.gz"
+        );
     }
 
     #[test]
@@ -6207,11 +4043,7 @@ update_check_interval: 5 # check every 5 days
         let backup_dir = temp.join("backup");
         fs::create_dir_all(&install_dir).unwrap();
 
-        let exec_name = if cfg!(windows) {
-            "token-usage-insights.exe"
-        } else {
-            APP_NAME
-        };
+        let exec_name = APP_NAME;
         fs::write(install_dir.join(exec_name), "old binary").unwrap();
         fs::write(install_dir.join("VERSION"), "v0.9.5").unwrap();
         fs::write(install_dir.join("pricing.csv"), "model,price").unwrap();
@@ -6284,36 +4116,6 @@ update_check_interval: 5 # check every 5 days
         assert!(is_process_alive(current_pid));
     }
 
-    #[tokio::test]
-    async fn is_windows_service_runner_checks_truthy_values() {
-        let _guard = ENV_TEST_MUTEX.lock().await;
-        let original_env = std::env::var("TOKEN_USAGE_INSIGHTS_SERVICE").ok();
-
-        std::env::set_var("TOKEN_USAGE_INSIGHTS_SERVICE", "1");
-        assert!(is_windows_service_runner());
-
-        std::env::set_var("TOKEN_USAGE_INSIGHTS_SERVICE", "true");
-        assert!(is_windows_service_runner());
-
-        std::env::set_var("TOKEN_USAGE_INSIGHTS_SERVICE", "TRUE");
-        assert!(is_windows_service_runner());
-
-        std::env::set_var("TOKEN_USAGE_INSIGHTS_SERVICE", "0");
-        assert!(!is_windows_service_runner());
-
-        std::env::set_var("TOKEN_USAGE_INSIGHTS_SERVICE", "false");
-        assert!(!is_windows_service_runner());
-
-        std::env::remove_var("TOKEN_USAGE_INSIGHTS_SERVICE");
-        assert!(!is_windows_service_runner());
-
-        if let Some(orig) = original_env {
-            std::env::set_var("TOKEN_USAGE_INSIGHTS_SERVICE", orig);
-        } else {
-            std::env::remove_var("TOKEN_USAGE_INSIGHTS_SERVICE");
-        }
-    }
-
     #[test]
     fn process_cmdline_current_process_returns_valid_argv() {
         let current_pid = std::process::id();
@@ -6328,13 +4130,6 @@ update_check_interval: 5 # check every 5 days
             assert!(!args.is_empty(), "cmdline should have at least argv[0]");
             let expected_args: Vec<String> = std::env::args().collect();
             assert_eq!(args, expected_args, "cmdline should match std::env::args()");
-        }
-        #[cfg(windows)]
-        {
-            // Windows 端需具備讀取自身行程 PEB 的權限，讀取失敗時回傳 None 屬合理結果
-            if let Some(args) = cmdline {
-                assert!(!args.is_empty(), "cmdline should have at least argv[0]");
-            }
         }
     }
 
@@ -6430,11 +4225,7 @@ update_check_interval: 5 # check every 5 days
         fs::create_dir_all(&release_root).unwrap();
         fs::create_dir_all(&bad_release).unwrap();
 
-        let exec_name = if cfg!(windows) {
-            format!("{APP_NAME}.exe")
-        } else {
-            APP_NAME.to_string()
-        };
+        let exec_name = APP_NAME.to_string();
 
         // Existing installation v0.9.5
         fs::write(install_dir.join(&exec_name), "old binary").unwrap();
@@ -6445,7 +4236,6 @@ update_check_interval: 5 # check every 5 days
         fs::create_dir_all(install_dir.join("scripts")).unwrap();
         fs::create_dir_all(install_dir.join("shell")).unwrap();
         fs::write(install_dir.join("install.sh"), "#!/bin/sh").unwrap();
-        fs::write(install_dir.join("install.ps1"), "# powershell").unwrap();
 
         // Valid new release v0.9.6
         fs::write(release_root.join(&exec_name), "new binary").unwrap();
@@ -6456,7 +4246,6 @@ update_check_interval: 5 # check every 5 days
         fs::create_dir_all(release_root.join("scripts")).unwrap();
         fs::create_dir_all(release_root.join("shell")).unwrap();
         fs::write(release_root.join("install.sh"), "#!/bin/sh v2").unwrap();
-        fs::write(release_root.join("install.ps1"), "# powershell v2").unwrap();
 
         // 1. Success case
         let result =
@@ -6543,11 +4332,7 @@ update_check_interval: 5 # check every 5 days
         fs::create_dir_all(&install_dir).unwrap();
         fs::create_dir_all(&release_root).unwrap();
 
-        let exec_name = if cfg!(windows) {
-            format!("{APP_NAME}.exe")
-        } else {
-            APP_NAME.to_string()
-        };
+        let exec_name = APP_NAME.to_string();
 
         for (root, version) in [(&install_dir, "v0.9.5"), (&release_root, "v0.9.6")] {
             fs::write(root.join(&exec_name), "binary").unwrap();
@@ -6557,7 +4342,6 @@ update_check_interval: 5 # check every 5 days
             fs::create_dir_all(root.join("scripts")).unwrap();
             fs::create_dir_all(root.join("shell")).unwrap();
             fs::write(root.join("install.sh"), "#!/bin/sh").unwrap();
-            fs::write(root.join("install.ps1"), "# powershell").unwrap();
         }
 
         let lock = UpdateLock::try_acquire(&install_dir).expect("測試用更新鎖應可取得");
@@ -6665,11 +4449,7 @@ update_check_interval: 5 # check every 5 days
 
     /// 建立備份目錄中的必要基準項目（平台執行檔與 static）並回傳其清單項目名稱
     fn write_backup_baseline(backup_dir: &std::path::Path) -> Vec<&'static str> {
-        let exec_name = if cfg!(windows) {
-            "token-usage-insights.exe"
-        } else {
-            APP_NAME
-        };
+        let exec_name = APP_NAME;
         fs::write(backup_dir.join(exec_name), "old binary").unwrap();
         fs::create_dir_all(backup_dir.join("static")).unwrap();
         fs::write(backup_dir.join("static").join("index.html"), "old html").unwrap();
@@ -6791,11 +4571,7 @@ update_check_interval: 5 # check every 5 days
         let backup_dir = install_dir.join(".backup");
         fs::create_dir_all(&backup_dir).unwrap();
 
-        let exec_name = if cfg!(windows) {
-            "token-usage-insights.exe"
-        } else {
-            APP_NAME
-        };
+        let exec_name = APP_NAME;
         fs::write(install_dir.join(exec_name), "new binary").unwrap();
         fs::write(install_dir.join("VERSION"), "v0.9.6").unwrap();
         fs::create_dir_all(install_dir.join("static")).unwrap();
@@ -7498,69 +5274,6 @@ update_check_interval: 5 # check every 5 days
     }
 
     #[test]
-    fn configure_windows_runner_command_preserves_envs_and_arguments() {
-        let install_dir = PathBuf::from("C:\\Program Files\\TokenUsageInsights");
-        let runner_script = install_dir.join("scripts").join("run-service.ps1");
-        let envs = vec![
-            ("HOST".to_string(), "127.0.0.1".to_string()),
-            ("PORT".to_string(), "8080".to_string()),
-            ("INSIGHTS_DIR".to_string(), "C:\\data\\insights".to_string()),
-            (
-                "TOKEN_USAGE_INSIGHTS_AUTO_UPDATE".to_string(),
-                "1".to_string(),
-            ),
-            (
-                "TOKEN_USAGE_INSIGHTS_UPDATE_INTERVAL_HOURS".to_string(),
-                "12".to_string(),
-            ),
-        ];
-
-        let spec = StoppedProcessSpec {
-            pid: 1234,
-            exe_path: install_dir.join("token-usage-insights.exe"),
-            cwd: Some(PathBuf::from("C:\\working")),
-            args: Some(vec!["token-usage-insights".to_string()]),
-            envs,
-            is_server: true,
-            is_supervised: true,
-            supervisor_pid: None,
-        };
-
-        let mut cmd = std::process::Command::new("powershell.exe");
-        configure_windows_runner_command(&mut cmd, &runner_script, &install_dir, &spec);
-
-        let args: Vec<String> = cmd
-            .get_args()
-            .map(|s| s.to_string_lossy().to_string())
-            .collect();
-        assert!(args.contains(&"-File".to_string()));
-        assert!(args.contains(&"-InstallDir".to_string()));
-        assert!(args.contains(&"-HostAddress".to_string()));
-        assert!(args.contains(&"127.0.0.1".to_string()));
-        assert!(args.contains(&"-Port".to_string()));
-        assert!(args.contains(&"8080".to_string()));
-        assert!(args.contains(&"-AutoUpdate".to_string()));
-        assert!(args.contains(&"1".to_string()));
-        assert!(args.contains(&"-UpdateIntervalHours".to_string()));
-        assert!(args.contains(&"12".to_string()));
-
-        let env_map: std::collections::HashMap<String, Option<String>> = cmd
-            .get_envs()
-            .map(|(k, v)| {
-                (
-                    k.to_string_lossy().to_string(),
-                    v.map(|s| s.to_string_lossy().to_string()),
-                )
-            })
-            .collect();
-        assert_eq!(
-            env_map.get("INSIGHTS_DIR").and_then(|v| v.as_deref()),
-            Some("C:\\data\\insights")
-        );
-        assert_eq!(cmd.get_current_dir(), Some(Path::new("C:\\working")));
-    }
-
-    #[test]
     fn relevant_env_vars_contains_all_critical_keys() {
         let expected = [
             "PORT",
@@ -7713,16 +5426,7 @@ update_check_interval: 5 # check every 5 days
     #[test]
     fn process_supervisor_pid_default_behavior() {
         let my_pid = std::process::id();
-        #[cfg(not(windows))]
-        {
-            assert_eq!(get_process_supervisor_pid(my_pid), None);
-        }
-        #[cfg(windows)]
-        {
-            // Windows 環境下，非由 run-service.ps1 啟動之測試進程應回傳 None
-            let sup = get_process_supervisor_pid(my_pid);
-            let _ = sup;
-        }
+        assert_eq!(get_process_supervisor_pid(my_pid), None);
     }
 
     #[test]
@@ -7750,7 +5454,7 @@ update_check_interval: 5 # check every 5 days
         header.set_cksum();
         builder.append(&header, &data[..]).unwrap();
 
-        // 2. 測試 Windows 反斜線根路徑 "\\escaped.txt"
+        // 2. 測試反斜線開頭路徑 "\\escaped.txt"
         let mut header2 = tar::Header::new_gnu();
         header2.set_size(data.len() as u64);
         header2.set_mode(0o644);
@@ -7769,7 +5473,7 @@ update_check_interval: 5 # check every 5 days
         builder.into_inner().unwrap().finish().unwrap();
 
         let extract_dest = temp.join("dest");
-        let res = extract_archive(&tar_path, &extract_dest, false);
+        let res = extract_archive(&tar_path, &extract_dest);
         assert!(res.is_err());
         let err = res.unwrap_err();
         assert!(
@@ -7845,8 +5549,6 @@ update_check_interval: 5 # check every 5 days
     }
 
     fn create_test_release_archive(version: &str, target: &str) -> (String, Vec<u8>) {
-        use std::io::Write;
-
         let archive_name = archive_filename(version, target);
         let prefix = format!("{APP_NAME}-v{version}-{target}");
         let mut files: Vec<(&str, &[u8], u32)> = vec![
@@ -7858,46 +5560,25 @@ update_check_interval: 5 # check every 5 days
             ("scripts/install.sh", b"#!/bin/sh\nexit 0\n", 0o755),
             ("shell/token-usage-insights.service", b"# service", 0o644),
         ];
-        let exec_name = if target.contains("windows") {
-            format!("{APP_NAME}.exe")
-        } else {
-            APP_NAME.to_string()
-        };
-        files.push((&exec_name, b"binary_content_v2", 0o755));
+        files.push((APP_NAME, b"binary_content_v2", 0o755));
 
-        if archive_name.ends_with(".zip") {
-            let mut buf = std::io::Cursor::new(Vec::new());
-            {
-                let mut zip = zip::ZipWriter::new(&mut buf);
-                let options = zip::write::SimpleFileOptions::default()
-                    .compression_method(zip::CompressionMethod::Deflated);
-                for (name, content, _) in files {
-                    let entry_name = format!("{prefix}/{name}");
-                    zip.start_file(entry_name, options).unwrap();
-                    zip.write_all(content).unwrap();
-                }
-                zip.finish().unwrap();
+        let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        {
+            let mut builder = tar::Builder::new(&mut gz);
+            for (name, content, mode) in files {
+                let entry_name = format!("{prefix}/{name}");
+                let mut header = tar::Header::new_gnu();
+                header.set_size(content.len() as u64);
+                header.set_mode(mode);
+                header.set_cksum();
+                builder
+                    .append_data(&mut header, entry_name, content)
+                    .unwrap();
             }
-            (archive_name, buf.into_inner())
-        } else {
-            let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
-            {
-                let mut builder = tar::Builder::new(&mut gz);
-                for (name, content, mode) in files {
-                    let entry_name = format!("{prefix}/{name}");
-                    let mut header = tar::Header::new_gnu();
-                    header.set_size(content.len() as u64);
-                    header.set_mode(mode);
-                    header.set_cksum();
-                    builder
-                        .append_data(&mut header, entry_name, content)
-                        .unwrap();
-                }
-                builder.finish().unwrap();
-            }
-            let bytes = gz.finish().unwrap();
-            (archive_name, bytes)
+            builder.finish().unwrap();
         }
+        let bytes = gz.finish().unwrap();
+        (archive_name, bytes)
     }
 
     #[tokio::test]
@@ -8173,19 +5854,13 @@ update_check_interval: 5 # check every 5 days
         let res = run_update_in_dir(&install_dir, options).await;
         assert!(res.is_ok());
 
-        // 驗證更新就緒標記已產出，確保 Windows 服務守護進程能收到就緒協商信號
-        let ready_file = install_dir.join(".update_ready");
-        assert!(ready_file.exists(), "更新成功後必須產生 .update_ready 標記");
-        let ready_content = fs::read_to_string(&ready_file).unwrap();
-        assert_eq!(ready_content.trim(), "ready");
-
         let _ = fs::remove_dir_all(&temp);
     }
 
     #[test]
     fn validate_download_url_enforces_https_or_loopback() {
         assert!(validate_download_url(
-            "https://github.com/doggy8088/TokenUsageInsights/releases/download/v0.9.1/file.zip"
+            "https://github.com/fun-ed/TokenUsageInsights/releases/download/v0.9.1/file.tar.gz"
         )
         .is_ok());
         assert!(validate_download_url(
@@ -8196,160 +5871,6 @@ update_check_interval: 5 # check every 5 days
         assert!(validate_download_url("http://localhost:3000/archive.zip").is_ok());
         assert!(validate_download_url("not a url").is_err());
         assert!(validate_download_url("ftp://example.com/file.zip").is_err());
-    }
-
-    #[test]
-    fn is_safe_env_var_name_accepts_only_portable_names() {
-        assert!(is_safe_env_var_name("PORT"));
-        assert!(is_safe_env_var_name("_INTERNAL"));
-        assert!(is_safe_env_var_name("TOKEN_USAGE_INSIGHTS_SERVICE"));
-
-        assert!(!is_safe_env_var_name(""));
-        assert!(!is_safe_env_var_name("1PORT"));
-        assert!(!is_safe_env_var_name("BAD-KEY"));
-        assert!(!is_safe_env_var_name("BAD KEY"));
-        assert!(!is_safe_env_var_name("PORT;Remove-Item"));
-        assert!(!is_safe_env_var_name("PORT'"));
-    }
-
-    #[test]
-    fn deferred_restart_script_ignores_unlisted_environment_variables() {
-        let spec = StoppedProcessSpec {
-            pid: 999,
-            is_supervised: false,
-            supervisor_pid: None,
-            is_server: true,
-            exe_path: PathBuf::from("C:\\test\\bin\\token-usage-insights.exe"),
-            args: Some(vec!["token-usage-insights.exe".to_string()]),
-            envs: vec![
-                ("PORT".to_string(), "3003".to_string()),
-                (
-                    "EVIL;Remove-Item -Recurse -Force C:\\".to_string(),
-                    "x".to_string(),
-                ),
-                ("NOT_LISTED".to_string(), "y".to_string()),
-            ],
-            cwd: Some(PathBuf::from("C:\\test")),
-        };
-
-        let script = build_windows_deferred_restart_script(
-            4242,
-            &PathBuf::from("C:\\test\\install"),
-            &PathBuf::from("C:\\test\\install\\token-usage-insights.exe"),
-            "0.9.6",
-            Some(&spec),
-        )
-        .expect("腳本產生應成功");
-
-        assert!(
-            script.contains("$env:PORT = '3003';"),
-            "白名單內的環境變數應被寫入腳本"
-        );
-        assert!(
-            !script.contains("EVIL"),
-            "未列入白名單的環境變數名稱不得被插值進 PowerShell 腳本: {script}"
-        );
-        assert!(
-            !script.contains("NOT_LISTED"),
-            "僅白名單內的環境變數可被套用，避免任意鍵名改寫產生之腳本"
-        );
-    }
-
-    #[test]
-    fn build_windows_deferred_restart_script_generates_correct_powershell() {
-        let spec = StoppedProcessSpec {
-            pid: 12345,
-            is_supervised: false,
-            supervisor_pid: None,
-            is_server: true,
-            exe_path: PathBuf::from("C:\\test\\bin\\token-usage-insights.exe"),
-            args: Some(vec![
-                "token-usage-insights.exe".to_string(),
-                "--no-auto-update".to_string(),
-            ]),
-            envs: vec![
-                ("PORT".to_string(), "3003".to_string()),
-                ("HOST".to_string(), "127.0.0.1".to_string()),
-                ("INSIGHTS_DIR".to_string(), "C:\\data".to_string()),
-            ],
-            cwd: Some(PathBuf::from("C:\\test")),
-        };
-
-        let script = build_windows_deferred_restart_script(
-            9999,
-            Path::new("C:\\test"),
-            Path::new("C:\\test\\bin\\token-usage-insights.exe"),
-            "v0.9.6",
-            Some(&spec),
-        )
-        .expect("產生移交重啟腳本應成功");
-
-        // 驗證腳本包含更新程序 PID 等待
-        assert!(script.contains("$updaterPid = 9999;"));
-        assert!(
-            script.contains("while (Get-Process -Id $updaterPid -ErrorAction SilentlyContinue)")
-        );
-
-        // 驗證腳本包含更新鎖釋放等待
-        assert!(script.contains("Join-Path $installDir '.update.lock'"));
-        assert!(script.contains("$stream.Lock(0, 1)"));
-
-        // 驗證腳本包含 self_replace 暫存置換檔清理等待
-        assert!(script.contains("*.__temp__.exe"));
-        assert!(script.contains("*.__relocated__.exe"));
-
-        // 驗證腳本包含 --version 執行與精確版本驗證
-        assert!(script.contains("$pinfo.Arguments = '--version'"));
-        assert!(script.contains("WaitForExit(3000)"));
-        assert!(script.contains("$expectedVersion = '0.9.6';"));
-        assert!(script.contains("$actualVer -eq $expectedVersion"));
-
-        // 驗證版本不符時拒絕啟動並記錄錯誤
-        assert!(script.contains("移交守護進程驗證新版執行檔版本失敗"));
-        assert!(script.contains("中止啟動以防載入舊版"));
-
-        // 驗證等待更新鎖或執行檔逾時時終止啟動並保留復原標記
-        assert!(
-            script.contains("移交守護進程等待更新鎖釋放逾時，中止啟動以保留復原標記供後續救援。")
-        );
-        assert!(
-            script.contains("移交守護進程等待執行檔就緒逾時，中止啟動以保留復原標記供後續救援。")
-        );
-
-        // 驗證版本相符時才以原參數啟動
-        assert!(script.contains("移交守護進程已確認新版執行檔版本"));
-        assert!(script.contains("Start-Process -FilePath $exePath"));
-
-        // 驗證清除相關環境變數並套用原始環境變數
-        assert!(
-            script.contains("Remove-Item -LiteralPath 'env:PORT' -ErrorAction SilentlyContinue;")
-        );
-        assert!(script.contains("$env:PORT = '3003';"));
-        assert!(script.contains("$env:HOST = '127.0.0.1';"));
-        assert!(script.contains("$env:INSIGHTS_DIR = 'C:\\data';"));
-
-        // 驗證啟動後監控健康就緒、清理備份與自動回滾
-        assert!(script.contains("新版看板進程已確認健康就緒"));
-        assert!(script.contains("自備份自動回滾"));
-        assert!(script.contains(".server.pid"));
-    }
-
-    #[test]
-    fn build_windows_deferred_restart_script_handles_none_spec() {
-        let script = build_windows_deferred_restart_script(
-            8888,
-            Path::new("C:\\install"),
-            Path::new("C:\\install\\token-usage-insights.exe"),
-            "v0.9.6",
-            None,
-        )
-        .expect("產生無服務移交驗證腳本應成功");
-
-        assert!(script.contains("$updaterPid = 8888;"));
-        assert!(script.contains("$restartService = $false;"));
-        assert!(script.contains("$argList = @();"));
-        assert!(script.contains("非服務程序無需重啟進程"));
-        assert!(script.contains("非服務程序無需重啟原版服務"));
     }
 
     #[tokio::test]

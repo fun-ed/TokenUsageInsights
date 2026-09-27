@@ -155,29 +155,17 @@ pub async fn get_setup_info(Path(assistant): Path<String>) -> impl IntoResponse 
     let home_dir_path = dirs::home_dir().unwrap_or_default();
     let home_dir = home_dir_path.to_string_lossy().into_owned();
 
-    let script_name = if cfg!(windows) {
-        "statusline-token.ps1"
-    } else {
-        "statusline-token.sh"
-    };
+    let script_name = "statusline-token.sh";
 
     let anti_dir = db::get_antigravity_dir();
     let anti_script = anti_dir.join(script_name);
-    let anti_source_relative = if cfg!(windows) {
-        PathBuf::from("shell").join(script_name)
-    } else {
-        PathBuf::from("shell").join("antigravity").join(script_name)
-    };
+    let anti_source_relative = PathBuf::from("shell").join("antigravity").join(script_name);
     let anti_source_script =
         crate::paths::find_resource(&anti_source_relative).unwrap_or(anti_source_relative);
 
     let copilot_dir = db::get_copilot_dir();
     let copilot_script = copilot_dir.join(script_name);
-    let copilot_source_relative = if cfg!(windows) {
-        PathBuf::from("shell").join(script_name)
-    } else {
-        PathBuf::from("shell").join("copilot").join(script_name)
-    };
+    let copilot_source_relative = PathBuf::from("shell").join("copilot").join(script_name);
     let copilot_source_script =
         crate::paths::find_resource(&copilot_source_relative).unwrap_or(copilot_source_relative);
 

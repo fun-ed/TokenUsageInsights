@@ -4,6 +4,19 @@
 
 ## [未發行]
 
+## [10.0.8] - 2026-09-28
+
+### 平台與更新來源
+
+- 全面移除 Rust 與看板中的 Windows 分支：Windows 行程查詢、PowerShell 服務 runner 與移交重啟腳本、ZIP 發行包解壓、`.exe` 執行檔命名、`%USERPROFILE%` 路徑展開、Windows 路徑正規化與相關測試。本 fork 只支援 macOS 與 Linux。
+- Linux 開啟瀏覽器不再經由 WSL 的 `cmd.exe`，改用 `xdg-open` 與 `gio`。
+- 自動更新與 `update` 指令改從 `fun-ed/TokenUsageInsights` 取得 release，不再查詢 upstream。
+- 移除不再使用的 `zip` 相依套件。
+
+### 文件
+
+- 新增 `docs/fork-spec.md` 作為 fork 正式規格，README、AGENTS、專案 skill 與 Serena memory 改以此為準，並明訂 upstream 同步後必須移除 CI/CD 與 Windows 支援。
+
 ## [10.0.7] - 2026-09-24
 
 ### 修正與改善
