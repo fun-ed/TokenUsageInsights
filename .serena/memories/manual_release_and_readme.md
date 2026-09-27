@@ -1,6 +1,6 @@
 - Fork releases use matching `10.x.y` Cargo/npm versions and annotated `v10.x.y` tags; no GitHub Actions. Process: `.agents/skills/token-usage-insights/SKILL.md` "Manual releases"; policy: `mem:fork_spec`.
-- Latest published release: `v10.0.7` with macOS `aarch64-apple-darwin` and `x86_64-apple-darwin` `.tar.gz` + `.dmg` and `SHA256SUMS`. No Linux asset.
-- Package version `10.0.8` (Windows removal, updater → `fun-ed`) is committed but not released; README install examples intentionally still point at `v10.0.7` until `v10.0.8` assets exist. Update README version examples in the release commit.
-- `scripts/get.sh`, `npm/install.cjs`, and `src/updater.rs` download from `fun-ed/TokenUsageInsights`; keep them off upstream.
-- Root `README.md` is the canonical English README and states the fork spec, profile discovery, `--service` auto-import, and retention advice. Keep only `README.md`, `README.zh-TW.md`, `README.zh-CN.md`; zh variants are short summaries.
-- npm registry publication is manual and was not verified for v10.0.7.
+- Current release: `v10.0.8` (Windows removal, updater → `fun-ed`). Assets per macOS target (`aarch64-apple-darwin`, `x86_64-apple-darwin`): raw `.bin`, `.tar.gz`, `.dmg`, plus shared `SHA256SUMS`. No Linux asset; npm not published.
+- Packaged `VERSION` file holds the bare version (`10.0.8`), not the `v` tag.
+- Commits, tags, and releases use the global identity `fun-ed <50657368+fun-ed@users.noreply.github.com>`; never set a repo-local identity and never add AI co-author trailers.
+- `scripts/get.sh`, `npm/install.cjs`, and `src/updater.rs` download from `fun-ed/TokenUsageInsights`; keep them off upstream. `gh` in this repo needs `-R fun-ed/TokenUsageInsights` (default resolves elsewhere).
+- Root `README.md` is the canonical English README; update its version examples in each release commit. Keep only `README.md`, `README.zh-TW.md`, `README.zh-CN.md`.

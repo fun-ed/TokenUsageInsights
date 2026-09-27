@@ -17,6 +17,10 @@
 
 - 新增 `docs/fork-spec.md` 作為 fork 正式規格，README、AGENTS、專案 skill 與 Serena memory 改以此為準，並明訂 upstream 同步後必須移除 CI/CD 與 Windows 支援。
 
+### 發行資產
+
+- 從本機建置 Apple Silicon (`aarch64-apple-darwin`) 與 Intel (`x86_64-apple-darwin`) macOS 原始 CLI 二進位、完整 `.tar.gz` 安裝包及 DMG，隨資產附上 `SHA256SUMS`。未發行 Linux 二進位或 npm 套件。
+
 ## [10.0.7] - 2026-09-24
 
 ### 修正與改善
