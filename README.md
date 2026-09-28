@@ -6,6 +6,18 @@ This repository is the `fun-ed` fork. Its behavior is defined by [docs/fork-spec
 
 English is the canonical README. Short translations are available in [繁體中文](README.zh-TW.md) and [简体中文](README.zh-CN.md).
 
+## Screenshots
+
+The sidebar **Overview** (總覽) combines every agent and Claude profile. It ranks harnesses by total tokens, shows token and cost shares, and stacks daily usage by agent:
+
+![Overview monthly report with harness ranking and per-agent stacked chart](screenshots/dashboard-all-monthly.png)
+
+Single-agent monthly reports for OMP and Claude Code:
+
+![OMP monthly report](screenshots/dashboard-omp-monthly.png)
+
+![Claude Code monthly report](screenshots/dashboard-claude-monthly.png)
+
 ## Install a precompiled CLI on macOS
 
 The [v10.0.10 release](https://github.com/fun-ed/TokenUsageInsights/releases/tag/v10.0.10) provides CLI packages for Apple Silicon (`aarch64-apple-darwin`) and Intel (`x86_64-apple-darwin`) Macs. No Rust toolchain is needed.

@@ -8,6 +8,16 @@ Token 戰情室是本機優先的 AI Coding Agent 用量看板。它會將本機
 
 Claude Code 會讀取 `~/.claude` 與每個含 `projects/` 的 `~/.claude-profiles/<name>/`，Web UI 以 `Default`、`work`、`p2` 等 badge 標示來源。要背景自動匯入，請用 release 內的 `scripts/install.sh --service` 安裝服務。Claude Code 預設 30 天刪除 transcript，請在各 profile 的 `settings.json` 設定 `"cleanupPeriodDays": 365`。
 
+側欄 **總覽** 合併所有 Agent 與 Claude profile，依總 Token 排名 Harness，顯示 Token 與費用佔比，並依 Agent 堆疊每日用量：
+
+![總覽月報：Harness 排名與各 Agent 堆疊圖](screenshots/dashboard-all-monthly.png)
+
+OMP 與 Claude Code 的單一 Agent 月報：
+
+![OMP 月報](screenshots/dashboard-omp-monthly.png)
+
+![Claude Code 月報](screenshots/dashboard-claude-monthly.png)
+
 ```bash
 git clone https://github.com/fun-ed/TokenUsageInsights.git
 cd TokenUsageInsights
