@@ -4,6 +4,8 @@
 
 ## [未發行]
 
+## [10.0.10] - 2026-09-29
+
 ### 新增與改善
 
 - 總覽（`all`）合併 upstream `4a5c3da`「全部 Agent」的功能，保留 fork 的側欄總覽按鈕、圖示與依總 Token 排名：
@@ -56,6 +58,10 @@
 
 - 同一 Session ID 的不同 rollout 檔案（續傳分段）改為各自保留資料列，報表由既有 Session 身分模型自動合併，每日、每月、年度、模型明細與時間軸的計算結果維持一致或更完整。
 - 匯出／匯入格式新增選用的 `usage_identity` 欄位；缺少該欄位的既有匯出檔仍可正常匯入。
+
+### 發行資產
+
+- 從本機建置 Apple Silicon (`aarch64-apple-darwin`) 與 Intel (`x86_64-apple-darwin`) macOS 原始 CLI 二進位、完整 `.tar.gz` 安裝包及 DMG，隨資產附上 `SHA256SUMS`。未發行 Linux 二進位或 npm 套件。
 
 ## [10.0.9] - 2026-09-28
 
@@ -822,7 +828,10 @@
 - 修正行動版側邊欄遮擋、黑畫面、標題擠壓、圖表導覽索引與年度版面問題。
 - 修正並補齊多個 Gemini、Claude、GPT 與 GPT-OSS 模型的定價規則。
 
-[未發行]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.7...HEAD
+[未發行]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.10...HEAD
+[10.0.10]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.9...v10.0.10
+[10.0.9]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.8...v10.0.9
+[10.0.8]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.7...v10.0.8
 [10.0.7]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.6...v10.0.7
 [10.0.6]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.5...v10.0.6
 [10.0.5]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.4...v10.0.5
