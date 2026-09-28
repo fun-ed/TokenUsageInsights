@@ -4,6 +4,15 @@
 
 ## [未發行]
 
+### 新增與改善
+
+- 新增 Grok 4.7 定價規則（`pricing.csv`），涵蓋 200k 上下文門檻的短／長上下文費率、Low／Medium／High／Extra High 推理層級，以及價格為一般版 2 倍的 Fast 模式，共 30 筆 xAI API 規則。（移植 upstream `ec45ccf`）
+- 看板辨識 `grok-4.7`、`grok-4.7-latest`，依推理層級顯示為「Grok 4.7 (High)」等名稱；`xhigh`、`extra_high` 等寫法統一顯示為「Extra High」。`grok-4.7-fast`、`grok-4.7-fast-latest` 顯示為「Grok 4.7 Fast」並套用 2 倍費率。
+
+### 資料影響
+
+- Grok 解析器版本提升至 `migration:grok_parser_v8`，啟動時重新解析既有 Grok Session，只更新模型、推理層級與未回報成本的估算值，不刪除 Session 或歷史資料。
+
 ### 修正
 
 - Linux 上 `scripts/install.sh --service` 產生的 systemd 使用者單元不再把 `WorkingDirectory` 加上雙引號。systemd 不會剝除該值的引號，會回報 `WorkingDirectory= path is not absolute` 並拒絕啟動服務。現在只轉義 `%` 規格符；重新執行 installer 會就地修正舊單元並沿用既有 `PORT`／`HOST`。（移植 upstream `ee482ac`）
