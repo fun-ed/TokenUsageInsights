@@ -78,6 +78,7 @@ pub async fn get_yearly_details(
                     total_reasoning_tokens: item.usage.reasoning_tokens,
                     sessions_count: item.sessions_count,
                     cost_usd: item.usage.cost_usd,
+                    agents: item.agents,
                 })
                 .collect(),
             projects: report.projects,

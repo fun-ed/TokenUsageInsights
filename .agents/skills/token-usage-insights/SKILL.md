@@ -54,8 +54,8 @@ GitHub Actions workflows are intentionally absent. Build, verify, and upload rel
 - Claude Code scans the default config root and discovered `~/.claude-profiles/*/projects` profile roots on every sync. Profile sessions must retain independent source identity (`claude-default`, `claude-profile:<name>`) and path-safe transcript lookup. Setting `CLAUDE_DIR` disables profile discovery, so the background service must not set it.
 - Automatic import requires the resident server: `scripts/install.sh --service` installs launchd `com.tokenusageinsights` on macOS or a systemd user service on Linux. Never run `install.sh` from inside the install directory; it deletes `static/` before copying.
 - Only surviving transcripts can be imported. Each Claude root needs `cleanupPeriodDays` of at least 365 to avoid the 30-day default deletion.
-- The sidebar **總覽** uses the pseudo-assistant `all` to combine daily, monthly, and yearly reports across every assistant and profile. It is read-only.
-- In total overview mode, preserve per-session assistant/profile badges and show the Harness ranking by total tokens with the existing agent icon metadata.
+- The sidebar **總覽** uses the pseudo-assistant `all` to combine daily, monthly, and yearly reports across every assistant and profile. `all` is not an `assistantMeta` entry; use `isAllAssistantsScope()` / `getAssistantMeta('all')` in the frontend and `is_supported_report_assistant()` in handlers. Import, export, import history, rollback, session detail, and rate-limit stay single-assistant only.
+- In total overview mode, preserve per-session assistant/profile badges. Each view shows the Harness ranking and share table sorted by total tokens (with cost share and click-through to the same period of one agent); monthly and yearly also show per-agent stacked charts backed by the `agents` field of each breakdown bucket. The setup guide lists every data source, including each Claude profile from `claude_sources`; manual sync syncs all sources.
 
 ## Verification and delivery
 

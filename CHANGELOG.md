@@ -6,6 +6,12 @@
 
 ### 新增與改善
 
+- 總覽（`all`）合併 upstream `4a5c3da`「全部 Agent」的功能，保留 fork 的側欄總覽按鈕、圖示與依總 Token 排名：
+  - 日、月、年視圖的「Harness 使用排名與分佈」表取代原排名表，新增輸入、輸出、快取、費用、Token 與費用佔比、佔比條與合計列；點選 Agent 會切換到該 Agent 的同期報表。
+  - 月度與年度新增依 Agent 堆疊的長條圖，可切換 Token／費用（預設 Token），點選長條可下鑽到該日或該月。
+  - 月報與年報 API 的每個區段新增 `agents` 欄位（各 Agent 的 `total_tokens`、`cost_usd`、`sessions_count`）。
+  - 總覽可開啟設定教學，列出所有資料來源與偵測狀態（Claude Code 含每個 profile），並可進入個別 Agent 教學後返回；手動同步在總覽也可使用。
+  - 模型 Session 明細在總覽標示來源 Agent；`all` 不再列在前端 `assistantMeta`，避免被當成匯入目標或 Session 來源。
 - 新增 Grok 4.7 定價規則（`pricing.csv`），涵蓋 200k 上下文門檻的短／長上下文費率、Low／Medium／High／Extra High 推理層級，以及價格為一般版 2 倍的 Fast 模式，共 30 筆 xAI API 規則。（移植 upstream `ec45ccf`）
 - 看板辨識 `grok-4.7`、`grok-4.7-latest`，依推理層級顯示為「Grok 4.7 (High)」等名稱；`xhigh`、`extra_high` 等寫法統一顯示為「Extra High」。`grok-4.7-fast`、`grok-4.7-fast-latest` 顯示為「Grok 4.7 Fast」並套用 2 倍費率。
 

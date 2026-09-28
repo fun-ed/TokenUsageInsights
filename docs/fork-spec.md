@@ -22,8 +22,11 @@
 
 ### 2.2 總覽（all harness）
 
-- 側欄 **總覽** 使用 pseudo-assistant `all`，合併所有助理與 profile 的日、月、年報表。唯讀。
+- 側欄 **總覽** 使用 pseudo-assistant `all`，合併所有助理與 profile 的日、月、年報表。唯讀：不提供匯入、匯出、匯入紀錄、回滾與 Session 詳情；手動同步會同步所有來源。
 - 總覽模式要保留每個 session 的助理與 profile badge，並依總 token 顯示 Harness 排名。
+- 排名表同時顯示各 Agent 的 Token、費用與佔比，點選可切換到該 Agent 的同期報表。月度與年度另有依 Agent 堆疊的長條圖（Token／費用切換，預設 Token）。
+- 設定教學在總覽顯示所有資料來源與偵測狀態，Claude Code 列出預設根目錄與每個 profile。
+- 此設計以 upstream `4a5c3da`「全部 Agent」為基礎合併，名稱、圖示與排名規則以本節為準。
 
 ### 2.3 自動匯入
 
