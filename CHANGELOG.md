@@ -15,6 +15,7 @@
 
 ### 修正
 
+- 自動忽略 `copilot-search-b` 缺少模型價格規則的錯誤提示，保留 Token 用量統計與既有成本計算；其他缺少價格規則的模型仍會提示。（移植 upstream `8a1d033`）
 - Linux 上 `scripts/install.sh --service` 產生的 systemd 使用者單元不再把 `WorkingDirectory` 加上雙引號。systemd 不會剝除該值的引號，會回報 `WorkingDirectory= path is not absolute` 並拒絕啟動服務。現在只轉義 `%` 規格符；重新執行 installer 會就地修正舊單元並沿用既有 `PORT`／`HOST`。（移植 upstream `ee482ac`）
 
 ### 測試
