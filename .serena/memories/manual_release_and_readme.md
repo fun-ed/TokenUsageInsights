@@ -1,5 +1,6 @@
 - Fork releases use matching `10.x.y` Cargo/npm versions and annotated `v10.x.y` tags; no GitHub Actions. Process: `.agents/skills/token-usage-insights/SKILL.md` "Manual releases"; policy: `mem:fork_spec`.
-- Current release: `v10.0.9` (launchd reinstall race fix in `scripts/install.sh`). Assets per macOS target (`aarch64-apple-darwin`, `x86_64-apple-darwin`): raw `.bin`, `.tar.gz`, `.dmg`, plus shared `SHA256SUMS`. No Linux asset; npm not published.
+- Current release: `v10.0.10` (upstream v1.0.1–v1.1.1 sync, Codex rollout-identity migration, overview Harness ranking/share merge).
+- Local CLI upgrade: `~/.local/bin/token-usage-insights` is a symlink into the service install dir, so upgrade via `get.sh | bash -s -- --service` (back up the DB first), not `make install-local`. Verify dashboards with a release build; debug builds are too slow for `all` reports on the real DB. Assets per macOS target (`aarch64-apple-darwin`, `x86_64-apple-darwin`): raw `.bin`, `.tar.gz`, `.dmg`, plus shared `SHA256SUMS`. No Linux asset; npm not published.
 - Packaged `VERSION` file holds the bare version (e.g. `10.0.9`), not the `v` tag.
 - `install.sh --service` on macOS waits for `launchctl bootout` to finish unloading, then retries `bootstrap`; keep that when editing the launchd block.
 - Commits, tags, and releases use the global identity `fun-ed <50657368+fun-ed@users.noreply.github.com>`; never set a repo-local identity and never add AI co-author trailers.
