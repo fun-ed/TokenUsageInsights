@@ -4,6 +4,14 @@
 
 ## [未發行]
 
+### 修正
+
+- Linux 上 `scripts/install.sh --service` 產生的 systemd 使用者單元不再把 `WorkingDirectory` 加上雙引號。systemd 不會剝除該值的引號，會回報 `WorkingDirectory= path is not absolute` 並拒絕啟動服務。現在只轉義 `%` 規格符；重新執行 installer 會就地修正舊單元並沿用既有 `PORT`／`HOST`。（移植 upstream `ee482ac`）
+
+### 測試
+
+- 新增 `tests/install-systemd.test.sh` 與 `make test-scripts`，以 stub 的 `uname`／`systemctl` 在暫存目錄執行 `install.sh --service`，涵蓋一般路徑、含空白與 `%` 的路徑、舊版加引號單元升級與服務範本檢查。
+
 ## [10.0.9] - 2026-09-28
 
 ### 修正

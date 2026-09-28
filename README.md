@@ -77,4 +77,5 @@ It does not send usage logs to AI providers. Prices are estimates. When a source
 make fmt
 make check
 make test
+make test-scripts   # install.sh systemd unit tests (no systemd needed)
 ```

@@ -11,7 +11,7 @@ RELEASE_BIN := target/release/$(PROJECT_NAME)
 LOCAL_BIN_DIR ?= $(HOME)/.local/bin
 LOCAL_BIN := $(LOCAL_BIN_DIR)/$(PROJECT_NAME)
 
-.PHONY: help run dev run-release build build-release install-local test fmt clippy check lint all clean \
+.PHONY: help run dev run-release build build-release install-local test test-scripts fmt clippy check lint all clean \
 	service-file install-service uninstall-service enable-service disable-service \
 	start-service stop-service restart-service status
 
@@ -26,6 +26,7 @@ help:
 	@echo "  make build-release   建置 Release 版本"
 	@echo "  make install-local   建置 Release 版本並安裝到 $(LOCAL_BIN)"
 	@echo "  make test            執行 Rust 測試"
+	@echo "  make test-scripts    執行安裝腳本的 systemd 單元測試（不需要 systemd）"
 	@echo "  make fmt             套用 Rust formatting"
 	@echo "  make clippy          執行 clippy 全量檢查"
 	@echo "  make check           執行 cargo check --all-targets --all-features"
@@ -63,6 +64,9 @@ install-local: build-release
 
 test:
 	$(CARGO) test
+
+test-scripts:
+	bash tests/install-systemd.test.sh
 
 fmt:
 	$(CARGO) fmt
