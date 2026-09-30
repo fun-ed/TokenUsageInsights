@@ -4,6 +4,8 @@
 
 ## [未發行]
 
+## [10.0.11] - 2026-09-30
+
 ### 修正
 
 - 移植 upstream `00efcd3`（`v1.1.2`）的四筆 GPT-6.1 Sol 定價，新增 Global 短／長上下文與預設規則，以及 Cursor 的 `gpt-6.1-sol` 規則，修正該模型缺少價格規則而無法估算費用的問題。
@@ -14,6 +16,10 @@
 
 - 保留既有 GPT-6 Sol 費率、models.dev 優先規則、多 profile 與總覽功能。未變更資料庫結構、環境變數、API、CLI 參數或安裝流程；不引入 upstream 版本號、其他語系 README、Windows 或 CI/CD。
 - 新增 GPT-6.1 Sol 模型名稱、272K 邊界、輸入加快取跨界、純快取與 Global／Cursor 費率測試。
+
+### 發行資產
+
+- 從本機建置 Apple Silicon (`aarch64-apple-darwin`) 與 Intel (`x86_64-apple-darwin`) macOS CLI 二進位、完整 `.tar.gz` 安裝包及 DMG，隨資產附上 `SHA256SUMS`。未發行 Linux 二進位或 npm 套件。
 
 ## [10.0.10] - 2026-09-29
 
@@ -839,7 +845,8 @@
 - 修正行動版側邊欄遮擋、黑畫面、標題擠壓、圖表導覽索引與年度版面問題。
 - 修正並補齊多個 Gemini、Claude、GPT 與 GPT-OSS 模型的定價規則。
 
-[未發行]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.10...HEAD
+[未發行]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.11...HEAD
+[10.0.11]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.10...v10.0.11
 [10.0.10]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.9...v10.0.10
 [10.0.9]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.8...v10.0.9
 [10.0.8]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.7...v10.0.8
