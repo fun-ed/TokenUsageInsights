@@ -881,6 +881,83 @@ mod tests {
     }
 
     #[test]
+    fn gpt_6_1_sol_uses_packaged_pricing_at_prompt_boundaries() {
+        let rules: Vec<_> = load_pricing_rules()
+            .into_iter()
+            .filter(|rule| !rule.model_name.starts_with(MODELS_DEV_RULE_PREFIX))
+            .collect();
+
+        for model_name in [
+            "gpt-6.1-sol",
+            "GPT-6.1 Sol",
+            "GPT-6.1-Sol",
+            "openai-codex/gpt-6.1-sol · high",
+        ] {
+            for (input, output, cache_read, expected) in [
+                (100_000, 100_000, 100_000, 1.21),
+                (272_000, 100_000, 0, 1.544),
+                (272_001, 100_000, 0, 2.588_004),
+                (100_000, 100_000, 172_000, 1.217_2),
+                (100_000, 100_000, 172_001, 1.934_400_2),
+                (0, 100_000, 272_000, 1.027_2),
+                (0, 100_000, 272_001, 1.554_400_2),
+                (300_000, 50_000, 0, 1.95),
+            ] {
+                let cost =
+                    calculate_usage_cost(&rules, Some(model_name), input, output, cache_read, 0, 0)
+                        .unwrap();
+                assert!(
+                    (cost - expected).abs() < 1e-9,
+                    "unexpected GPT-6.1 Sol cost for {model_name}, input={input}, \
+                     output={output}, cache_read={cache_read}: {cost}, expected {expected}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn gpt_6_1_sol_packaged_entries_include_global_and_cursor_rates() {
+        let entries: Vec<_> = load_pricing_entries()
+            .into_iter()
+            .filter(|entry| {
+                matches!(entry.deployment_type.as_str(), "Global" | "Cursor")
+                    && entry.model_name.to_ascii_lowercase().contains("gpt-6.1")
+            })
+            .collect();
+        assert_eq!(entries.len(), 4);
+
+        for (name, deployment, input, cache, output, batch) in [
+            (
+                "GPT-6.1 Sol (<272k)",
+                "Global",
+                2.0,
+                0.1,
+                10.0,
+                "1.00/0.05/5.00",
+            ),
+            (
+                "GPT-6.1 Sol (>272k)",
+                "Global",
+                4.0,
+                0.2,
+                15.0,
+                "2.00/0.10/7.50",
+            ),
+            ("GPT-6.1 Sol", "Global", 2.0, 0.1, 10.0, "1.00/0.05/5.00"),
+            ("gpt-6.1-sol", "Cursor", 2.0, 0.1, 10.0, "N/A"),
+        ] {
+            let entry = entries
+                .iter()
+                .find(|entry| entry.model_name == name && entry.deployment_type == deployment)
+                .unwrap();
+            assert_eq!(entry.input_price, input);
+            assert_eq!(entry.cache_input_price, cache);
+            assert_eq!(entry.output_price, output);
+            assert_eq!(entry.batch_api_price, batch);
+        }
+    }
+
+    #[test]
     fn latest_gpt_6_and_claude_opus_5_5_models_use_packaged_pricing() {
         let rules = load_pricing_rules();
 
