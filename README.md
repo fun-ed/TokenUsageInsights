@@ -20,7 +20,7 @@ Single-agent monthly reports for OMP and Claude Code:
 
 ## Install a precompiled CLI on macOS
 
-The [v10.0.11 release](https://github.com/fun-ed/TokenUsageInsights/releases/tag/v10.0.11) provides CLI packages for Apple Silicon (`aarch64-apple-darwin`) and Intel (`x86_64-apple-darwin`) Macs. No Rust toolchain is needed.
+The [v10.0.12 release](https://github.com/fun-ed/TokenUsageInsights/releases/tag/v10.0.12) provides CLI packages for Apple Silicon (`aarch64-apple-darwin`) and Intel (`x86_64-apple-darwin`) Macs. No Rust toolchain is needed.
 
 For a quick local install from this fork's latest release (not the upstream repository), run:
 
@@ -33,7 +33,7 @@ The installer selects the matching macOS CLI, copies the dashboard into `~/.loca
 To verify the checksum before installing, download the release package manually (set `target=x86_64-apple-darwin` on an Intel Mac):
 
 ```bash
-version=v10.0.11
+version=v10.0.12
 target=aarch64-apple-darwin
 archive="token-usage-insights-${version}-${target}.tar.gz"
 mkdir -p "$HOME/Downloads/token-usage-insights"
@@ -47,7 +47,7 @@ bash "token-usage-insights-${version}-${target}/scripts/install.sh"
 "$HOME/.local/bin/token-usage-insights"
 ```
 
-To invoke the CLI by name from zsh, add `export PATH="$HOME/.local/bin:$PATH"` to `~/.zshrc` and start a new terminal. Run the quick installer again to upgrade. Both architectures are also available as [Apple Silicon DMG](https://github.com/fun-ed/TokenUsageInsights/releases/download/v10.0.11/token-usage-insights-v10.0.11-aarch64-apple-darwin.dmg) and [Intel DMG](https://github.com/fun-ed/TokenUsageInsights/releases/download/v10.0.11/token-usage-insights-v10.0.11-x86_64-apple-darwin.dmg). For Linux, build from source unless a matching Linux asset is listed in the release.
+To invoke the CLI by name from zsh, add `export PATH="$HOME/.local/bin:$PATH"` to `~/.zshrc` and start a new terminal. Run the quick installer again to upgrade. Both architectures are also available as [Apple Silicon DMG](https://github.com/fun-ed/TokenUsageInsights/releases/download/v10.0.12/token-usage-insights-v10.0.12-aarch64-apple-darwin.dmg) and [Intel DMG](https://github.com/fun-ed/TokenUsageInsights/releases/download/v10.0.12/token-usage-insights-v10.0.12-x86_64-apple-darwin.dmg). For Linux, build from source unless a matching Linux asset is listed in the release.
 
 ## Import automatically in the background
 
@@ -82,6 +82,8 @@ Only transcripts that still exist can be imported. Claude Code deletes transcrip
 ### Privacy and pricing
 
 It does not send usage logs to AI providers. Prices are estimates. When a source does not report a cost, the dashboard uses a matching local pricing rule. The server refreshes its models.dev price cache when available.
+
+On Daily, `manifest/auto` sessions default to 0 USD. Select `glm-5.3`, `deepseek-v4.1-flash`, or `glm-5.3-flash` in the session's estimated-cost model selector to save a pricing choice in SQLite and refresh the costs. The choice applies only to that source and session across all dates, survives synchronization and restarts, and leaves the original model display and source logs unchanged. Select the 0 USD default to clear it. The Overview remains read-only.
 
 ## Development
 

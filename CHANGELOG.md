@@ -4,6 +4,20 @@
 
 ## [未發行]
 
+## [10.0.12] - 2026-10-04
+
+### 新增與改善
+
+- Daily Session 明細可為 `Manifest / auto` 工作階段選擇估算費用模型：`glm-5.3`、`deepseek-v4.1-flash` 或 `glm-5.3-flash`；預設 `Manifest / auto` 為 US$0。
+- 選擇會依助理、來源與 Session 身分保存，並套用於該 Session 的所有日期。這只改變估算費用，不會修改原始用量資料或原始模型顯示；費用仍是估算值，並非供應商帳單。
+- 可切回預設零費用。設定與原始使用紀錄分開保存，同步重建或服務重啟後仍保留；混合模型 Session 只重新計算 `manifest/auto` 紀錄，總覽維持唯讀。
+- 補齊 `glm-5.3` 離線備援費率，每百萬 Token 的輸入／快取讀取／輸出為 US$1.40／US$0.26／US$4.40。
+
+### 相容性與測試
+
+- 新增 Session 定價的來源隔離、保存、跨日期套用與清除測試；共通過 396 個 Rust 測試與 18 個 Node 測試。
+- SQLite 啟動時自動新增 `session_pricing_assignments` 設定表與來源索引，保留既有使用紀錄；新增 Session 定價 API，不改變 CLI 參數或環境變數。
+
 ## [10.0.11] - 2026-09-30
 
 ### 修正
@@ -845,7 +859,8 @@
 - 修正行動版側邊欄遮擋、黑畫面、標題擠壓、圖表導覽索引與年度版面問題。
 - 修正並補齊多個 Gemini、Claude、GPT 與 GPT-OSS 模型的定價規則。
 
-[未發行]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.11...HEAD
+[未發行]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.12...HEAD
+[10.0.12]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.11...v10.0.12
 [10.0.11]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.10...v10.0.11
 [10.0.10]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.9...v10.0.10
 [10.0.9]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.8...v10.0.9
