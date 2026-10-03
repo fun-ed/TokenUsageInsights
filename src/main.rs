@@ -354,6 +354,7 @@ async fn main() {
         .route("/api/:assistant/model-sessions", get(get_model_sessions))
         .route("/api/:assistant/years", get(get_available_years))
         .route("/api/:assistant/yearly/:year", get(get_yearly_details))
+        .route("/api/:assistant/session-pricing", post(set_session_pricing))
         .route("/api/:assistant/pricing", get(get_pricing))
         .route("/api/:assistant/sync", get(trigger_manual_sync))
         .route("/api/:assistant/rate-limit", get(get_rate_limit))

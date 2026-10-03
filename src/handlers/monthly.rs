@@ -419,6 +419,7 @@ mod tests {
             agent_nickname: None,
             agent_role: None,
             reasoning_effort: None,
+            session_pricing: None,
         }
     }
 

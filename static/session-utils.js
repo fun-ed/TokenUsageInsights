@@ -47,3 +47,39 @@ export function filterEntriesBySessionIdentity(entries, sessions) {
   const sessionKeys = new Set((sessions || []).map(sessionIdentityKey));
   return (entries || []).filter(entry => sessionKeys.has(sessionIdentityKey(entry)));
 }
+
+export const SESSION_PRICING_MODELS = Object.freeze([
+  'glm-5.3',
+  'deepseek-v4.1-flash',
+  'glm-5.3-flash',
+]);
+
+export function buildSessionPricingPayload(session, pricingModel) {
+  if (
+    typeof session?.assistant_type !== 'string'
+    || !session.assistant_type
+    || typeof session.source_kind !== 'string'
+    || !session.source_kind
+    || typeof session.session_id !== 'string'
+    || !session.session_id
+    || (
+      typeof session.source_dir_key !== 'string'
+      && session.source_dir_key !== null
+      && session.source_dir_key !== undefined
+    )
+  ) {
+    throw new TypeError('Session pricing requires a complete session identity');
+  }
+
+  const normalizedModel = pricingModel === '' ? null : pricingModel;
+  if (normalizedModel !== null && !SESSION_PRICING_MODELS.includes(normalizedModel)) {
+    throw new TypeError('Unsupported session pricing model');
+  }
+
+  return {
+    session_id: session.session_id,
+    source_kind: session.source_kind,
+    source_dir_key: session.source_dir_key ?? null,
+    pricing_model: normalizedModel,
+  };
+}

@@ -225,6 +225,7 @@ pub(super) fn parse_claude_session_file(filepath: &Path) -> Result<Vec<UsageEntr
             agent_nickname: None,
             agent_role: None,
             reasoning_effort: None,
+            session_pricing: None,
         });
     }
 

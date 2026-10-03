@@ -264,6 +264,7 @@ fn append_usage_entry(
         agent_nickname: context.agent_nickname.clone(),
         agent_role: context.agent_role.clone(),
         reasoning_effort: None,
+        session_pricing: None,
     });
     *turn_no += 1;
 }

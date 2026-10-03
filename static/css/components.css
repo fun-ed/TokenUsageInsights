@@ -1269,6 +1269,52 @@ input:checked + .slider-round:before {
   width: 100%;
 }
 
+.session-pricing-control {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  margin-top: 8px;
+  cursor: default;
+}
+
+.session-pricing-control label {
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.session-pricing-select {
+  width: 100%;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--glass-border);
+  border-radius: 6px;
+  background: var(--bg-select);
+  color: var(--text-primary);
+  font: 500 11px var(--font-body);
+  cursor: pointer;
+}
+
+.session-pricing-select:focus-visible {
+  outline: 2px solid var(--accent-cyan);
+  outline-offset: 2px;
+}
+
+.session-pricing-select:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.session-pricing-control small {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 1.35;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .session-name-text {
   display: block;
   width: 100%;

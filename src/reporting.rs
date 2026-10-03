@@ -216,7 +216,36 @@ fn record_usage(
     let model = entry_model(entry);
     let model_label = model.unwrap_or("Unknown Model");
     let (cache_write_5m, cache_write_1h) = cache_write_breakdown(tokens);
-    let cost_usd = if entry.source_kind.as_deref() == Some(crate::omp::SOURCE_KIND) {
+    let cost_usd = if crate::db::is_manifest_auto_model(model) {
+        // The raw `manifest/auto` model marker has no price by itself.
+        // An unassigned marker is explicitly zero-cost, irrespective of any
+        // provider-reported amount; only marker rows use the session override.
+        entry
+            .session_pricing
+            .as_ref()
+            .and_then(|overlay| overlay.pricing_model.as_deref())
+            .map_or(0.0, |pricing_model| {
+                match pricing_rules.calculate_usage_cost(
+                    Some(pricing_model),
+                    tokens.input,
+                    tokens.output,
+                    tokens.cache_read.unwrap_or(0),
+                    cache_write_5m,
+                    cache_write_1h,
+                ) {
+                    Ok(cost) => cost,
+                    Err(error) => {
+                        log_pricing_failure(
+                            pricing_model,
+                            &entry.session_id,
+                            entry.turn_no,
+                            &error,
+                        );
+                        0.0
+                    }
+                }
+            })
+    } else if entry.source_kind.as_deref() == Some(crate::omp::SOURCE_KIND) {
         // OMP records its provider and model separately, so its canonical
         // `provider/model` identity can use the live models.dev cache. Retain
         // OMP's reported amount as an offline fallback for unknown providers.
@@ -653,6 +682,7 @@ mod tests {
             agent_nickname: None,
             agent_role: None,
             reasoning_effort: None,
+            session_pricing: None,
         }
     }
 
@@ -687,7 +717,163 @@ mod tests {
             agent_nickname: None,
             agent_role: None,
             reasoning_effort: None,
+            session_pricing: None,
         }
+    }
+
+    fn manifest_auto_pricing_rules() -> PreparedPricingRules {
+        PreparedPricingRules::from_rules(vec![
+            PricingRule {
+                model_name: "glm-5.3".to_string(),
+                input_price: 1.40,
+                cache_input_price: 0.26,
+                output_price: 4.40,
+            },
+            PricingRule {
+                model_name: "deepseek-v4.1-flash".to_string(),
+                input_price: 0.30,
+                cache_input_price: 0.006,
+                output_price: 1.20,
+            },
+            PricingRule {
+                model_name: "glm-5.3-flash".to_string(),
+                input_price: 0.15,
+                cache_input_price: 0.03,
+                output_price: 0.50,
+            },
+        ])
+    }
+
+    #[test]
+    fn manifest_auto_rows_default_to_zero_and_use_only_selected_model_prices() {
+        let rules = manifest_auto_pricing_rules();
+        let tokens = token_stats(1_000_000, 2_000_000, 3_000_000);
+        let mut entry = summary_entry(1, "manifest/auto", tokens, true);
+        entry.source_kind = Some(crate::omp::SOURCE_KIND.to_string());
+        entry.cost = Some(CostStats {
+            total_api_duration_ms: None,
+            total_duration_ms: None,
+            total_premium_requests: None,
+            reported_cost_usd: Some(80.0),
+        });
+        assert_eq!(
+            summarize_session_usage(&rules, &[entry.clone()])
+                .usage
+                .cost_usd,
+            0.0
+        );
+
+        for (model, expected_cost) in [
+            ("glm-5.3", 10.98),
+            ("deepseek-v4.1-flash", 0.30 + 2.0 * 1.20 + 3.0 * 0.006),
+            ("glm-5.3-flash", 1.24),
+        ] {
+            let mut assigned = entry.clone();
+            assigned.session_pricing = Some(crate::db::SessionPricingOverlay {
+                has_manifest_auto: true,
+                pricing_model: Some(model.to_string()),
+            });
+            assigned.cost.as_mut().unwrap().reported_cost_usd = Some(0.0);
+            let summary = summarize_session_usage(&rules, &[assigned.clone()]);
+            assert!((summary.usage.cost_usd - expected_cost).abs() < 1e-9);
+            assert_eq!(summary.display_model, "manifest/auto");
+            assert_eq!(assigned.model.as_deref(), Some("manifest/auto"));
+            assert_eq!(
+                assigned
+                    .cost
+                    .as_ref()
+                    .and_then(|cost| cost.reported_cost_usd),
+                Some(0.0)
+            );
+
+            let serialized = serde_json::to_value(&assigned).unwrap();
+            assert!(serialized.get("session_pricing").is_none());
+            let imported: UsageEntry = serde_json::from_value(serialized).unwrap();
+            assert!(imported.session_pricing.is_none());
+        }
+    }
+
+    #[test]
+    fn manifest_auto_assignment_does_not_reprice_mixed_session_models() {
+        let rules = manifest_auto_pricing_rules();
+        let mut marker = summary_entry(1, "manifest/auto", token_stats(1_000_000, 0, 0), true);
+        marker.source_kind = Some(crate::omp::SOURCE_KIND.to_string());
+        marker.session_pricing = Some(crate::db::SessionPricingOverlay {
+            has_manifest_auto: true,
+            pricing_model: Some("glm-5.3".to_string()),
+        });
+        marker.cost = Some(CostStats {
+            total_api_duration_ms: None,
+            total_duration_ms: None,
+            total_premium_requests: None,
+            reported_cost_usd: Some(90.0),
+        });
+
+        let mut regular = summary_entry(2, "original-provider-model", token_stats(1, 0, 0), true);
+        regular.cost = Some(CostStats {
+            total_api_duration_ms: None,
+            total_duration_ms: None,
+            total_premium_requests: None,
+            reported_cost_usd: Some(7.0),
+        });
+        // The table hydrates a session assignment on all rows, but only the
+        // literal manifest/auto model marker opts into the override.
+        regular.session_pricing = marker.session_pricing.clone();
+
+        let summary = summarize_session_usage(&rules, &[marker, regular]);
+        assert!((summary.usage.cost_usd - 8.4).abs() < 1e-9);
+        assert_eq!(summary.display_model, "original-provider-model");
+        assert!(summary
+            .models
+            .iter()
+            .any(|model| model.model == "manifest/auto"));
+        assert!(summary
+            .models
+            .iter()
+            .any(|model| model.model == "original-provider-model"));
+    }
+
+    #[test]
+    fn manifest_auto_assignments_flow_through_day_month_and_year_aggregation() {
+        let rules = manifest_auto_pricing_rules();
+        let make_entry = |turn_no, date: &str, input_tokens| {
+            let mut entry = summary_entry(
+                turn_no,
+                "manifest/auto",
+                token_stats(input_tokens, 0, 0),
+                true,
+            );
+            entry.session_id = "persistent-session".to_string();
+            entry.timestamp = format!("{date}T12:00:00Z");
+            entry.source_kind = Some(crate::omp::SOURCE_KIND.to_string());
+            entry.session_pricing = Some(crate::db::SessionPricingOverlay {
+                has_manifest_auto: true,
+                pricing_model: Some("glm-5.3-flash".to_string()),
+            });
+            DatedUsageEntry {
+                entry,
+                assistant_type: "omp".to_string(),
+                date: date.to_string(),
+            }
+        };
+        let entries = [
+            make_entry(1, "2026-03-01", 1_000_000),
+            make_entry(2, "2026-04-01", 2_000_000),
+            make_entry(3, "2027-01-02", 3_000_000),
+        ];
+
+        let day = summarize_session_usage(&rules, &[entries[0].entry.clone()]);
+        assert!((day.usage.cost_usd - 0.15).abs() < 1e-9);
+
+        let month_2026_03 =
+            build_period_report(&entries[..1], |date| date[..7].to_string(), &rules);
+        assert!((month_2026_03.summary.total_cost_usd - 0.15).abs() < 1e-9);
+
+        let year_2026 = build_period_report(&entries[..2], |date| date[..4].to_string(), &rules);
+        assert!((year_2026.summary.total_cost_usd - 0.45).abs() < 1e-9);
+
+        let year_2027 = build_period_report(&entries[2..], |date| date[..4].to_string(), &rules);
+        assert!((year_2027.summary.total_cost_usd - 0.45).abs() < 1e-9);
     }
 
     #[test]

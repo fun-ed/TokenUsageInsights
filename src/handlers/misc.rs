@@ -1,9 +1,15 @@
-use axum::{extract::Path, http::StatusCode, response::IntoResponse, Json};
+use axum::{
+    extract::{rejection::JsonRejection, Path},
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    Json,
+};
 use chrono::{SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
 
-use super::*;
-use crate::db::{self, UsageDayExportRecord};
+use super::{is_supported_assistant, is_supported_report_assistant, normalize_assistant_name};
+
+use crate::db::{self, SessionPricingError, UsageDayExportRecord};
 use crate::pricing::load_pricing_entries;
 
 #[derive(Serialize)]
@@ -58,6 +64,93 @@ pub async fn get_pricing(Path(assistant): Path<String>) -> impl IntoResponse {
             Json(serde_json::json!({ "error": "執行緒執行失敗" })),
         )
             .into_response(),
+    }
+}
+
+fn deserialize_required_nullable_string<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Option::<String>::deserialize(deserializer)
+}
+
+#[derive(Deserialize)]
+pub struct SessionPricingRequest {
+    session_id: String,
+    source_kind: String,
+    #[serde(deserialize_with = "deserialize_required_nullable_string")]
+    source_dir_key: Option<String>,
+    #[serde(deserialize_with = "deserialize_required_nullable_string")]
+    pricing_model: Option<String>,
+}
+
+fn session_pricing_error_response(error: SessionPricingError) -> Response {
+    let status = if error.is_bad_request() {
+        StatusCode::BAD_REQUEST
+    } else if error.is_not_found() {
+        StatusCode::NOT_FOUND
+    } else {
+        StatusCode::INTERNAL_SERVER_ERROR
+    };
+    (
+        status,
+        Json(serde_json::json!({ "error": error.message() })),
+    )
+        .into_response()
+}
+
+pub async fn set_session_pricing(
+    Path(assistant): Path<String>,
+    payload: Result<Json<SessionPricingRequest>, JsonRejection>,
+) -> Response {
+    let assistant = normalize_assistant_name(&assistant);
+    if !is_supported_assistant(&assistant) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "不支援的助理類型" })),
+        )
+            .into_response();
+    }
+
+    let Json(payload) = match payload {
+        Ok(payload) => payload,
+        Err(error) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": format!("無效的工作階段定價請求: {error}")
+                })),
+            )
+                .into_response();
+        }
+    };
+
+    let assistant_type = assistant;
+    let source_kind = payload.source_kind;
+    let source_dir_key = payload.source_dir_key;
+    let session_id = payload.session_id;
+    let pricing_model = payload.pricing_model;
+    let result = tokio::task::spawn_blocking(move || {
+        let mut conn = db::get_db_conn().map_err(SessionPricingError::Database)?;
+        db::set_session_pricing_assignment(
+            &mut conn,
+            &assistant_type,
+            &source_kind,
+            source_dir_key.as_deref(),
+            &session_id,
+            pricing_model.as_deref(),
+        )
+    })
+    .await
+    .unwrap_or_else(|error| {
+        Err(SessionPricingError::Database(format!(
+            "工作階段定價執行緒失敗: {error}"
+        )))
+    });
+
+    match result {
+        Ok(()) => Json(serde_json::json!({ "status": "ok" })).into_response(),
+        Err(error) => session_pricing_error_response(error),
     }
 }
 
@@ -419,6 +512,25 @@ mod tests {
     use axum::Json;
 
     use super::{get_app_version, is_valid_period, validate_import_assistant};
+
+    #[test]
+    fn session_pricing_requires_explicit_nullable_fields() {
+        let complete = serde_json::json!({
+            "session_id": "session",
+            "source_kind": "omp-session",
+            "source_dir_key": null,
+            "pricing_model": null
+        });
+        let request: super::SessionPricingRequest =
+            serde_json::from_value(complete.clone()).unwrap();
+        assert!(request.source_dir_key.is_none());
+        assert!(request.pricing_model.is_none());
+        for field in ["source_dir_key", "pricing_model"] {
+            let mut incomplete = complete.clone();
+            incomplete.as_object_mut().unwrap().remove(field);
+            assert!(serde_json::from_value::<super::SessionPricingRequest>(incomplete).is_err());
+        }
+    }
 
     #[tokio::test]
     async fn app_version_uses_cargo_package_version() {

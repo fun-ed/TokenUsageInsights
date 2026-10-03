@@ -1,4 +1,4 @@
-import i18n from './i18n.js?v=37';
+import i18n from './i18n.js?v=38';
 import {
   aggregateDailyTokenCandles,
   calculateCandleViewport,
@@ -13,7 +13,9 @@ import {
   matchesSessionIdentity,
   parentSessionIdentityKey,
   sessionIdentityKey,
-} from './session-utils.js?v=4';
+  SESSION_PRICING_MODELS,
+  buildSessionPricingPayload,
+} from './session-utils.js?v=5';
 import { parseUsageTimestamp } from './time-utils.js?v=1';
 
 // Globals
@@ -23,6 +25,7 @@ let pendingUsageImport = null;
 let importHistoryAssistant = null;
 let setupModalAssistant = null;
 let latestAllAgentSetupInfo = null;
+const pendingSessionPricingKeys = new Set();
 
 const chartPalette = {
   tokenFill: 'rgba(47, 184, 197, 0.24)',
@@ -4637,6 +4640,108 @@ function getCursorModeBadge(mode) {
   return '';
 }
 
+function canAssignSessionPricing(session) {
+  const selectedAssistant = String(currentAssistant || '');
+  const sessionAssistant = normalizeAssistant(session?.assistant_type || '');
+  return activeTab === 'daily'
+    && sessionAssistant !== ''
+    && normalizeAssistant(selectedAssistant) === sessionAssistant
+    && !isAllAssistantsScope()
+    && !selectedAssistant.includes(',')
+    && session?.has_manifest_auto === true;
+}
+
+function getSessionPricingControl(session, sessionIndex) {
+  if (!canAssignSessionPricing(session)) return '';
+
+  const selectedModel = SESSION_PRICING_MODELS.includes(session.pricing_model)
+    ? session.pricing_model
+    : null;
+  const selectId = `session-pricing-select-${sessionIndex}`;
+  const helpId = `session-pricing-help-${sessionIndex}`;
+  const identityKey = sessionIdentityKey(session);
+  const isSaving = pendingSessionPricingKeys.has(identityKey);
+  const modelOptions = SESSION_PRICING_MODELS
+    .map(model => `<option value="${escapeHtml(model)}" ${selectedModel === model ? 'selected' : ''}>${escapeHtml(model)}</option>`)
+    .join('');
+
+  return `
+    <div class="session-pricing-control ${isSaving ? 'is-saving' : ''}">
+      <label for="${selectId}">${escapeHtml(t('session_pricing_label'))}</label>
+      <select id="${selectId}" class="session-pricing-select" data-session-identity="${escapeHtml(identityKey)}" data-saved-value="${escapeHtml(selectedModel || '')}" aria-describedby="${helpId}" ${isSaving ? 'disabled aria-busy="true"' : ''}>
+        <option value="" ${selectedModel === null ? 'selected' : ''}>${escapeHtml(t('session_pricing_default'))}</option>
+        ${modelOptions}
+      </select>
+      <small id="${helpId}">${escapeHtml(t('session_pricing_help'))}</small>
+    </div>
+  `;
+}
+
+function setSessionPricingControls(identityKey, { pending, savedValue } = {}) {
+  document.querySelectorAll('.session-pricing-select').forEach(select => {
+    if (select.dataset.sessionIdentity !== identityKey) return;
+    if (savedValue !== undefined) {
+      select.dataset.savedValue = savedValue;
+      select.value = savedValue;
+    }
+    select.disabled = pending;
+    if (pending) {
+      select.setAttribute('aria-busy', 'true');
+    } else {
+      select.removeAttribute('aria-busy');
+    }
+    select.closest('.session-pricing-control')?.classList.toggle('is-saving', pending);
+  });
+}
+
+async function saveSessionPricing(session, select) {
+  if (!select.isConnected || !canAssignSessionPricing(session)) {
+    select.value = select.dataset.savedValue || '';
+    return;
+  }
+
+  const identityKey = sessionIdentityKey(session);
+  const previousValue = select.dataset.savedValue || '';
+  if (pendingSessionPricingKeys.has(identityKey)) {
+    setSessionPricingControls(identityKey, { pending: true, savedValue: previousValue });
+    return;
+  }
+
+  const selectedModel = select.value || null;
+  const targetAssistant = normalizeAssistant(session.assistant_type);
+  pendingSessionPricingKeys.add(identityKey);
+  setSessionPricingControls(identityKey, { pending: true });
+
+  try {
+    const response = await fetch(`/api/${encodeURIComponent(targetAssistant)}/session-pricing`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(buildSessionPricingPayload(session, selectedModel)),
+    });
+    const result = await response.json().catch(() => null);
+    if (!response.ok || result?.status !== 'ok') {
+      throw new Error(result?.error || `HTTP ${response.status}`);
+    }
+
+    setSessionPricingControls(identityKey, { pending: true, savedValue: selectedModel || '' });
+    showNotification(t('session_pricing_saved'), 'success');
+
+    // The assignment applies to all dates. Refresh whichever Daily date is
+    // currently selected, but never render this response into another scope.
+    if (canAssignSessionPricing(session)) {
+      const currentDate = document.getElementById('date-select')?.value || getUtcDateString();
+      await loadUsageData(currentDate, targetAssistant);
+    }
+  } catch (err) {
+    console.error('Session pricing update failed:', err);
+    setSessionPricingControls(identityKey, { pending: true, savedValue: previousValue });
+    showNotification(t('session_pricing_failed'), 'error');
+  } finally {
+    pendingSessionPricingKeys.delete(identityKey);
+    setSessionPricingControls(identityKey, { pending: false });
+  }
+}
+
 function renderSessionTable(sessions) {
   const tbody = document.getElementById('session-list-body');
   const sessionCount = document.getElementById('session-count');
@@ -4717,7 +4822,7 @@ function renderSessionTable(sessions) {
     return sessionIdentityKey(session);
   }
 
-  sessions.forEach(s => {
+  sessions.forEach((s, sessionIndex) => {
     const tr = document.createElement('tr');
     tr.setAttribute('data-session-id', s.session_id);
     tr.setAttribute('data-parent-id', s.parent_session_id || '');
@@ -4777,9 +4882,13 @@ function renderSessionTable(sessions) {
       `;
     }
 
+    const sessionPricingControl = getSessionPricingControl(s, sessionIndex);
+
+
     tr.innerHTML = `
       <td class="session-name-cell">
         ${nameCellContent}
+        ${sessionPricingControl}
       </td>
       ${astColumn}
       <td class="model-column">
@@ -4806,6 +4915,14 @@ function renderSessionTable(sessions) {
     // 當點擊 Session 時，開啟對話詳細還原
     tr.addEventListener('click', () => {
       openSessionTimeline(s);
+    });
+
+    const pricingControl = tr.querySelector('.session-pricing-control');
+    const pricingSelect = pricingControl?.querySelector('select');
+    pricingControl?.addEventListener('click', event => event.stopPropagation());
+    pricingSelect?.addEventListener('change', event => {
+      event.stopPropagation();
+      void saveSessionPricing(s, pricingSelect);
     });
 
     // 群組 Hover 高亮

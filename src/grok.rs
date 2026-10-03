@@ -777,6 +777,7 @@ fn finalize_turn(
                 agent_nickname: None,
                 agent_role: None,
                 reasoning_effort: reasoning_effort.clone(),
+                session_pricing: None,
             }
         })
         .collect()

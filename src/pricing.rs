@@ -14,6 +14,12 @@ pub struct PricingRule {
     pub output_price: f64,
 }
 
+pub const SESSION_PRICING_MODELS: [&str; 3] = ["glm-5.3", "deepseek-v4.1-flash", "glm-5.3-flash"];
+
+pub fn is_supported_session_pricing_model(model: &str) -> bool {
+    SESSION_PRICING_MODELS.contains(&model)
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct PricingEntry {
     pub model_name: String,
@@ -228,6 +234,33 @@ fn fallback_pricing_entries() -> Vec<PricingEntry> {
             output_price: 0.40,
             batch_api_price: "0.05/0.0125/0.20".to_string(),
         },
+        PricingEntry {
+            model_name: "glm-5.3".to_string(),
+            deployment_type: "Cloud".to_string(),
+            unit: "1M Tokens".to_string(),
+            input_price: 1.40,
+            cache_input_price: 0.26,
+            output_price: 4.40,
+            batch_api_price: "N/A".to_string(),
+        },
+        PricingEntry {
+            model_name: "deepseek-v4.1-flash".to_string(),
+            deployment_type: "Cloud".to_string(),
+            unit: "1M Tokens".to_string(),
+            input_price: 0.30,
+            cache_input_price: 0.006,
+            output_price: 1.20,
+            batch_api_price: "N/A".to_string(),
+        },
+        PricingEntry {
+            model_name: "glm-5.3-flash".to_string(),
+            deployment_type: "Cloud".to_string(),
+            unit: "1M Tokens".to_string(),
+            input_price: 0.15,
+            cache_input_price: 0.03,
+            output_price: 0.50,
+            batch_api_price: "N/A".to_string(),
+        },
     ]
 }
 
@@ -265,6 +298,18 @@ pub fn load_pricing_entries() -> Vec<PricingEntry> {
     }
     if entries.is_empty() {
         return fallback_pricing_entries();
+    }
+    let fallback_entries = fallback_pricing_entries();
+    for fallback in fallback_entries
+        .iter()
+        .filter(|entry| is_supported_session_pricing_model(&entry.model_name))
+    {
+        if !entries
+            .iter()
+            .any(|entry| entry.model_name.eq_ignore_ascii_case(&fallback.model_name))
+        {
+            entries.push(fallback.clone());
+        }
     }
     entries
 }

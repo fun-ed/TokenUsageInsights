@@ -338,6 +338,7 @@ pub(crate) fn parse_session_usage_file(path: &Path) -> Result<Vec<UsageEntry>, S
             agent_nickname: None,
             agent_role: None,
             reasoning_effort: None,
+            session_pricing: None,
         });
         let _ = date;
     }

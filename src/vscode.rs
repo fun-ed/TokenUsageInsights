@@ -342,6 +342,7 @@ pub fn to_usage_entries(session: &ChatSession, path: &Path) -> Vec<UsageEntry> {
                 agent_nickname: None,
                 agent_role: None,
                 reasoning_effort: None,
+                session_pricing: None,
             }
         })
         .collect()

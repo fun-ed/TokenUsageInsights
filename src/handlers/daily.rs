@@ -92,6 +92,19 @@ fn aggregate_usage_details(
             agent_nickname: last_entry.agent_nickname.clone(),
             agent_role: last_entry.agent_role.clone(),
             reasoning_effort: last_entry.reasoning_effort.clone(),
+            has_manifest_auto: s_entries.iter().any(|entry| {
+                entry
+                    .session_pricing
+                    .as_ref()
+                    .is_some_and(|pricing| pricing.has_manifest_auto)
+                    || db::is_manifest_auto_model(entry.model.as_deref())
+            }),
+            pricing_model: s_entries.iter().find_map(|entry| {
+                entry
+                    .session_pricing
+                    .as_ref()
+                    .and_then(|pricing| pricing.pricing_model.clone())
+            }),
         });
     }
 
@@ -539,6 +552,7 @@ mod tests {
             agent_nickname: None,
             agent_role: None,
             reasoning_effort: None,
+            session_pricing: None,
         }
     }
 
@@ -581,7 +595,35 @@ mod tests {
             agent_nickname: None,
             agent_role: None,
             reasoning_effort: None,
+            session_pricing: None,
         }
+    }
+
+    #[test]
+    fn session_summary_flags_manifest_auto_from_full_session_overlay() {
+        let tokens = TokenStats {
+            input: 100,
+            output: 0,
+            cache_read: None,
+            cache_write: None,
+            cache_write_5m: None,
+            cache_write_1h: None,
+            reasoning: None,
+            total: 100,
+        };
+        let mut entry = legacy_usage_entry(1, "manifest/auto", tokens);
+        entry.source_kind = Some(crate::omp::SOURCE_KIND.to_string());
+        entry.session_pricing = Some(crate::db::SessionPricingOverlay {
+            has_manifest_auto: true,
+            pricing_model: None,
+        });
+        let records = [usage_day_record(entry, "omp")];
+        let (_, sessions, _) =
+            aggregate_usage_details(&records, &PreparedPricingRules::from_rules(Vec::new()));
+
+        assert_eq!(sessions.len(), 1);
+        assert!(sessions[0].has_manifest_auto);
+        assert_eq!(sessions[0].pricing_model, None);
     }
 
     fn assert_daily_summary_matches_session_totals(
@@ -965,6 +1007,7 @@ mod tests {
                     agent_nickname: None,
                     agent_role: None,
                     reasoning_effort: None,
+                    session_pricing: None,
                 },
                 "antigravity",
             ),
@@ -998,6 +1041,7 @@ mod tests {
                     agent_nickname: None,
                     agent_role: None,
                     reasoning_effort: None,
+                    session_pricing: None,
                 },
                 "antigravity",
             ),

@@ -128,6 +128,8 @@ pub struct SessionSummary {
     pub agent_nickname: Option<String>,
     pub agent_role: Option<String>,
     pub reasoning_effort: Option<String>,
+    pub has_manifest_auto: bool,
+    pub pricing_model: Option<String>,
 }
 
 #[derive(Serialize)]

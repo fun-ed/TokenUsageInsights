@@ -320,6 +320,7 @@ pub(crate) fn parse_session_usage(
             agent_nickname: None,
             agent_role: None,
             reasoning_effort: None,
+            session_pricing: None,
         });
         turn_no += 1;
     }

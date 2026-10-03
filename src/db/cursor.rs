@@ -924,6 +924,7 @@ pub(super) fn parse_cursor_session_file(
                     agent_nickname: None,
                     agent_role: None,
                     reasoning_effort: None,
+                    session_pricing: None,
                 },
                 model_signature: current_model_signature,
             });

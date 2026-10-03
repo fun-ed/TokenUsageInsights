@@ -404,6 +404,7 @@ pub(super) fn parse_codex_session_file_with_diagnostics(
             agent_nickname: agent_nickname.clone(),
             agent_role: agent_role.clone(),
             reasoning_effort: effort_for_turn.clone(),
+            session_pricing: None,
         });
     }
 

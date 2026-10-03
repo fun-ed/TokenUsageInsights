@@ -227,6 +227,7 @@ mod tests {
                     agent_nickname: None,
                     agent_role: None,
                     reasoning_effort: None,
+                    session_pricing: None,
                 },
                 import_source_id: None,
                 usage_identity: None,

@@ -10,6 +10,11 @@ use std::time::SystemTime;
 mod claude;
 mod codex;
 mod cursor;
+mod session_pricing;
+
+pub use session_pricing::{
+    is_manifest_auto_model, set_session_pricing_assignment, SessionPricingError,
+};
 
 use claude::{find_claude_session_files, parse_claude_session_file};
 use codex::{find_codex_session_files, parse_codex_session_file_with_diagnostics};
@@ -94,6 +99,17 @@ pub struct UsageEntry {
     pub agent_nickname: Option<String>,
     pub agent_role: Option<String>,
     pub reasoning_effort: Option<String>,
+    #[serde(skip)]
+    pub session_pricing: Option<SessionPricingOverlay>,
+}
+
+/// Local-only session eligibility and pricing assignment hydrated from usage
+/// rows plus the independent assignment table. Skipping both serde directions
+/// prevents exports and imports from changing local pricing choices.
+#[derive(Debug, Clone, Default)]
+pub struct SessionPricingOverlay {
+    pub has_manifest_auto: bool,
+    pub pricing_model: Option<String>,
 }
 
 /// A usage entry together with the assistant and calendar date selected by a
@@ -856,6 +872,7 @@ pub fn init_db(conn: &Connection) -> Result<(), String> {
         "ALTER TABLE usage_entries ADD COLUMN source_dir_key TEXT",
         [],
     );
+    session_pricing::init_schema(conn)?;
     // Most collectors write one row per (assistant, source, session, turn)
     // and keep the default empty identity. Collectors that legitimately emit
     // multiple rows for the same turn, such as Copilot per-model attribution,
@@ -5554,8 +5571,23 @@ fn query_usage_entries(
             timestamp, session_id, session_name, transcript_path, cwd, version, turn_no, model, model_id,
             tokens_input, tokens_output, tokens_cache_read, tokens_cache_write, tokens_cache_write_5m, tokens_cache_write_1h, tokens_reasoning, tokens_total,
             delta_input, delta_output, delta_cache_read, delta_cache_write, delta_cache_write_5m, delta_cache_write_1h, delta_reasoning, delta_total,
-            duration_ms, premium_requests, parent_session_id, agent_nickname, agent_role, assistant_type, reasoning_effort, import_source_id, source_kind, source_dir_key, reported_cost_usd
-            , usage_identity, date
+            duration_ms, premium_requests, parent_session_id, agent_nickname, agent_role, assistant_type, reasoning_effort, import_source_id, source_kind, source_dir_key, reported_cost_usd,
+            usage_identity, date,
+            (SELECT pricing_model FROM session_pricing_assignments AS assignment
+                WHERE assignment.assistant_type = usage_entries.assistant_type
+                  AND assignment.source_kind = usage_entries.source_kind
+                  AND assignment.source_dir_key_is_null = (usage_entries.source_dir_key IS NULL)
+                  AND assignment.source_dir_key = COALESCE(usage_entries.source_dir_key, '')
+                  AND assignment.session_id = usage_entries.session_id
+            ) AS session_pricing_model,
+            EXISTS (
+                SELECT 1 FROM usage_entries AS eligible
+                WHERE eligible.assistant_type = usage_entries.assistant_type
+                  AND eligible.source_kind = usage_entries.source_kind
+                  AND eligible.source_dir_key IS usage_entries.source_dir_key
+                  AND eligible.session_id = usage_entries.session_id
+                  AND lower(trim(COALESCE(eligible.model, ''))) = 'manifest/auto'
+            ) AS has_manifest_auto
          FROM usage_entries WHERE date ".to_string();
     query.push_str(if exact_date { "= ?" } else { "LIKE ?" });
     let mut params_vec = Vec::new();
@@ -5705,6 +5737,15 @@ fn query_usage_entries(
             } else {
                 None
             };
+        let pricing_model = row
+            .get::<_, Option<String>>(38)
+            .map_err(|e| e.to_string())?;
+        let has_manifest_auto = row.get::<_, bool>(39).map_err(|e| e.to_string())?;
+        let session_pricing =
+            (has_manifest_auto || pricing_model.is_some()).then_some(SessionPricingOverlay {
+                has_manifest_auto,
+                pricing_model,
+            });
         let import_source_id = normalize_import_source_id(
             row.get::<_, Option<String>>(32)
                 .map_err(|e| e.to_string())?
@@ -5726,12 +5767,13 @@ fn query_usage_entries(
                 delta_tokens,
                 context: None,
                 cost,
-                source_kind: row.get(33).ok(),
-                source_dir_key: row.get(34).ok(),
+                source_kind: row.get(33).map_err(|e| e.to_string())?,
+                source_dir_key: row.get(34).map_err(|e| e.to_string())?,
                 parent_session_id: row.get(27).ok(),
                 agent_nickname: row.get(28).ok(),
                 agent_role: row.get(29).ok(),
                 reasoning_effort: row.get(31).ok(),
+                session_pricing,
             },
             import_source_id,
             usage_identity: Some(
@@ -7123,6 +7165,7 @@ mod tests {
                 agent_nickname: Some("worker".to_string()),
                 agent_role: Some("analysis".to_string()),
                 reasoning_effort: Some("high".to_string()),
+                session_pricing: None,
             },
             import_source_id: Some("import-test-record".to_string()),
             usage_identity: None,
