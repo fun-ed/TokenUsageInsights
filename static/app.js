@@ -17,7 +17,7 @@ import {
   buildSessionPricingPayload,
 } from './session-utils.js?v=5';
 import { parseUsageTimestamp } from './time-utils.js?v=1';
-import { getOmpSessionSourceBadge } from './source-utils.js?v=1';
+import { getClaudeSessionSourceBadge, getOmpSessionSourceBadge } from './source-utils.js?v=2';
 
 // Globals
 let tokenChartInstance = null;
@@ -4604,6 +4604,10 @@ function getSessionSourceBadge(session) {
   if (session.source_kind?.startsWith('claude-profile:')) {
     const profileName = session.source_kind.slice('claude-profile:'.length);
     return `<span class="badge source-badge" title="Claude Code profile">${escapeHtml(profileName)}</span>`;
+  }
+  const claudeSourceBadge = getClaudeSessionSourceBadge(session.source_kind);
+  if (claudeSourceBadge) {
+    return claudeSourceBadge;
   }
   if (session.source_kind === 'vscode-chat') {
     return '<span class="badge source-badge" title="GitHub Copilot in VS Code">VS Code</span>';

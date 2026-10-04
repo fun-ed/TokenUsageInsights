@@ -49,6 +49,14 @@
 - 每個 Claude 根目錄（`~/.claude` 與每個 profile）的 `settings.json` 都應設定 `"cleanupPeriodDays": 365` 或更長。
 - 已知缺口：2026-01 至 2026-07 的 Claude transcript 已被清除，DB 沒有這段資料。
 
+### 2.6 額外資料來源（`additional_sources`）
+
+- `config.yaml` 的 `additional_sources.<tool>` 可為任一工具追加多個根目錄（upstream `223d998`）。設定檔搜尋順序：`INSIGHTS_DIR`（或預設 insights 目錄）、`~/.token-usage-insights/`、工作目錄；只用第一個存在的檔案。每次 sync 都重新載入。
+- 額外目錄只追加，不取代預設來源、Claude profile 或 OMP profile；與既有來源相同的目錄（含 symlink）只掃描一次。
+- Claude Code 與 OMP 的額外目錄是獨立來源：`source_kind` 為 `claude-source:<hex>` 或 `omp-source:<hex>`（hex 為正規化絕對路徑的位元組），OMP 另保留同值 `source_dir_key`。Web UI badge 顯示路徑末兩段。
+- 其他工具共用主要來源的 `source_kind`，以 `<tool>:source:<hex>:` 前綴區隔同步游標；主要來源保留舊游標。
+- 路徑只展開 `~`、`$HOME`；不得加入 Windows 路徑展開或文件。
+
 ## 3. 版本與發行
 
 - Cargo 與 npm 版本為 `10.x.y`；release tag 為對應的 `v10.x.y`。不可重用 upstream 的 `v1.x.y`。

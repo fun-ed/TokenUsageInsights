@@ -83,7 +83,26 @@ Only transcripts that still exist can be imported. Claude Code deletes transcrip
 
 OMP usage is read from source root `~/.omp` (sessions at `~/.omp/agent/sessions`) and every source root `~/.omp/profiles/<name>/` (sessions at `agent/sessions`). Profiles are rediscovered on each sync, so newly created profiles are imported automatically. Setting `OMP_DIR` reads only that configured OMP root and disables profile discovery.
 
-The default source keeps the backward-compatible `source_kind` `omp-session`; profiles use `omp-profile:<name>`. Each source retains independent database identity. Token usage (including per-turn `usage.cost`) comes from session JSONL files, not binary blobs or SQLite usage extraction.
+The default source keeps the backward-compatible `source_kind` `omp-session`; profiles use `omp-profile:<name>`, and [additional OMP roots](#additional-sources-multiple-homes-and-computers) use `omp-source:<hex path>`. Each source retains independent database identity. Token usage (including per-turn `usage.cost`) comes from session JSONL files, not binary blobs or SQLite usage extraction.
+
+### Additional sources: multiple homes and computers
+
+Add `additional_sources` to `config.yaml` to scan extra data roots for any tool, such as a second `CODEX_HOME` or folders that a cloud drive syncs from other computers:
+
+```yaml
+additional_sources:
+  codex: ['~/work-codex', '~/Cloud Drive/laptop/.codex']
+  claude: ['~/Cloud Drive/laptop/.claude']
+  omp: ['~/Cloud Drive/laptop/.omp']
+  copilot: ['~/Cloud Drive/laptop/.copilot']
+```
+
+- Keys: `antigravity`, `copilot`, `copilot_app`, `vscode`, `codex`, `claude`, `cursor`, `grok`, `pi`, `omp`, `muse`, `mcode`. Each path is a tool root with its usual layout: `codex` → `sessions/` and `archived_sessions/`; `claude`, `cursor` → `projects/`; `pi`, `omp` → `agent/sessions/`; `grok`, `muse`, `mcode` → `sessions/`; `vscode` → a VS Code user data root containing `User/workspaceStorage/`.
+- Extra roots **extend** the default sources, Claude Code profiles, and OMP profiles. `*_DIR` variables still choose the primary root.
+- Each extra Claude Code or OMP root is a separate source. The dashboard labels its sessions with the last two path components, for example `laptop/.claude`.
+- Paths accept absolute paths, `~`, and `$HOME`. Relative paths resolve against the config file's directory. Repeated paths and symlinks to the same directory are scanned once; missing directories are skipped until they appear.
+- Startup, background sync, and **Sync Now** reload the file, so no restart is needed. Removing a source keeps the usage already imported.
+- The first existing `config.yaml` wins: the insights directory (`INSIGHTS_DIR` if set), `~/.token-usage-insights/`, then the working directory. Invalid YAML makes sync fail with the file path instead of silently using defaults.
 
 ### Privacy and pricing
 

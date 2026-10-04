@@ -9,7 +9,9 @@ use std::path::{Path, PathBuf};
 pub(crate) const SOURCE_KIND: &str = "omp-session";
 
 pub(crate) fn is_omp_source_kind(source_kind: &str) -> bool {
-    source_kind == SOURCE_KIND || source_kind.starts_with("omp-profile:")
+    source_kind == SOURCE_KIND
+        || source_kind.starts_with("omp-profile:")
+        || source_kind.starts_with("omp-source:")
 }
 
 pub(crate) fn find_session_files(dir: &Path) -> Vec<PathBuf> {
