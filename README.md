@@ -8,7 +8,7 @@ English is the canonical README. Short translations are available in [繁體中�
 
 ## Screenshots
 
-The sidebar **Overview** (總覽) combines every agent and Claude profile. It ranks harnesses by total tokens, shows token and cost shares, and stacks daily usage by agent:
+The sidebar **Overview** (總覽) combines every agent, including all Claude Code and OMP profiles. It ranks harnesses by total tokens, shows token and cost shares, and stacks daily usage by agent:
 
 ![Overview monthly report with harness ranking and per-agent stacked chart](screenshots/dashboard-all-monthly.png)
 
@@ -78,6 +78,12 @@ The dashboard reads local data from Antigravity, Copilot, Codex, Claude Code, Cu
 Claude Code usage is read from `~/.claude` and from every `~/.claude-profiles/<name>/` directory that contains `projects/`. New profiles are picked up on the next sync. The dashboard labels each session with its source: `Default` or the profile name, such as `work` or `p2`. Setting `CLAUDE_DIR` reads only that directory and skips profile discovery.
 
 Only transcripts that still exist can be imported. Claude Code deletes transcripts after 30 days by default, so set `"cleanupPeriodDays": 365` in each profile's `settings.json`.
+
+### OMP profiles
+
+OMP usage is read from source root `~/.omp` (sessions at `~/.omp/agent/sessions`) and every source root `~/.omp/profiles/<name>/` (sessions at `agent/sessions`). Profiles are rediscovered on each sync, so newly created profiles are imported automatically. Setting `OMP_DIR` reads only that configured OMP root and disables profile discovery.
+
+The default source keeps the backward-compatible `source_kind` `omp-session`; profiles use `omp-profile:<name>`. Each source retains independent database identity. Token usage (including per-turn `usage.cost`) comes from session JSONL files, not binary blobs or SQLite usage extraction.
 
 ### Privacy and pricing
 

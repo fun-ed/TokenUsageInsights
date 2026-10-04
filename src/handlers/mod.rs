@@ -84,6 +84,7 @@ pub struct SetupInfoResponse {
     pub muse: AssistantSetupStatus,
     pub mcode: AssistantSetupStatus,
     pub claude_sources: Vec<ClaudeSourceSetupStatus>,
+    pub omp_sources: Vec<OmpSourceSetupStatus>,
 }
 
 #[derive(Serialize)]
@@ -99,6 +100,15 @@ pub struct AssistantSetupStatus {
 #[derive(Serialize)]
 pub struct ClaudeSourceSetupStatus {
     pub label: String,
+    pub config_path: String,
+    pub sessions_path: String,
+    pub exists: bool,
+}
+
+#[derive(Serialize)]
+pub struct OmpSourceSetupStatus {
+    pub label: String,
+    pub source_kind: String,
     pub config_path: String,
     pub sessions_path: String,
     pub exists: bool,

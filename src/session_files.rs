@@ -163,6 +163,12 @@ fn resolve_pi_family_transcript_path(
     )
 }
 
+fn resolve_omp_transcript_path(
+    omp_dir: &StdPath,
+    transcript_path_db: &str,
+) -> Result<PathBuf, String> {
+    resolve_pi_family_transcript_path(omp_dir, "OMP", transcript_path_db)
+}
 fn resolve_cursor_transcript_path(
     cursor_dir: &StdPath,
     session_id: &str,
@@ -452,6 +458,7 @@ impl SessionFileReason {
 pub(crate) struct SessionFileResolutionContext<'a> {
     pub copilot_app_source_dir: Option<&'a StdPath>,
     pub claude_source_dir: Option<&'a StdPath>,
+    pub source_dir_key: Option<&'a str>,
     pub parent_session_id: Option<&'a str>,
     pub agent_nickname: Option<&'a str>,
 }
@@ -597,7 +604,15 @@ pub(crate) fn resolve_session_file_path(
                     "找不到 OMP session 日誌檔案路徑。".to_string(),
                 )
             })?;
-            resolve_pi_family_transcript_path(&db::get_omp_dir(), "OMP", path)
+            let source_dir = db::get_omp_source_dir(source_kind, context.source_dir_key)
+                .ok_or_else(|| {
+                    SessionFileError::with_reason(
+                        StatusCode::NOT_FOUND,
+                        "找不到 OMP session 對應的來源目錄。",
+                        SessionFileReason::FileMissing,
+                    )
+                })?;
+            resolve_omp_transcript_path(&source_dir, path)
                 .map_err(|error| SessionFileError::new(StatusCode::BAD_REQUEST, error))
         }
         "muse" => {
@@ -685,6 +700,29 @@ mod tests {
 
         let _ = fs::remove_dir_all(&root);
         let _ = fs::remove_file(&outside_path);
+    }
+
+    #[test]
+    fn omp_transcript_resolution_rejects_a_transcript_from_another_profile() {
+        let profile_a = copilot_app_fixture_dir("omp-profile-a");
+        let profile_b = copilot_app_fixture_dir("omp-profile-b");
+        let transcript = profile_a
+            .join("agent")
+            .join("sessions")
+            .join("project")
+            .join("shared-session.jsonl");
+        fs::create_dir_all(transcript.parent().unwrap()).unwrap();
+        fs::create_dir_all(&profile_b).unwrap();
+        fs::write(&transcript, "{}\n").unwrap();
+
+        assert_eq!(
+            resolve_omp_transcript_path(&profile_a, &transcript.to_string_lossy()).unwrap(),
+            transcript.canonicalize().unwrap()
+        );
+        assert!(resolve_omp_transcript_path(&profile_b, &transcript.to_string_lossy()).is_err());
+
+        let _ = fs::remove_dir_all(&profile_a);
+        let _ = fs::remove_dir_all(&profile_b);
     }
 
     fn write_copilot_app_events(app_dir: &StdPath, session_id: &str, lines: &[&str]) {

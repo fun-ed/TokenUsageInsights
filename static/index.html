@@ -1004,6 +1004,7 @@
           <span class="category" data-i18n="drawer_category">會話對話重建</span>
           <h2 id="drawer-session-name" data-i18n="session_name">Session Name</h2>
           <span class="session-id" id="drawer-session-id" data-i18n="session_id">Session ID</span>
+          <span id="drawer-session-source" hidden></span>
         </div>
         <button class="close-btn" id="close-drawer-btn" data-i18n-aria-label="close" aria-label="關閉"><span class="icon-glyph icon-close" aria-hidden="true"></span></button>
       </div>
@@ -1322,6 +1323,7 @@ cd TokenUsageInsights</code></pre>
         <div class="modal-section">
           <h3 data-i18n="omp_setup_step_2"><span>02</span> 2. 偵測本機資料路徑</h3>
           <p class="modal-text" data-i18n="omp_setup_step_2_desc">目前偵測到的 OMP session 目錄為：<code id="lbl-detected-home-omp">~/.omp/agent/sessions</code>。</p>
+          <div id="omp-source-folders" class="modal-text"></div>
         </div>
 
         <div class="modal-section">
@@ -1462,6 +1464,6 @@ cd TokenUsageInsights</code></pre>
   <div class="sidebar-overlay" id="sidebar-overlay"></div>
 
   <!-- Frontend Javascript logic -->
-  <script type="module" src="/static/app.js?v=65"></script>
+  <script type="module" src="/static/app.js?v=66"></script>
 </body>
 </html>

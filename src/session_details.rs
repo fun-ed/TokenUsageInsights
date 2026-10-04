@@ -313,6 +313,7 @@ pub(crate) fn load_session_details(
         &lookup.source_kind,
         SessionFileResolutionContext {
             copilot_app_source_dir: copilot_app_source_dir.as_deref(),
+            source_dir_key: lookup.source_dir_key.as_deref(),
             claude_source_dir: claude_source_dir.as_deref(),
             parent_session_id: lookup.parent_session_id.as_deref(),
             agent_nickname: lookup.agent_nickname.as_deref(),

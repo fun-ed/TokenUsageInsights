@@ -20,22 +20,30 @@
 - Web UI：session 列表與模型明細以 badge 顯示來源，`Default` 或 profile 名稱（`work`、`p2`、`personal`）。
 - 實作位置：`src/db.rs` `get_claude_sources()`、`static/app.js` `getSessionSourceBadge()`。
 
-### 2.2 總覽（all harness）
+### 2.2 OMP 多 profile
+
+- 預設來源 root 為 `~/.omp`，讀取 `agent/sessions`（`~/.omp/agent/sessions`）；profile source root 為 `~/.omp/profiles/<name>`，讀取其 `agent/sessions`。每次 sync 都重新發現 profiles，新 profile 不需手動設定。
+- 明確設定 `OMP_DIR` 時只讀該 OMP root，並停用 profile 自動發現。
+- 來源識別：預設來源保留相容性 `source_kind='omp-session'`，profile 使用 `source_kind='omp-profile:<name>'`。每筆 session 保留 `assistant_type`、`source_kind`、`source_dir_key` 的完整資料庫 identity；報表分組、費用、匯出與 Session 詳情查找皆須保留此 identity，詳情路徑必須限制在該來源 root 內。
+- Token 用量與每回合 `usage.cost` 來源為 session JSONL；不得從 binary blobs 或 SQLite 擷取 OMP 用量。
+- OMP 設定教學與總覽都列出預設來源及 profile 的偵測狀態與 config/sessions 路徑。
+
+### 2.3 總覽（all harness）
 
 - 側欄 **總覽** 使用 pseudo-assistant `all`，合併所有助理與 profile 的日、月、年報表。唯讀：不提供匯入、匯出、匯入紀錄、回滾與 Session 詳情；手動同步會同步所有來源。
 - 總覽模式要保留每個 session 的助理與 profile badge，並依總 token 顯示 Harness 排名。
 - 排名表同時顯示各 Agent 的 Token、費用與佔比，點選可切換到該 Agent 的同期報表。月度與年度另有依 Agent 堆疊的長條圖（Token／費用切換，預設 Token）。
-- 設定教學在總覽顯示所有資料來源與偵測狀態，Claude Code 列出預設根目錄與每個 profile。
 - 此設計以 upstream `4a5c3da`「全部 Agent」為基礎合併，名稱、圖示與排名規則以本節為準。
+- 設定教學在總覽顯示所有資料來源與偵測狀態，Claude Code 與 OMP 都列出預設來源及每個 profile 的名稱和路徑。
 
-### 2.3 自動匯入
+### 2.4 自動匯入
 
 - 自動匯入要靠 server 常駐。server 啟動與執行期間會 sync 所有來源。
 - macOS：`scripts/install.sh --service` 安裝 launchd agent `com.tokenusageinsights`（`RunAtLoad`、`KeepAlive`）。Linux：systemd user service。
 - `HOST` 預設 `0.0.0.0`（區網可連）；只限本機時用 `HOST=127.0.0.1`。
 - 不可在安裝目錄內直接執行 `install.sh`。它會先刪除 `static/`、`shell/`、`scripts/` 再複製；來源與目的相同時會刪掉資源。請從解壓縮的 release 或暫存副本執行。
 
-### 2.4 資料保留
+### 2.5 資料保留
 
 - 本程式只能匯入仍存在的 transcript。Claude Code 預設 `cleanupPeriodDays` 為 30 天，超過就刪除 transcript；`history.jsonl` 只有 prompt，沒有 token 用量，無法補算。
 - 每個 Claude 根目錄（`~/.claude` 與每個 profile）的 `settings.json` 都應設定 `"cleanupPeriodDays": 365` 或更長。

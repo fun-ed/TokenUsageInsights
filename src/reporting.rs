@@ -245,7 +245,11 @@ fn record_usage(
                     }
                 }
             })
-    } else if entry.source_kind.as_deref() == Some(crate::omp::SOURCE_KIND) {
+    } else if entry
+        .source_kind
+        .as_deref()
+        .is_some_and(crate::omp::is_omp_source_kind)
+    {
         // OMP records its provider and model separately, so its canonical
         // `provider/model` identity can use the live models.dev cache. Retain
         // OMP's reported amount as an offline fallback for unknown providers.
@@ -1205,11 +1209,18 @@ mod tests {
             reported_cost_usd: Some(0.0123),
         });
 
-        let result =
-            summarize_session_usage(&PreparedPricingRules::from_rules(rules.into()), &[entry]);
+        let pricing_rules = PreparedPricingRules::from_rules(rules.into());
+        for source_kind in [
+            crate::omp::SOURCE_KIND,
+            "omp-profile:sol",
+            "omp-profile:opus",
+        ] {
+            entry.source_kind = Some(source_kind.to_string());
+            let result = summarize_session_usage(&pricing_rules, &[entry.clone()]);
 
-        assert!((result.usage.cost_usd - 14.2).abs() < 1e-9);
-        assert!((result.models[0].usage.cost_usd - 14.2).abs() < 1e-9);
+            assert!((result.usage.cost_usd - 14.2).abs() < 1e-9);
+            assert!((result.models[0].usage.cost_usd - 14.2).abs() < 1e-9);
+        }
     }
 
     #[test]

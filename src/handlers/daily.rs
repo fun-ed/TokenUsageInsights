@@ -207,7 +207,10 @@ pub async fn get_setup_info(Path(assistant): Path<String>) -> impl IntoResponse 
     let pi_exists = pi_dir.join("agent").join("sessions").exists();
 
     let omp_dir = db::get_omp_dir();
-    let omp_exists = omp_dir.join("agent").join("sessions").exists();
+    let omp_sources = db::get_omp_sources();
+    let omp_exists = omp_sources
+        .iter()
+        .any(|source| source.dir.join("agent").join("sessions").is_dir());
 
     let muse_dir = db::get_muse_dir();
     let muse_exists = muse_dir.join("sessions").exists();
@@ -328,6 +331,19 @@ pub async fn get_setup_info(Path(assistant): Path<String>) -> impl IntoResponse 
                 config_path: source.dir.to_string_lossy().into_owned(),
                 sessions_path: source.dir.join("projects").to_string_lossy().into_owned(),
                 exists: source.dir.join("projects").exists(),
+            })
+            .collect(),
+        omp_sources: omp_sources
+            .into_iter()
+            .map(|source| {
+                let sessions_dir = source.dir.join("agent").join("sessions");
+                OmpSourceSetupStatus {
+                    label: source.label,
+                    source_kind: source.source_kind,
+                    config_path: source.dir.to_string_lossy().into_owned(),
+                    sessions_path: sessions_dir.to_string_lossy().into_owned(),
+                    exists: sessions_dir.is_dir(),
+                }
             })
             .collect(),
     })
@@ -488,7 +504,7 @@ pub async fn get_session_details(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(str::to_string);
-    if source_kind.as_ref().is_some_and(|value| value.len() > 64) {
+    if source_kind.as_ref().is_some_and(|value| value.len() > 1024) {
         return (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": "source_kind 格式不正確。" })),

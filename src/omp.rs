@@ -8,12 +8,24 @@ use std::path::{Path, PathBuf};
 
 pub(crate) const SOURCE_KIND: &str = "omp-session";
 
+pub(crate) fn is_omp_source_kind(source_kind: &str) -> bool {
+    source_kind == SOURCE_KIND || source_kind.starts_with("omp-profile:")
+}
+
 pub(crate) fn find_session_files(dir: &Path) -> Vec<PathBuf> {
     crate::pi::find_session_files(dir)
 }
 
+#[cfg(test)]
 pub(crate) fn parse_session_usage_file(path: &Path) -> Result<Vec<UsageEntry>, String> {
-    crate::pi::parse_session_usage_file(path, SOURCE_KIND)
+    parse_session_usage_file_for_source(path, SOURCE_KIND)
+}
+
+pub(crate) fn parse_session_usage_file_for_source(
+    path: &Path,
+    source_kind: &str,
+) -> Result<Vec<UsageEntry>, String> {
+    crate::pi::parse_session_usage_file(path, source_kind)
 }
 
 #[cfg(test)]

@@ -1,4 +1,4 @@
-import i18n from './i18n.js?v=38';
+import i18n from './i18n.js?v=39';
 import {
   aggregateDailyTokenCandles,
   calculateCandleViewport,
@@ -17,6 +17,7 @@ import {
   buildSessionPricingPayload,
 } from './session-utils.js?v=5';
 import { parseUsageTimestamp } from './time-utils.js?v=1';
+import { getOmpSessionSourceBadge } from './source-utils.js?v=1';
 
 // Globals
 let tokenChartInstance = null;
@@ -4593,6 +4594,10 @@ function updateSortHeadersUI() {
 // 渲染 Session 列表 Table
 // =========================================================================
 function getSessionSourceBadge(session) {
+  const ompBadge = getOmpSessionSourceBadge(session.source_kind);
+  if (ompBadge) {
+    return ompBadge;
+  }
   if (session.source_kind === 'claude-default') {
     return '<span class="badge source-badge" title="Claude Code default profile">Default</span>';
   }
@@ -4992,6 +4997,15 @@ async function openSessionTimeline(session) {
   nameEl.textContent = displayName;
   nameEl.title = sessionName || '';
   document.getElementById('drawer-session-id').textContent = sessionId;
+  const sourceBadgeEl = document.getElementById('drawer-session-source');
+  if (sourceBadgeEl) {
+    const sourceBadge = getSessionSourceBadge({
+      source_kind: sourceKind,
+      assistant_type: assistantType,
+    });
+    sourceBadgeEl.innerHTML = sourceBadge;
+    sourceBadgeEl.hidden = !sourceBadge;
+  }
 
   // 更新會話 Token & 基礎資訊（立即呈現在畫面上）
   const displayCwd = abbreviateHomePath(cwd) || '-';
@@ -7215,17 +7229,34 @@ function renderAllAgentSourceList(data) {
 
   list.innerHTML = Object.keys(assistantMeta).map(assistant => {
     const meta = getAssistantMeta(assistant);
-    // Claude Code 列出預設根目錄與每個 profile（fork 多 profile）
+    // Claude Code and OMP list their default source plus any discovered profiles.
     const claudeSources = (Array.isArray(data?.claude_sources) ? data.claude_sources : [])
-      .map(source => ({ exists: source?.exists, data_path: source?.sessions_path }));
+      .map(source => ({ ...source, data_path: source?.sessions_path }));
+    const ompSources = (Array.isArray(data?.omp_sources) ? data.omp_sources : [])
+      .map(source => ({ ...source, data_path: source?.sessions_path }));
+    const labelledSources = assistant === 'claude' && claudeSources.length
+      ? claudeSources
+      : assistant === 'omp' && ompSources.length ? ompSources : null;
     const sources = (assistant === 'copilot'
       ? [data?.copilot, data?.copilot_app]
-      : assistant === 'claude' && claudeSources.length ? claudeSources : [data?.[assistant]])
+      : labelledSources || [data?.[assistant]])
       .filter(source => source && typeof source === 'object');
     const detected = sources.some(source => source.exists === true);
     const paths = sources
       .map(source => abbreviateHomePath(typeof source.data_path === 'string' ? source.data_path : ''))
       .filter(Boolean);
+    const pathsHtml = labelledSources
+      ? labelledSources.map(source => {
+        const path = abbreviateHomePath(typeof source.data_path === 'string' ? source.data_path : '') || '—';
+        const label = typeof source.label === 'string' ? source.label : '';
+        const status = t(source.exists === true ? 'agent_source_detected' : 'agent_source_missing');
+        const pathDetails = assistant === 'omp'
+          ? `Config ${abbreviateHomePath(source.config_path) || '—'} · Sessions ${path}`
+          : path;
+        const detail = `${label}: ${pathDetails} · ${status}`;
+        return `<code title="${escapeHtml(detail)}">${escapeHtml(detail)}</code>`;
+      }).join('')
+      : paths.map(path => `<code title="${escapeHtml(path)}">${escapeHtml(path)}</code>`).join('');
     const statusLabel = t(detected ? 'agent_source_detected' : 'agent_source_missing');
     const guideButton = setupModalTitleKeys[assistant]
       ? `<button type="button" class="agent-source-guide" data-assistant="${assistant}">${escapeHtml(t('agent_source_guide'))}</button>`
@@ -7233,7 +7264,7 @@ function renderAllAgentSourceList(data) {
     return `
       <li class="agent-source-item${detected ? ' is-detected' : ''}">
         <span class="agent-source-name">${getAssistantLogoHtml(assistant)}<span>${escapeHtml(meta.label)}</span></span>
-        <span class="agent-source-paths">${paths.map(path => `<code title="${escapeHtml(path)}">${escapeHtml(path)}</code>`).join('') || '—'}</span>
+        <span class="agent-source-paths">${pathsHtml || '—'}</span>
         <span class="agent-source-status"><span class="agent-source-dot" aria-hidden="true"></span>${escapeHtml(statusLabel)}</span>
         ${guideButton}
       </li>`;
@@ -7391,6 +7422,26 @@ async function loadSetupInfo(assistant = currentAssistant) {
     } else if (resolvedAssistant === 'omp') {
       const homeLabelOmp = document.getElementById('lbl-detected-home-omp');
       if (homeLabelOmp) homeLabelOmp.textContent = abbreviateHomePath(data.omp?.data_path || '');
+      const sourceFolders = document.getElementById('omp-source-folders');
+      if (sourceFolders) {
+        sourceFolders.replaceChildren();
+        const sources = Array.isArray(data.omp_sources) && data.omp_sources.length > 0
+          ? data.omp_sources
+          : data.omp ? [{
+            label: 'Default',
+            config_path: data.omp.dir_path,
+            sessions_path: data.omp.data_path,
+            exists: data.omp.exists,
+          }] : [];
+        for (const source of sources) {
+          const configPath = abbreviateHomePath(source.config_path) || '—';
+          const sessionsPath = abbreviateHomePath(source.sessions_path) || '—';
+          const status = t(source.exists === true ? 'agent_source_detected' : 'agent_source_missing');
+          const row = document.createElement('div');
+          row.textContent = `${source.label || 'OMP'}: Config ${configPath} · Sessions ${sessionsPath} · ${status}`;
+          sourceFolders.append(row);
+        }
+      }
     } else if (resolvedAssistant === 'mcode') {
       const homeLabelMcode = document.getElementById('lbl-detected-home-mcode');
       if (homeLabelMcode) homeLabelMcode.textContent = abbreviateHomePath(data.mcode?.data_path || '');

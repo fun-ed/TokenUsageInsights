@@ -125,7 +125,7 @@ fn session_id_from_path(value: &str, source_kind: &str) -> Option<String> {
 }
 
 fn is_omp_session(source_kind: &str) -> bool {
-    source_kind == crate::omp::SOURCE_KIND
+    crate::omp::is_omp_source_kind(source_kind)
 }
 
 fn is_advisor_transcript(path: &Path) -> bool {

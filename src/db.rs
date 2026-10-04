@@ -88,9 +88,9 @@ pub struct UsageEntry {
     pub cost: Option<CostStats>,
     #[serde(default)]
     pub source_kind: Option<String>,
-    /// Source directory key (hex-encoded canonical path) for Copilot App rows.
-    /// `None` for all other collectors. Used to isolate sessions from different
-    /// COPILOT_APP_DIR values that may share the same session_id.
+    /// Hex-encoded canonical source path for directory-scoped collectors.
+    /// Copilot App and OMP profile sessions use it to isolate rows whose
+    /// session IDs collide across roots; legacy/default OMP rows keep `None`.
     #[serde(default)]
     pub source_dir_key: Option<String>,
 
@@ -635,6 +635,91 @@ pub fn get_omp_dir() -> PathBuf {
     dirs::home_dir()
         .map(|home| home.join(".omp"))
         .unwrap_or_else(|| PathBuf::from("."))
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct OmpSource {
+    pub label: String,
+    pub source_kind: String,
+    /// OMP configuration root (the session tree is under `agent/sessions`).
+    pub dir: PathBuf,
+}
+
+fn discover_omp_sources(default_dir: PathBuf, profiles_dir: Option<PathBuf>) -> Vec<OmpSource> {
+    let mut sources = vec![OmpSource {
+        label: "Default".to_string(),
+        source_kind: crate::omp::SOURCE_KIND.to_string(),
+        dir: default_dir,
+    }];
+    let Some(profiles_dir) = profiles_dir else {
+        return sources;
+    };
+    let Ok(entries) = fs::read_dir(profiles_dir) else {
+        return sources;
+    };
+    let mut profiles: Vec<PathBuf> = entries
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.is_dir() && path.join("agent").join("sessions").is_dir())
+        .collect();
+    profiles.sort();
+    for path in profiles {
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        sources.push(OmpSource {
+            label: format!("Profile: {name}"),
+            source_kind: format!("omp-profile:{name}"),
+            dir: path,
+        });
+    }
+    sources
+}
+
+/// Discover OMP's default root and valid profile roots for the current sync.
+/// An explicit `OMP_DIR` intentionally disables automatic profile discovery.
+pub fn get_omp_sources() -> Vec<OmpSource> {
+    let profiles_dir = if std::env::var_os("OMP_DIR").is_none() {
+        dirs::home_dir().map(|home| home.join(".omp").join("profiles"))
+    } else {
+        None
+    };
+    discover_omp_sources(get_omp_dir(), profiles_dir)
+}
+
+fn omp_source_dir_key(source: &OmpSource) -> Option<String> {
+    if source.source_kind == crate::omp::SOURCE_KIND {
+        return None;
+    }
+    let canonical_dir = source
+        .dir
+        .canonicalize()
+        .unwrap_or_else(|_| source.dir.clone());
+    Some(encode_hex(canonical_dir.as_os_str().as_encoded_bytes()))
+}
+
+/// Resolve a concrete OMP source only when its persisted directory key matches
+/// the currently discovered root. Default sessions retain their legacy NULL key.
+fn omp_source_dir_for_identity(
+    sources: &[OmpSource],
+    source_kind: &str,
+    source_dir_key: Option<&str>,
+) -> Option<PathBuf> {
+    sources
+        .iter()
+        .find(|source| {
+            source.source_kind == source_kind
+                && omp_source_dir_key(source).as_deref() == source_dir_key
+        })
+        .map(|source| source.dir.clone())
+}
+
+pub(crate) fn get_omp_source_dir(
+    source_kind: &str,
+    source_dir_key: Option<&str>,
+) -> Option<PathBuf> {
+    let sources = get_omp_sources();
+    omp_source_dir_for_identity(&sources, source_kind, source_dir_key)
 }
 
 pub fn get_muse_dir() -> PathBuf {
@@ -1930,6 +2015,8 @@ fn run_codex_parser_migration(conn: &mut Connection) -> Result<(), String> {
 
 /// Reparse OMP sessions once so existing files gain OMP v18's independent
 /// model-usage calls and subagent metadata without waiting for a new append.
+/// It resets only the legacy `omp:` cursor namespace; profile cursors and all
+/// historical usage rows are left intact.
 fn run_omp_parser_migration(conn: &mut Connection) -> Result<(), String> {
     let migration_done: bool = conn
         .query_row(
@@ -4790,6 +4877,13 @@ pub(crate) fn sync_grok_usage_logs(conn: &mut Connection, grok_dir: &Path) -> Re
     Ok(())
 }
 
+struct PiFamilySyncSource<'a> {
+    state_prefix: &'a str,
+    source_kind: &'a str,
+    source_dir_key: Option<&'a str>,
+    source_isolated: bool,
+}
+
 /// Shared incremental sync routine for the Pi Coding Agent and its fork OMP,
 /// both of which persist sessions as append-only JSONL files under
 /// `<dir>/agent/sessions/` using the identical tree-structured format. Each
@@ -4802,8 +4896,15 @@ fn sync_pi_family_usage_logs(
     assistant_label: &str,
     session_files: Vec<PathBuf>,
     dir: &Path,
+    source: PiFamilySyncSource<'_>,
     parse_file: impl Fn(&Path) -> Result<Vec<UsageEntry>, String>,
 ) -> Result<(), String> {
+    let PiFamilySyncSource {
+        state_prefix,
+        source_kind,
+        source_dir_key,
+        source_isolated,
+    } = source;
     for filepath in session_files {
         let metadata = match fs::metadata(&filepath) {
             Ok(metadata) => metadata,
@@ -4817,7 +4918,7 @@ fn sync_pi_family_usage_logs(
         };
         let current_size = metadata.len();
         let state_name = portable_relative_path(dir, &filepath);
-        let state_key = format!("{assistant_type}:{state_name}");
+        let state_key = format!("{state_prefix}:{state_name}");
         let last_synced_size: u64 = conn
             .query_row(
                 "SELECT last_synced_size FROM sync_state WHERE filename = ?",
@@ -4868,13 +4969,31 @@ fn sync_pi_family_usage_logs(
         let tx = conn
             .transaction()
             .map_err(|error| format!("{assistant_label} transaction BEGIN 失敗: {error}"))?;
-        delete_usage_entries_for_transcript(
+        if source_isolated {
+            delete_usage_entries_for_source_transcript(
+                &tx,
+                assistant_type,
+                &transcript_path,
+                source_kind,
+                source_dir_key,
+                assistant_label,
+            )?;
+        } else {
+            delete_usage_entries_for_transcript(
+                &tx,
+                assistant_type,
+                &transcript_path,
+                assistant_label,
+            )?;
+        }
+        insert_usage_entries(
             &tx,
             assistant_type,
-            &transcript_path,
             assistant_label,
+            source_kind,
+            source_dir_key,
+            &parsed_entries,
         )?;
-        insert_usage_entries(&tx, assistant_type, assistant_label, &parsed_entries)?;
 
         let now = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
@@ -4910,19 +5029,38 @@ fn delete_usage_entries_for_transcript(
     Ok(())
 }
 
+fn delete_usage_entries_for_source_transcript(
+    tx: &rusqlite::Transaction<'_>,
+    assistant_type: &str,
+    transcript_path: &str,
+    source_kind: &str,
+    source_dir_key: Option<&str>,
+    assistant_label: &str,
+) -> Result<(), String> {
+    tx.execute(
+        "DELETE FROM usage_entries
+         WHERE assistant_type = ?1 AND source_kind = ?2
+           AND source_dir_key IS ?3 AND transcript_path = ?4",
+        params![assistant_type, source_kind, source_dir_key, transcript_path],
+    )
+    .map_err(|error| format!("清除舊 {assistant_label} session 資料失敗: {error}"))?;
+    Ok(())
+}
+
 /// Inserts parsed per-turn rows. Shared by every transcript collector whose
 /// assistant messages already carry a complete, self-contained token snapshot.
 fn insert_usage_entries(
     tx: &rusqlite::Transaction<'_>,
     assistant_type: &str,
     assistant_label: &str,
+    source_kind: &str,
+    source_dir_key: Option<&str>,
     entries: &[UsageEntry],
 ) -> Result<(), String> {
     for entry in entries {
         let tokens = entry.tokens.as_ref();
         let delta = entry.delta_tokens.as_ref();
         let cost = entry.cost.as_ref();
-        let source_kind = entry.source_kind.as_deref().unwrap_or(assistant_type);
         let usage_identity = entry
             .model_id
             .as_deref()
@@ -4931,19 +5069,18 @@ fn insert_usage_entries(
             .unwrap_or_default();
         tx.execute(
             "INSERT INTO usage_entries (
-                    assistant_type, source_kind, usage_identity, timestamp, date, session_id, session_name, transcript_path, cwd, version, turn_no, model, model_id,
+                    assistant_type, source_kind, source_dir_key, usage_identity, timestamp, date, session_id, session_name, transcript_path, cwd, version, turn_no, model, model_id,
                     tokens_input, tokens_output, tokens_cache_read, tokens_cache_write, tokens_reasoning, tokens_total,
                     delta_input, delta_output, delta_cache_read, delta_cache_write, delta_reasoning, delta_total,
                     duration_ms, premium_requests, reported_cost_usd, parent_session_id, agent_nickname, agent_role, reasoning_effort
                 ) VALUES (
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                    ?, ?, ?, ?, ?, ?,
-                    ?, ?, ?, ?, ?, ?,
-                    ?, ?, ?, ?, ?, ?, ?
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 )",
             params![
                 assistant_type,
                 source_kind,
+                source_dir_key,
                 usage_identity,
                 entry.timestamp,
                 entry.timestamp.get(0..10).unwrap_or("unknown"),
@@ -4990,20 +5127,65 @@ pub(crate) fn sync_pi_usage_logs(conn: &mut Connection, pi_dir: &Path) -> Result
         "Pi Coding Agent",
         session_files,
         pi_dir,
+        PiFamilySyncSource {
+            state_prefix: "pi",
+            source_kind: crate::pi::SOURCE_KIND,
+            source_dir_key: None,
+            source_isolated: false,
+        },
         |path| crate::pi::parse_session_usage_file(path, crate::pi::SOURCE_KIND),
     )
 }
 
+#[cfg(test)]
 pub(crate) fn sync_omp_usage_logs(conn: &mut Connection, omp_dir: &Path) -> Result<(), String> {
+    sync_omp_source_usage_logs(
+        conn,
+        &OmpSource {
+            label: "Default".to_string(),
+            source_kind: crate::omp::SOURCE_KIND.to_string(),
+            dir: omp_dir.to_path_buf(),
+        },
+    )
+}
+
+pub(crate) fn sync_omp_source_usage_logs(
+    conn: &mut Connection,
+    source: &OmpSource,
+) -> Result<(), String> {
     run_omp_parser_migration(conn)?;
-    let session_files = crate::omp::find_session_files(omp_dir);
+    let source_kind = source.source_kind.as_str();
+    let source_dir_key = omp_source_dir_key(source);
+    let state_prefix = if source_kind == crate::omp::SOURCE_KIND {
+        "omp".to_string()
+    } else {
+        format!(
+            "{}:{}",
+            source_kind,
+            source_dir_key
+                .as_deref()
+                .ok_or_else(|| "OMP profile 缺少來源目錄識別".to_string())?
+        )
+    };
+    let session_files = crate::omp::find_session_files(&source.dir);
+    let assistant_label = if source_kind == crate::omp::SOURCE_KIND {
+        "OMP".to_string()
+    } else {
+        format!("OMP {}", source.label)
+    };
     sync_pi_family_usage_logs(
         conn,
         "omp",
-        "OMP",
+        &assistant_label,
         session_files,
-        omp_dir,
-        crate::omp::parse_session_usage_file,
+        &source.dir,
+        PiFamilySyncSource {
+            state_prefix: &state_prefix,
+            source_kind,
+            source_dir_key: source_dir_key.as_deref(),
+            source_isolated: true,
+        },
+        |path| crate::omp::parse_session_usage_file_for_source(path, source_kind),
     )
 }
 
@@ -5015,6 +5197,12 @@ pub(crate) fn sync_muse_usage_logs(conn: &mut Connection, muse_dir: &Path) -> Re
         "Muse",
         session_files,
         muse_dir,
+        PiFamilySyncSource {
+            state_prefix: "muse",
+            source_kind: crate::muse::SOURCE_KIND,
+            source_dir_key: None,
+            source_isolated: false,
+        },
         crate::muse::parse_session_usage_file,
     )
 }
@@ -5170,7 +5358,14 @@ pub(crate) fn sync_mcode_usage_logs(conn: &mut Connection, mcode_dir: &Path) -> 
             .transaction()
             .map_err(|error| format!("MiniMax Code transaction BEGIN 失敗: {error}"))?;
         delete_usage_entries_for_transcript(&tx, "mcode", &transcript_path, "MiniMax Code")?;
-        insert_usage_entries(&tx, "mcode", "MiniMax Code", &parsed_entries)?;
+        insert_usage_entries(
+            &tx,
+            "mcode",
+            "MiniMax Code",
+            crate::mcode::SOURCE_KIND,
+            None,
+            &parsed_entries,
+        )?;
 
         let now = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
@@ -5257,10 +5452,11 @@ pub fn sync_usage_logs(conn: &mut Connection) -> Result<(), String> {
         eprintln!("❌ 同步 Pi Coding Agent 失敗: {}", e);
     }
 
-    // 10. Sync OMP sessions (Pi fork)
-    let omp_dir = get_omp_dir();
-    if let Err(e) = sync_omp_usage_logs(conn, &omp_dir) {
-        eprintln!("❌ 同步 OMP 失敗: {}", e);
+    // 10. Sync OMP's default and automatically discovered profile sessions.
+    for source in get_omp_sources() {
+        if let Err(error) = sync_omp_source_usage_logs(conn, &source) {
+            eprintln!("❌ 同步 OMP {} 失敗: {}", source.label, error);
+        }
     }
 
     // 11. Sync Muse sessions
@@ -17747,6 +17943,350 @@ mod tests {
         assert_eq!(count_after_resync, 1);
 
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn omp_discovery_rescans_sorted_profiles_and_skips_roots_without_sessions() {
+        let root = temp_jsonl_path("omp-discovery");
+        let profiles = root.join("profiles");
+        let default = root.join("default");
+        fs::create_dir_all(&default).unwrap();
+        for name in ["zeta", "alpha"] {
+            fs::create_dir_all(profiles.join(name).join("agent").join("sessions")).unwrap();
+        }
+        fs::create_dir_all(profiles.join("empty").join("agent")).unwrap();
+        fs::create_dir_all(profiles.join("missing")).unwrap();
+
+        let sources = discover_omp_sources(default.clone(), Some(profiles.clone()));
+        assert_eq!(
+            sources
+                .iter()
+                .map(|source| source.source_kind.as_str())
+                .collect::<Vec<_>>(),
+            vec!["omp-session", "omp-profile:alpha", "omp-profile:zeta"]
+        );
+        assert_eq!(sources[0].label, "Default");
+        assert!(sources[1].dir.ends_with("alpha"));
+        let alpha_key = omp_source_dir_key(&sources[1]).unwrap();
+        assert_eq!(
+            omp_source_dir_for_identity(&sources, "omp-profile:alpha", Some(&alpha_key),),
+            Some(sources[1].dir.clone())
+        );
+        assert!(omp_source_dir_for_identity(
+            &sources,
+            "omp-profile:alpha",
+            Some("wrong-profile-key")
+        )
+        .is_none());
+        assert_eq!(
+            omp_source_dir_for_identity(&sources, crate::omp::SOURCE_KIND, None),
+            Some(default.clone())
+        );
+
+        fs::create_dir_all(profiles.join("new").join("agent").join("sessions")).unwrap();
+        let rescanned = discover_omp_sources(default.clone(), Some(profiles));
+        assert_eq!(rescanned.len(), 4);
+        assert_eq!(rescanned[1].source_kind, "omp-profile:alpha");
+        assert_eq!(rescanned[2].source_kind, "omp-profile:new");
+        assert_eq!(rescanned[3].source_kind, "omp-profile:zeta");
+
+        let explicit_root_only = discover_omp_sources(default, None);
+        assert_eq!(explicit_root_only.len(), 1);
+        assert_eq!(explicit_root_only[0].source_kind, crate::omp::SOURCE_KIND);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn omp_parser_migration_preserves_profile_state_and_historical_rows() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        init_db(&conn).unwrap();
+        conn.execute(
+            "INSERT INTO sync_state (filename, last_synced_size, last_synced_time)
+             VALUES ('omp:default-session', 10, 1), ('omp-profile:sol:profile-session', 20, 2)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO usage_entries (
+                assistant_type, source_kind, source_dir_key, timestamp, date, session_id, turn_no
+             ) VALUES ('omp', 'omp-profile:sol', 'a1b2', '2024-01-01T00:00:00Z',
+                       '2024-01-01', 'historical-profile-session', 1)",
+            [],
+        )
+        .unwrap();
+
+        run_omp_parser_migration(&mut conn).unwrap();
+        let default_state_count: u64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sync_state WHERE filename = 'omp:default-session'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let profile_state_count: u64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sync_state
+                 WHERE filename = 'omp-profile:sol:profile-session'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let historical_count: u64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM usage_entries
+                 WHERE session_id = 'historical-profile-session'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(default_state_count, 0);
+        assert_eq!(profile_state_count, 1);
+        assert_eq!(historical_count, 1);
+    }
+
+    #[test]
+    fn sync_omp_profiles_isolates_colliding_sessions_and_preserves_legacy_default() {
+        let default_root = temp_jsonl_path("omp-source-default");
+        let profile_root = temp_jsonl_path("omp-source-sol");
+        let default_session_dir = default_root.join("agent/sessions/project");
+        let profile_session_dir = profile_root.join("agent/sessions/project");
+        fs::create_dir_all(&default_session_dir).unwrap();
+        fs::create_dir_all(&profile_session_dir).unwrap();
+
+        let default_path = default_session_dir.join("2024-12-03T14-00-00_shared.jsonl");
+        fs::write(
+            &default_path,
+            concat!(
+                r#"{"type":"session","version":3,"id":"shared-omp-session","timestamp":"2024-12-03T14:00:00.000Z","cwd":"/tmp/omp-default"}"#,
+                "\n",
+                r#"{"type":"message","id":"default-message","parentId":null,"timestamp":"2024-12-03T14:00:01.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Default"}],"provider":"openai-codex","model":"gpt-5.6-terra","usage":{"input":10,"output":5,"totalTokens":15},"stopReason":"stop"}}"#,
+                "\n"
+            ),
+        )
+        .unwrap();
+
+        let parent_path = profile_session_dir.join("2024-12-03T14-00-00_parent.jsonl");
+        fs::write(
+            &parent_path,
+            concat!(
+                r#"{"type":"session","version":3,"id":"profile-parent","timestamp":"2024-12-03T14:00:00.000Z","cwd":"/tmp/omp-profile"}"#,
+                "\n"
+            ),
+        )
+        .unwrap();
+        let profile_path = profile_session_dir.join("2024-12-03T14-00-00_shared.jsonl");
+        let profile_header = format!(
+            r#"{{"type":"session","version":3,"id":"shared-omp-session","parentSession":"{}","timestamp":"2024-12-03T14:00:00.000Z","cwd":"/tmp/omp-profile"}}"#,
+            parent_path.display()
+        );
+        fs::write(
+            &profile_path,
+            format!(
+                "{}\n{}\n{}\n{}\n",
+                profile_header,
+                r#"{"type":"session_init","id":"init","parentId":null,"timestamp":"2024-12-03T14:00:01.000Z","systemPrompt":"Review code.","task":"Inspect code","tools":["read"],"agent":"reviewer","resolvedModel":"openai-codex/gpt-5.6-terra"}"#,
+                r#"{"type":"message","id":"profile-message","parentId":"init","timestamp":"2024-12-03T14:00:02.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Profile"}],"provider":"openai-codex","model":"gpt-5.6-terra","usage":{"input":100,"output":50,"totalTokens":150},"stopReason":"stop"}}"#,
+                r#"{"type":"model_usage","id":"profile-preflight","parentId":"profile-message","timestamp":"2024-12-03T14:00:03.000Z","purpose":"preflight","provider":"openai-codex","model":"gpt-5.6-terra","usage":{"input":4,"output":1,"totalTokens":5}}"#
+            ),
+        )
+        .unwrap();
+
+        let profile_source = OmpSource {
+            label: "Profile: sol".to_string(),
+            source_kind: "omp-profile:sol".to_string(),
+            dir: profile_root.clone(),
+        };
+        let profile_key = omp_source_dir_key(&profile_source).unwrap();
+        let mut conn = Connection::open_in_memory().unwrap();
+        init_db(&conn).unwrap();
+
+        // Existing profile history and cursor state survive the one-time legacy
+        // parser migration; only default OMP cursors are reset for reparse.
+        conn.execute(
+            "INSERT INTO sync_state (filename, last_synced_size, last_synced_time)
+             VALUES ('omp-profile:sol:historical-cursor', 8, 1)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO usage_entries (
+                assistant_type, source_kind, source_dir_key, timestamp, date, session_id, turn_no
+             ) VALUES ('omp', 'omp-profile:sol', ?, '2024-12-02T00:00:00Z',
+                       '2024-12-02', 'historical-profile-session', 1)",
+            params![profile_key],
+        )
+        .unwrap();
+
+        sync_omp_usage_logs(&mut conn, &default_root).unwrap();
+        sync_omp_source_usage_logs(&mut conn, &profile_source).unwrap();
+        sync_omp_usage_logs(&mut conn, &default_root).unwrap();
+        sync_omp_source_usage_logs(&mut conn, &profile_source).unwrap();
+
+        type OmpSourceRow = (
+            String,
+            Option<String>,
+            String,
+            u32,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+        );
+        let rows: Vec<OmpSourceRow> = conn
+            .prepare(
+                "SELECT source_kind, source_dir_key, transcript_path, turn_no,
+                        parent_session_id, agent_nickname, agent_role
+                 FROM usage_entries
+                 WHERE assistant_type = 'omp' AND session_id = 'shared-omp-session'
+                 ORDER BY source_kind, turn_no",
+            )
+            .unwrap()
+            .query_map([], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                ))
+            })
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(rows.len(), 3);
+        assert_eq!(rows[0].0, "omp-profile:sol");
+        assert_eq!(rows[0].1.as_deref(), Some(profile_key.as_str()));
+        assert_eq!(rows[0].2, profile_path.to_string_lossy().into_owned());
+        assert_eq!(rows[0].3, 1);
+        assert_eq!(rows[0].4.as_deref(), Some("profile-parent"));
+        assert_eq!(rows[0].5.as_deref(), Some("reviewer"));
+        assert_eq!(rows[0].6.as_deref(), Some("subagent"));
+        assert_eq!(rows[1].0, "omp-profile:sol");
+        assert_eq!(rows[1].3, 2);
+        assert_eq!(rows[1].6.as_deref(), Some("subagent:preflight"));
+        assert_eq!(rows[2].0, crate::omp::SOURCE_KIND);
+        assert_eq!(rows[2].1, None);
+        assert_eq!(rows[2].2, default_path.to_string_lossy().into_owned());
+
+        let state_count: u64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sync_state WHERE filename LIKE 'omp:%'
+                     OR filename LIKE 'omp-profile:sol:%'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(state_count, 4); // default, both profile files, and retained profile cursor
+        let historical_count: u64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM usage_entries
+                 WHERE session_id = 'historical-profile-session'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(historical_count, 1);
+
+        let default_lookup = get_session_assistant_and_transcript(
+            &conn,
+            "omp",
+            "shared-omp-session",
+            Some(crate::omp::SOURCE_KIND),
+            None,
+        )
+        .unwrap();
+        let profile_lookup = get_session_assistant_and_transcript(
+            &conn,
+            "omp",
+            "shared-omp-session",
+            Some("omp-profile:sol"),
+            Some(&profile_key),
+        )
+        .unwrap();
+        assert_eq!(
+            default_lookup.transcript_path.as_deref(),
+            Some(default_path.to_str().unwrap())
+        );
+        assert_eq!(default_lookup.source_dir_key, None);
+        assert_eq!(
+            profile_lookup.transcript_path.as_deref(),
+            Some(profile_path.to_str().unwrap())
+        );
+        assert_eq!(
+            profile_lookup.source_dir_key.as_deref(),
+            Some(profile_key.as_str())
+        );
+        assert!(get_session_assistant_and_transcript(
+            &conn,
+            "omp",
+            "shared-omp-session",
+            Some("omp-profile:sol"),
+            Some("wrong-profile-key"),
+        )
+        .is_err());
+
+        conn.execute(
+            "UPDATE usage_entries SET model = 'manifest/auto'
+             WHERE assistant_type = 'omp' AND session_id = 'shared-omp-session'",
+            [],
+        )
+        .unwrap();
+        set_session_pricing_assignment(
+            &mut conn,
+            "omp",
+            crate::omp::SOURCE_KIND,
+            None,
+            "shared-omp-session",
+            Some("glm-5.3"),
+        )
+        .unwrap();
+        set_session_pricing_assignment(
+            &mut conn,
+            "omp",
+            "omp-profile:sol",
+            Some(&profile_key),
+            "shared-omp-session",
+            Some("deepseek-v4.1-flash"),
+        )
+        .unwrap();
+        let report_rows = get_usage_entries_by_date(&conn, "2024-12-03", "omp").unwrap();
+        assert_eq!(report_rows.len(), 3);
+        assert!(report_rows.iter().all(|row| {
+            let entry = &row.record.entry;
+            match entry.source_kind.as_deref() {
+                Some("omp-profile:sol") => {
+                    entry.source_dir_key.as_deref() == Some(profile_key.as_str())
+                        && entry
+                            .session_pricing
+                            .as_ref()
+                            .and_then(|pricing| pricing.pricing_model.as_deref())
+                            == Some("deepseek-v4.1-flash")
+                }
+                Some(crate::omp::SOURCE_KIND) => {
+                    entry.source_dir_key.is_none()
+                        && entry
+                            .session_pricing
+                            .as_ref()
+                            .and_then(|pricing| pricing.pricing_model.as_deref())
+                            == Some("glm-5.3")
+                }
+                _ => false,
+            }
+        }));
+        let exported = export_usage_day_entries(&conn, "omp", "2024-12-03").unwrap();
+        assert_eq!(exported.len(), 3);
+        assert!(exported.iter().any(|record| {
+            record.entry.source_kind.as_deref() == Some(crate::omp::SOURCE_KIND)
+                && record.entry.source_dir_key.is_none()
+        }));
+        assert!(exported.iter().any(|record| {
+            record.entry.source_kind.as_deref() == Some("omp-profile:sol")
+                && record.entry.source_dir_key.as_deref() == Some(profile_key.as_str())
+        }));
+
+        let _ = fs::remove_dir_all(default_root);
+        let _ = fs::remove_dir_all(profile_root);
     }
 
     #[test]
