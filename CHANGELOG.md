@@ -4,6 +4,8 @@
 
 ## [未發行]
 
+## [10.0.14] - 2026-10-04
+
 ### 新增與改善
 
 - 移植 upstream `223d998`：`config.yaml` 新增 `additional_sources`，每種工具可追加多個資料根目錄，集中分析多個 `CODEX_HOME` 或雲端硬碟同步的其他電腦紀錄。啟動、背景同步與「立即同步」都會重新讀取設定，免重啟。
@@ -20,6 +22,10 @@
 - 未設定 `additional_sources` 時行為不變；`*_DIR` 仍決定主要來源，主要來源沿用既有同步游標。不變更資料表；移除來源設定不會刪除已匯入的用量。
 - 只支援 `~`、`$HOME`、絕對與相對路徑（相對於設定檔所在目錄）；未移植 Windows 路徑與文件。設定檔格式錯誤時同步會回報設定檔路徑。
 - 未移植 upstream `d98e43f`（Windows 整合測試 `SystemRoot` 環境）、`63a7f28`（fork README 無對應段落）與 v1.1.3／v1.1.4 版本號提交。
+
+### 發行資產
+
+- macOS Apple Silicon 與 Intel CLI、完整 `.tar.gz` 安裝包、DMG 及 `SHA256SUMS`。未發行 Linux 二進位或 npm 套件。
 
 ## [10.0.13] - 2026-10-04
 
@@ -894,7 +900,8 @@
 - 修正行動版側邊欄遮擋、黑畫面、標題擠壓、圖表導覽索引與年度版面問題。
 - 修正並補齊多個 Gemini、Claude、GPT 與 GPT-OSS 模型的定價規則。
 
-[未發行]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.13...HEAD
+[未發行]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.14...HEAD
+[10.0.14]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.13...v10.0.14
 [10.0.13]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.12...v10.0.13
 [10.0.12]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.11...v10.0.12
 [10.0.11]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.10...v10.0.11
