@@ -10,10 +10,16 @@
 - 額外的 Claude Code 與 OMP 目錄各自成為獨立來源（`claude-source:<hex>`、`omp-source:<hex>`），與預設來源及 profile 並列；Session 列表以路徑末兩段標示來源，設定教學列出路徑與偵測狀態。
 - 其他工具的額外目錄使用獨立同步游標；Codex 跨目錄彙整 `sessions` 與 `archived_sessions`，相同 rollout 副本只計一次並優先採用內容較完整者。對話明細可讀取額外目錄，保留路徑邊界檢查。
 
+### 修正
+
+- 移植 upstream `3e0e4c2`、`a24a4fa`：Session 列表的子代理改顯示自身交辦提示，不再沿用主代理名稱；Codex 子代理取 `agent_path` 對應的首次 `NEW_TASK` 正文，正文加密時改顯示任務名稱（路徑最後一段）。Codex 解析遷移升級為 v9，下次同步重新解析既有名稱，Token 不重複計算。繁簡中文標籤統一為「子代理」。
+- 移植 upstream `23795fb`、`2670375`、`19a90ea`：模型展開清單的來源 badge 不再換行；Session 提示詞欄位加寬 40%（150px → 210px）；子代理樹狀連接線改用 CSS 邊框，不再覆蓋標籤。
+
 ### 相容性
 
 - 未設定 `additional_sources` 時行為不變；`*_DIR` 仍決定主要來源，主要來源沿用既有同步游標。不變更資料表；移除來源設定不會刪除已匯入的用量。
 - 只支援 `~`、`$HOME`、絕對與相對路徑（相對於設定檔所在目錄）；未移植 Windows 路徑與文件。設定檔格式錯誤時同步會回報設定檔路徑。
+- 未移植 upstream `d98e43f`（Windows 整合測試 `SystemRoot` 環境）、`63a7f28`（fork README 無對應段落）與 v1.1.3／v1.1.4 版本號提交。
 
 ## [10.0.13] - 2026-10-04
 
