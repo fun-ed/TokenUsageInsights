@@ -4,6 +4,24 @@
 
 ## [未發行]
 
+## [10.0.13] - 2026-10-04
+
+### 新增與改善
+
+- OMP 每次同步自動發現 `~/.omp/profiles/<name>/agent/sessions`，與原本 `~/.omp/agent/sessions` 的 default profile 一起匯入；新增 profile 不需要重新設定或重啟。
+- 資料庫保留每個 profile 的獨立來源識別及同步游標，相同 Session ID 不會跨 profile 合併。Session 列表、模型明細、總覽及詳情顯示 Default 或 profile 名稱，設定教學列出各來源路徑與偵測狀態。
+- Profile 使用既有 OMP 的 model usage、subagent 解析及 provider 計價；transcript 查找保留來源隔離與路徑安全檢查。
+
+### 相容性與測試
+
+- Default 保留 `source_kind='omp-session'` 與既有資料；profile 使用 `omp-profile:<name>` 及獨立 `source_dir_key`，不新增資料表或刪除歷史資料。
+- 明確設定 `OMP_DIR` 時只讀指定 root，不掃描 profiles。用量讀取 session JSONL，不解析 blobs、agent.db 或 history.db。
+- 通過 400 個 Rust 測試與 21 個 Node 測試；隔離資料庫及 Firefox 驗證同 ID 隔離、長 profile 詳情、執行中新增來源與重複同步。
+
+### 發行資產
+
+- macOS Apple Silicon 與 Intel CLI、完整 `.tar.gz` 安裝包、DMG 及 `SHA256SUMS`。未發行 Linux 二進位或 npm 套件。
+
 ## [10.0.12] - 2026-10-04
 
 ### 新增與改善
@@ -859,7 +877,8 @@
 - 修正行動版側邊欄遮擋、黑畫面、標題擠壓、圖表導覽索引與年度版面問題。
 - 修正並補齊多個 Gemini、Claude、GPT 與 GPT-OSS 模型的定價規則。
 
-[未發行]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.12...HEAD
+[未發行]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.13...HEAD
+[10.0.13]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.12...v10.0.13
 [10.0.12]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.11...v10.0.12
 [10.0.11]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.10...v10.0.11
 [10.0.10]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.9...v10.0.10
