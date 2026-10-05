@@ -4,6 +4,22 @@
 
 ## [未發行]
 
+## [10.0.15] - 2026-10-05
+
+### 新增與改善
+
+- OMP（oh-my-pi）Session 列表與對話時間軸以 `模型:thinking effort` 顯示實際思考強度，例如 `claude/opus-5-5:high`。同一段對話切換強度後，各回覆保留當時的 effort。
+- 解析 OMP 的 `thinking_level_change.thinkingLevel`，寫入既有 `reasoning_effort` 欄位；`configured: auto` 不會取代實際值，缺值或獨立背景模型呼叫不會自行猜測。
+- OMP parser migration 升至 v5，下次同步重新解析仍存在的預設、profile 與額外來源 transcript，補入舊紀錄的 effort。保留已無 transcript 的歷史用量，不重複計算 Token。
+
+### 相容性
+
+- 不新增資料表欄位；原始模型 ID、來源識別、模型彙總與費用計算不變。其他 Agent 的 effort 顯示方式維持原樣。
+
+### 發行資產
+
+- macOS Apple Silicon 與 Intel CLI、完整 `.tar.gz` 安裝包、DMG 及 `SHA256SUMS`。未發行 Linux 二進位或 npm 套件。
+
 ## [10.0.14] - 2026-10-04
 
 ### 新增與改善
@@ -900,7 +916,8 @@
 - 修正行動版側邊欄遮擋、黑畫面、標題擠壓、圖表導覽索引與年度版面問題。
 - 修正並補齊多個 Gemini、Claude、GPT 與 GPT-OSS 模型的定價規則。
 
-[未發行]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.14...HEAD
+[未發行]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.15...HEAD
+[10.0.15]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.14...v10.0.15
 [10.0.14]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.13...v10.0.14
 [10.0.13]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.12...v10.0.13
 [10.0.12]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.11...v10.0.12
