@@ -4,6 +4,26 @@
 
 ## [未發行]
 
+## [10.0.16] - 2026-10-05
+
+### 新增與改善
+
+- Thinking effort 改用附標籤圖示的獨立 badge，不再拼接到模型名稱。長模型名稱可縮短，effort 完整顯示；每日列表、總覽、月／年模型 Session 明細、詳情與各回覆採用同一呈現方式。
+- OMP 的 effort 不限定供應商，涵蓋 Claude、OpenAI、GLM、DeepSeek 等模型。模型 ID 與計價規則維持不變。
+- Claude Code 讀取 assistant event 捕捉到的 `effort`，優先採用同回覆的 `perTurnEffort`；重新解析仍存在的預設、profile 與額外來源 transcript，保留已失去 transcript 的歷史用量。
+- Copilot App 詳情按來源、代理、回合及模型配對 effort；Copilot CLI 的代理／模型群組只有在所有紀錄都捕捉到一致 effort 時才顯示彙總標籤。CLI 缺少可靠的回覆關聯，因此不將彙總值套到個別回覆。
+
+### 修正
+
+- Codex 按 `turn_context` 順序更新 effort；缺漏或 null 清除前值，避免跨回合或跨模型誤配。
+- 報表從同一筆實際 usage 取得顯示模型與 effort，避免零用量尾列蓋掉正確配對。Copilot 的混合或缺漏 effort 不再任選其中一值。
+
+### 相容性與驗證
+
+- 不新增資料表欄位；來源識別、路徑安全邊界與費用計算不變。不從模型名稱或目前設定猜測 effort。
+- Rust 425 個測試、Node 27 個測試全通過；Clippy 與 release build 零警告、零錯誤。Firefox 驗證窄版明暗主題、總覽模型明細與各回覆標籤，effort 不截斷。
+- macOS Apple Silicon 與 Intel CLI、完整 `.tar.gz` 安裝包、DMG 及 `SHA256SUMS`。未發行 Linux 二進位或 npm 套件。
+
 ## [10.0.15] - 2026-10-05
 
 ### 新增與改善
@@ -916,7 +936,8 @@
 - 修正行動版側邊欄遮擋、黑畫面、標題擠壓、圖表導覽索引與年度版面問題。
 - 修正並補齊多個 Gemini、Claude、GPT 與 GPT-OSS 模型的定價規則。
 
-[未發行]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.15...HEAD
+[未發行]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.16...HEAD
+[10.0.16]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.15...v10.0.16
 [10.0.15]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.14...v10.0.15
 [10.0.14]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.13...v10.0.14
 [10.0.13]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.12...v10.0.13
