@@ -2464,6 +2464,7 @@ fn parse_pi_family_timeline(
     let is_omp_session = session_label == "OMP";
     let mut turn_no = 1u32;
     let mut current_model = UNKNOWN_MODEL.to_string();
+    let mut reasoning_effort = None;
     let mut tool_indices: HashMap<String, usize> = HashMap::new();
     let mut session_started = false;
 
@@ -2498,6 +2499,15 @@ fn parse_pi_family_timeline(
                     "cwd".to_string(),
                     serde_json::Value::String(cwd.to_string()),
                 );
+            }
+            continue;
+        }
+        if is_omp_session && entry_type == "thinking_level_change" {
+            reasoning_effort = crate::pi::omp_thinking_effort(&entry);
+            if let Some(effort) = &reasoning_effort {
+                metadata.insert("reasoning_effort".to_string(), serde_json::json!(effort));
+            } else {
+                metadata.remove("reasoning_effort");
             }
             continue;
         }
@@ -2676,7 +2686,7 @@ fn parse_pi_family_timeline(
                         model,
                         tokens,
                         duration_ms: None,
-                        reasoning_effort: None,
+                        reasoning_effort: reasoning_effort.clone(),
                     });
                 }
                 turn_no += 1;
@@ -3394,6 +3404,39 @@ mod pi_family_tests {
                     && message.contains("preflight")
                     && message.contains("openai/gpt-5.6-terra")
         )));
+    }
+
+    #[test]
+    fn parse_omp_timeline_preserves_thinking_effort_per_reply() {
+        let reader = make_reader(&[
+            r#"{"type":"session","id":"omp-effort","cwd":"/tmp/project"}"#,
+            r#"{"type":"message","message":{"role":"assistant","model":"claude/opus-5-5","content":[{"type":"text","text":"unknown"}]}}"#,
+            r#"{"type":"thinking_level_change","thinkingLevel":"high","configured":"auto"}"#,
+            r#"{"type":"message","message":{"role":"assistant","model":"claude/opus-5-5","content":[{"type":"text","text":"high"}]}}"#,
+            r#"{"type":"thinking_level_change","thinkingLevel":"low"}"#,
+            r#"{"type":"message","message":{"role":"assistant","model":"claude/opus-5-5","content":[{"type":"text","text":"low"}]}}"#,
+            r#"{"type":"thinking_level_change","thinkingLevel":null,"configured":"auto"}"#,
+            r#"{"type":"message","message":{"role":"assistant","model":"claude/opus-5-5","content":[{"type":"text","text":"unknown again"}]}}"#,
+        ]);
+        let mut timeline = Vec::new();
+        let mut metadata = HashMap::new();
+        parse_omp_timeline(reader, &HashMap::new(), &mut timeline, &mut metadata);
+        let efforts: Vec<_> = timeline
+            .iter()
+            .filter_map(|item| match item {
+                TimelineItem::AgentReply {
+                    model,
+                    reasoning_effort,
+                    ..
+                } => {
+                    assert_eq!(model, "claude/opus-5-5");
+                    Some(reasoning_effort.as_deref())
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(efforts, vec![None, Some("high"), Some("low"), None]);
+        assert!(!metadata.contains_key("reasoning_effort"));
     }
 }
 

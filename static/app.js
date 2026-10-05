@@ -15,7 +15,8 @@ import {
   sessionIdentityKey,
   SESSION_PRICING_MODELS,
   buildSessionPricingPayload,
-} from './session-utils.js?v=5';
+  formatSessionModelDisplay,
+} from './session-utils.js?v=6';
 import { parseUsageTimestamp } from './time-utils.js?v=1';
 import { getClaudeSessionSourceBadge, getOmpSessionSourceBadge } from './source-utils.js?v=2';
 
@@ -4890,6 +4891,8 @@ function renderSessionTable(sessions) {
       `;
     }
 
+    const modelDisplay = formatSessionModelDisplay(s.model, s.reasoning_effort, s.assistant_type);
+
     const sessionPricingControl = getSessionPricingControl(s, sessionIndex);
 
 
@@ -4901,9 +4904,9 @@ function renderSessionTable(sessions) {
       ${astColumn}
       <td class="model-column">
         <div class="model-cell-content">
-          <span class="badge highlight">${escapeHtml(s.model)}</span>
+          <span class="badge highlight">${escapeHtml(modelDisplay)}</span>
           ${modelSourceBadge}
-          ${s.reasoning_effort ? `<span class="badge" style="background: rgba(127, 142, 163, 0.15); color: #aeb9c8; font-size: 11px; font-weight: 600;">${escapeHtml(s.reasoning_effort)}</span>` : ''}
+          ${s.reasoning_effort && s.assistant_type !== 'omp' ? `<span class="badge" style="background: rgba(127, 142, 163, 0.15); color: #aeb9c8; font-size: 11px; font-weight: 600;">${escapeHtml(s.reasoning_effort)}</span>` : ''}
         </div>
       </td>
       <td><span class="badge">${s.max_turn_no}</span></td>
@@ -5284,9 +5287,11 @@ function renderTimeline(data) {
         const totalTokens = item.event_data.total_tokens || ((inTokens || outTokens) ? ((inTokens || 0) + (outTokens || 0)) : null);
         const turnNo = item.event_data.turn_no || currentTurnNo;
         const reasoningEffort = item.event_data.reasoning_effort;
-        const modelDisplay = reasoningEffort ? `${model} (${t('drawer_effort')}: ${reasoningEffort})` : model;
-
         const finalAssistantType = metadata.assistant_type || currentSessionAssistantType || currentAssistant;
+        const modelDisplay = finalAssistantType === 'omp'
+          ? formatSessionModelDisplay(model, reasoningEffort, finalAssistantType)
+          : reasoningEffort ? `${model} (${t('drawer_effort')}: ${reasoningEffort})` : model;
+
         let senderLogoHtml = '';
         let senderNameText = 'AGENT';
         if (isSupportedAssistant(finalAssistantType)) {

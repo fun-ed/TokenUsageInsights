@@ -201,6 +201,17 @@ fn model_id(source_kind: &str, provider: Option<&str>, model: Option<&str>) -> O
     }
 }
 
+/// OMP persists the resolved effort separately from the configured selector
+/// (which can be `auto`). Never infer an effort when the resolved value is absent.
+pub(crate) fn omp_thinking_effort(entry: &Value) -> Option<String> {
+    entry
+        .get("thinkingLevel")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|level| !level.is_empty())
+        .map(str::to_string)
+}
+
 fn trimmed_session_name(value: Option<&str>) -> Option<String> {
     value
         .map(str::trim)
@@ -225,6 +236,7 @@ struct UsageEntryContext<'a> {
     source_kind: &'a str,
     agent_nickname: &'a Option<String>,
     agent_role: &'a Option<String>,
+    reasoning_effort: Option<&'a str>,
 }
 
 fn append_usage_entry(
@@ -263,7 +275,7 @@ fn append_usage_entry(
         parent_session_id: context.header.parent_session_id.clone(),
         agent_nickname: context.agent_nickname.clone(),
         agent_role: context.agent_role.clone(),
-        reasoning_effort: None,
+        reasoning_effort: context.reasoning_effort.map(str::to_string),
         session_pricing: None,
     });
     *turn_no += 1;
@@ -353,6 +365,7 @@ pub(crate) fn parse_session_usage_file(
     let mut entries = Vec::new();
     let mut turn_no = 1u32;
     let mut session_name = header.session_name.clone();
+    let mut reasoning_effort = None;
     let is_advisor = is_advisor_transcript(path);
     let mut agent_nickname = if is_advisor {
         advisor_nickname(path)
@@ -386,6 +399,11 @@ pub(crate) fn parse_session_usage_file(
             if let Some(name) = entry_value.get("name").and_then(Value::as_str) {
                 session_name = trimmed_session_name(Some(name));
             }
+            continue;
+        }
+
+        if is_omp_session(source_kind) && entry_type == "thinking_level_change" {
+            reasoning_effort = omp_thinking_effort(&entry_value);
             continue;
         }
 
@@ -429,6 +447,8 @@ pub(crate) fn parse_session_usage_file(
                     source_kind,
                     agent_nickname: &agent_nickname,
                     agent_role: &usage_role,
+                    // Independent background calls do not record their effort.
+                    reasoning_effort: None,
                 },
             );
             continue;
@@ -461,6 +481,7 @@ pub(crate) fn parse_session_usage_file(
                 source_kind,
                 agent_nickname: &agent_nickname,
                 agent_role: &agent_role,
+                reasoning_effort: reasoning_effort.as_deref(),
             },
         );
     }
@@ -479,6 +500,65 @@ mod tests {
             label,
             std::process::id()
         ))
+    }
+
+    #[test]
+    fn omp_thinking_effort_tracks_changes_without_changing_models_or_costs() {
+        let root = temp_jsonl_path("omp-thinking-effort");
+        fs::create_dir_all(&root).unwrap();
+        let path = root.join("session.jsonl");
+        let records = [
+            serde_json::json!({"type":"session","id":"effort-session"}),
+            serde_json::json!({"type":"message","message":{"role":"assistant","provider":"claude","model":"opus-5-5","usage":{"input":10,"output":5,"cost":{"total":0.25}}}}),
+            serde_json::json!({"type":"thinking_level_change","thinkingLevel":" high ","configured":"auto"}),
+            serde_json::json!({"type":"message","message":{"role":"assistant","provider":"claude","model":"opus-5-5","usage":{"input":10,"output":5,"cost":{"total":0.25}}}}),
+            serde_json::json!({"type":"model_usage","provider":"openai","model":"smol","purpose":"preflight","usage":{"input":1,"output":1}}),
+            serde_json::json!({"type":"thinking_level_change","thinkingLevel":"low"}),
+            serde_json::json!({"type":"message","message":{"role":"assistant","provider":"claude","model":"opus-5-5","usage":{"input":10,"output":5,"cost":{"total":0.25}}}}),
+            serde_json::json!({"type":"thinking_level_change","thinkingLevel":"off"}),
+            serde_json::json!({"type":"message","message":{"role":"assistant","provider":"claude","model":"opus-5-5","usage":{"input":10,"output":5,"cost":{"total":0.25}}}}),
+            serde_json::json!({"type":"thinking_level_change","thinkingLevel":null,"configured":"auto"}),
+            serde_json::json!({"type":"message","message":{"role":"assistant","provider":"claude","model":"opus-5-5","usage":{"input":10,"output":5,"cost":{"total":0.25}}}}),
+        ];
+        let mut file = File::create(&path).unwrap();
+        for record in records {
+            writeln!(file, "{record}").unwrap();
+        }
+        writeln!(file, "malformed JSON").unwrap();
+        for source_kind in ["omp-session", "omp-profile:work", "omp-source:abcd"] {
+            let entries = parse_session_usage_file(&path, source_kind).unwrap();
+            assert_eq!(
+                entries
+                    .iter()
+                    .map(|entry| entry.reasoning_effort.as_deref())
+                    .collect::<Vec<_>>(),
+                vec![None, Some("high"), None, Some("low"), Some("off"), None]
+            );
+            for entry in entries.iter().filter(|entry| entry.agent_role.is_none()) {
+                assert_eq!(entry.model.as_deref(), Some("claude/opus-5-5"));
+                assert_eq!(entry.model_id, entry.model);
+                assert_eq!(entry.tokens.as_ref().unwrap().total, 15);
+                assert_eq!(entry.cost.as_ref().unwrap().reported_cost_usd, Some(0.25));
+            }
+        }
+        let pi_entries = parse_session_usage_file(&path, SOURCE_KIND).unwrap();
+        assert!(pi_entries
+            .iter()
+            .all(|entry| entry.reasoning_effort.is_none()));
+        assert_eq!(pi_entries.len(), 5);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn omp_thinking_effort_does_not_infer_unrecorded_values() {
+        for entry in [
+            serde_json::json!({"configured":"high"}),
+            serde_json::json!({"thinkingLevel":null,"configured":"auto"}),
+            serde_json::json!({"thinkingLevel":42}),
+            serde_json::json!({"thinkingLevel":"  "}),
+        ] {
+            assert_eq!(omp_thinking_effort(&entry), None);
+        }
     }
 
     #[test]

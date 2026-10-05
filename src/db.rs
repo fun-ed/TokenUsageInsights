@@ -268,7 +268,7 @@ const CURSOR_CACHE_TOKENS_UNKNOWN_MIGRATION_KEY: &str = "migration:cursor_cache_
 const CURSOR_AGENT_SOURCE_KIND: &str = "cursor-agent";
 const CURSOR_IDE_SOURCE_KIND: &str = "cursor-ide";
 const GROK_PARSER_MIGRATION_KEY: &str = "migration:grok_parser_v8";
-const OMP_PARSER_MIGRATION_KEY: &str = "migration:omp_parser_v4";
+const OMP_PARSER_MIGRATION_KEY: &str = "migration:omp_parser_v5";
 const LEGACY_GROK_PARSER_MIGRATION_KEYS: &[&str] = &[
     "migration:grok_parser_v1",
     "migration:grok_model_normalization_v2",
@@ -2102,10 +2102,9 @@ fn run_codex_parser_migration(conn: &mut Connection) -> Result<(), String> {
     Ok(())
 }
 
-/// Reparse OMP sessions once so existing files gain OMP v18's independent
-/// model-usage calls and subagent metadata without waiting for a new append.
-/// It resets only the legacy `omp:` cursor namespace; profile cursors and all
-/// historical usage rows are left intact.
+/// Reparse available OMP transcripts once to backfill per-turn thinking effort.
+/// Reset every OMP source cursor, but retain historical usage rows whose
+/// transcripts are no longer available.
 fn run_omp_parser_migration(conn: &mut Connection) -> Result<(), String> {
     let migration_done: bool = conn
         .query_row(
@@ -2121,8 +2120,12 @@ fn run_omp_parser_migration(conn: &mut Connection) -> Result<(), String> {
     let tx = conn
         .transaction()
         .map_err(|error| format!("OMP parser migration BEGIN 失敗: {error}"))?;
-    tx.execute("DELETE FROM sync_state WHERE filename LIKE 'omp:%'", [])
-        .map_err(|error| format!("清除 OMP 同步狀態失敗: {error}"))?;
+    tx.execute(
+        "DELETE FROM sync_state WHERE filename LIKE 'omp:%'
+         OR filename LIKE 'omp-profile:%' OR filename LIKE 'omp-source:%'",
+        [],
+    )
+    .map_err(|error| format!("清除 OMP 同步狀態失敗: {error}"))?;
     tx.execute(
         "INSERT OR REPLACE INTO sync_state (filename, last_synced_size, last_synced_time)
          VALUES (?, 1, 0)",
@@ -18260,12 +18263,14 @@ mod tests {
     }
 
     #[test]
-    fn omp_parser_migration_preserves_profile_state_and_historical_rows() {
+    fn omp_parser_migration_resets_all_source_cursors_and_preserves_historical_rows() {
         let mut conn = Connection::open_in_memory().unwrap();
         init_db(&conn).unwrap();
         conn.execute(
             "INSERT INTO sync_state (filename, last_synced_size, last_synced_time)
-             VALUES ('omp:default-session', 10, 1), ('omp-profile:sol:profile-session', 20, 2)",
+             VALUES ('omp:default-session', 10, 1), ('omp-profile:sol:profile-session', 20, 2),
+                    ('omp-source:abcd:additional-session', 30, 3), ('pi:session', 40, 4),
+                    ('migration:omp_parser_v4', 1, 0)",
             [],
         )
         .unwrap();
@@ -18303,8 +18308,33 @@ mod tests {
             )
             .unwrap();
         assert_eq!(default_state_count, 0);
-        assert_eq!(profile_state_count, 1);
+        assert_eq!(profile_state_count, 0);
         assert_eq!(historical_count, 1);
+        let additional_state_count: u64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sync_state WHERE filename LIKE 'omp-source:%'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(additional_state_count, 0);
+        // The migration is idempotent and leaves other providers untouched.
+        conn.execute(
+            "INSERT INTO sync_state (filename, last_synced_size, last_synced_time)
+             VALUES ('omp:after-migration', 10, 1)",
+            [],
+        )
+        .unwrap();
+        run_omp_parser_migration(&mut conn).unwrap();
+        let retained_state_count: u64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sync_state
+                 WHERE filename IN ('omp:after-migration', 'pi:session', 'migration:omp_parser_v4')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(retained_state_count, 3);
     }
 
     #[test]
@@ -18440,7 +18470,7 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(state_count, 4); // default, both profile files, and retained profile cursor
+        assert_eq!(state_count, 3); // default and both profile files; old cursors reset
         let historical_count: u64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM usage_entries

@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   compareSessionRows,
   filterEntriesBySessionIdentity,
+  formatSessionModelDisplay,
   matchesSessionIdentity,
   parentSessionIdentityKey,
   sessionIdentityKey,
@@ -116,4 +117,42 @@ test('raw usage filtering preserves the full session source identity', () => {
   ];
 
   assert.deepEqual(filterEntriesBySessionIdentity(entries, sessions), [entries[0]]);
+});
+
+test('OMP model display appends reasoning effort after the provider and model', () => {
+  assert.equal(
+    formatSessionModelDisplay('claude/opus-5-5', 'high', 'omp'),
+    'claude/opus-5-5:high',
+  );
+  assert.equal(
+    formatSessionModelDisplay('claude/opus-5-5:cloud', 'high', 'omp'),
+    'claude/opus-5-5:cloud:high',
+  );
+  assert.equal(
+    formatSessionModelDisplay('claude/opus-5-5:high', 'high', 'omp'),
+    'claude/opus-5-5:high',
+  );
+});
+
+test('OMP model display preserves unknown models and blank effort labels', () => {
+  assert.equal(formatSessionModelDisplay('', 'high', 'omp'), '');
+  assert.equal(
+    formatSessionModelDisplay('unknown-provider/unknown-model', '', 'omp'),
+    'unknown-provider/unknown-model',
+  );
+  assert.equal(
+    formatSessionModelDisplay('unknown-provider/unknown-model', 'medium', 'omp'),
+    'unknown-provider/unknown-model:medium',
+  );
+});
+
+test('non-OMP model labels stay unchanged and the formatter does not escape HTML', () => {
+  assert.equal(
+    formatSessionModelDisplay('claude/<opus-5-5>', '<high>', 'claude'),
+    'claude/<opus-5-5>',
+  );
+  assert.equal(
+    formatSessionModelDisplay('claude/<opus-5-5>', '<high>', 'omp'),
+    'claude/<opus-5-5>:<high>',
+  );
 });

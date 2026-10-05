@@ -8,6 +8,14 @@ function getSessionSortValue(session, sortColumn) {
   return value ?? 0;
 }
 
+export function formatSessionModelDisplay(model, reasoningEffort, assistantType) {
+  const modelLabel = model ?? '';
+  if (assistantType !== 'omp' || !modelLabel || !reasoningEffort) return modelLabel;
+
+  const suffix = `:${reasoningEffort}`;
+  return modelLabel.endsWith(suffix) ? modelLabel : `${modelLabel}${suffix}`;
+}
+
 export function compareSessionRows(a, b, sortColumn, sortDirection) {
   const valueA = getSessionSortValue(a, sortColumn);
   const valueB = getSessionSortValue(b, sortColumn);
