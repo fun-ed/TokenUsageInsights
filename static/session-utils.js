@@ -8,12 +8,34 @@ function getSessionSortValue(session, sortColumn) {
   return value ?? 0;
 }
 
-export function formatSessionModelDisplay(model, reasoningEffort, assistantType) {
-  const modelLabel = model ?? '';
-  if (assistantType !== 'omp' || !modelLabel || !reasoningEffort) return modelLabel;
+export function formatSessionModelDisplay(model) {
+  return String(model ?? '');
+}
 
-  const suffix = `:${reasoningEffort}`;
-  return modelLabel.endsWith(suffix) ? modelLabel : `${modelLabel}${suffix}`;
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+export function renderReasoningEffortBadge(reasoningEffort, effortLabel) {
+  const effort = String(reasoningEffort ?? '').trim();
+  if (!effort) return '';
+
+  const label = `${String(effortLabel || 'Reasoning Effort')}: ${effort}`;
+  const escapedEffort = escapeHtml(effort);
+  const escapedLabel = escapeHtml(label);
+
+  return `<span class="badge reasoning-effort-badge" title="${escapedLabel}" aria-label="${escapedLabel}">
+    <svg class="reasoning-effort-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false">
+      <path d="M2.5 3h6.8l4.2 4.2-6.3 6.3L2.5 8.8V3Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
+      <circle cx="5.2" cy="5.6" r=".8" fill="currentColor"/>
+    </svg>
+    <span class="reasoning-effort-value">${escapedEffort}</span>
+  </span>`;
 }
 
 export function compareSessionRows(a, b, sortColumn, sortDirection) {

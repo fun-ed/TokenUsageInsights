@@ -550,6 +550,55 @@ mod tests {
     }
 
     #[test]
+    fn omp_thinking_effort_is_independent_of_model_provider() {
+        let root = temp_jsonl_path("omp-effort-providers");
+        fs::create_dir_all(&root).unwrap();
+        let path = root.join("session.jsonl");
+        let mut file = File::create(&path).unwrap();
+        writeln!(
+            file,
+            "{}",
+            serde_json::json!({"type":"session","id":"providers"})
+        )
+        .unwrap();
+        writeln!(
+            file,
+            "{}",
+            serde_json::json!({"type":"thinking_level_change","thinkingLevel":"high"})
+        )
+        .unwrap();
+        let models = [
+            ("claude", "opus-5-5"),
+            ("openai", "gpt-6.1-sol"),
+            ("zai", "glm-5.3"),
+            ("deepseek", "deepseek-v4.1"),
+        ];
+        for (provider, model) in models {
+            writeln!(
+                file,
+                "{}",
+                serde_json::json!({
+                    "type":"message", "message":{
+                        "role":"assistant", "provider":provider, "model":model,
+                        "usage":{"input":10,"output":5,"totalTokens":15}
+                    }
+                })
+            )
+            .unwrap();
+        }
+        let entries = parse_session_usage_file(&path, "omp-session").unwrap();
+        assert_eq!(entries.len(), models.len());
+        for (entry, (provider, model)) in entries.iter().zip(models) {
+            assert_eq!(
+                entry.model.as_deref(),
+                Some(format!("{provider}/{model}").as_str())
+            );
+            assert_eq!(entry.reasoning_effort.as_deref(), Some("high"));
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn omp_thinking_effort_does_not_infer_unrecorded_values() {
         for entry in [
             serde_json::json!({"configured":"high"}),

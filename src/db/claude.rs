@@ -202,6 +202,8 @@ pub(super) fn parse_claude_session_file(filepath: &Path) -> Result<Vec<UsageEntr
             total,
         };
 
+        let reasoning_effort = super::claude_effort_for_assistant_event(&event);
+
         results.push(UsageEntry {
             timestamp,
             session_id,
@@ -224,7 +226,7 @@ pub(super) fn parse_claude_session_file(filepath: &Path) -> Result<Vec<UsageEntr
             parent_session_id: None,
             agent_nickname: None,
             agent_role: None,
-            reasoning_effort: None,
+            reasoning_effort,
             session_pricing: None,
         });
     }
@@ -314,5 +316,27 @@ mod tests {
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].session_name.as_deref(), Some("Final name"));
         assert_eq!(entries[0].tokens.as_ref().unwrap().total, 3);
+    }
+
+    #[test]
+    fn parse_claude_session_file_uses_response_effort_with_per_turn_precedence() {
+        let path = temp_jsonl_path("claude-effort");
+        let content = r#"{"type":"assistant","timestamp":"2026-09-24T09:00:00Z","requestId":"req_1","effort":"high","perTurnEffort":null,"message":{"id":"msg_1","role":"assistant","model":"claude-opus-5-5","usage":{"input_tokens":1,"output_tokens":2}}}
+{"type":"assistant","timestamp":"2026-09-24T09:01:00Z","requestId":"req_2","effort":"low","perTurnEffort":"medium","message":{"id":"msg_2","role":"assistant","model":"claude-opus-5-5","usage":{"input_tokens":1,"output_tokens":2}}}
+{"type":"assistant","timestamp":"2026-09-24T09:02:00Z","requestId":"req_3","message":{"id":"msg_3","role":"assistant","model":"claude-opus-5-5","usage":{"input_tokens":1,"output_tokens":2}}}
+{"type":"assistant","timestamp":"2026-09-24T09:03:00Z","requestId":"req_4","effort":"high","perTurnEffort":"low","message":{"id":"msg_4","role":"assistant","model":"claude-opus-5-5","usage":{"input_tokens":1,"output_tokens":2}}}
+"#;
+        fs::write(&path, content).unwrap();
+
+        let entries = parse_claude_session_file(&path).unwrap();
+        let _ = fs::remove_file(&path);
+
+        assert_eq!(
+            entries
+                .iter()
+                .map(|entry| entry.reasoning_effort.as_deref())
+                .collect::<Vec<_>>(),
+            vec![Some("high"), Some("medium"), None, Some("low")]
+        );
     }
 }

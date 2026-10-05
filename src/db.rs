@@ -103,6 +103,20 @@ pub struct UsageEntry {
     pub session_pricing: Option<SessionPricingOverlay>,
 }
 
+/// Claude assistant transcript events expose captured response effort as
+/// `effort`; newer transcript rows additionally include `perTurnEffort`.
+/// Prefer that explicitly per-turn value, but fall back to the same response
+/// event's captured `effort` when it is absent or null.
+pub(crate) fn claude_effort_for_assistant_event(event: &serde_json::Value) -> Option<String> {
+    event
+        .get("perTurnEffort")
+        .and_then(serde_json::Value::as_str)
+        .or_else(|| event.get("effort").and_then(serde_json::Value::as_str))
+        .map(str::to_string)
+}
+
+pub type SessionTurnReasoningEfforts = HashMap<u32, HashMap<String, Option<String>>>;
+
 /// Local-only session eligibility and pricing assignment hydrated from usage
 /// rows plus the independent assignment table. Skipping both serde directions
 /// prevents exports and imports from changing local pricing choices.
@@ -261,6 +275,7 @@ const COPILOT_APP_CURSOR_PREFIX: &str = "sync:copilot_app:cursor:";
 const VSCODE_EMPTY_SESSION_MIGRATION_KEY: &str = "migration:vscode_empty_sessions_v1";
 const COPILOT_CACHED_INPUT_MIGRATION_KEY: &str = "migration:copilot_cached_input_v1";
 const CLAUDE_CACHE_WRITE_PRICING_MIGRATION_KEY: &str = "migration:claude_cache_write_pricing_v1";
+const CLAUDE_EFFORT_PARSER_MIGRATION_KEY: &str = "migration:claude_per_turn_effort_v1";
 const SESSION_NAME_SELECTION_MIGRATION_KEY: &str = "migration:session_name_selection_v1";
 static IMPORT_BATCH_COUNTER: AtomicU64 = AtomicU64::new(0);
 const CURSOR_MODEL_ATTRIBUTION_MIGRATION_KEY: &str = "migration:cursor_model_attribution_v2";
@@ -309,6 +324,7 @@ const COPILOT_CLI_AGENT_PENDING_PREFIX: &str = "sync:copilot_cli_agents:pending:
 /// `copilot-cli` hook rows with per-agent split rows. Idempotent and safe to
 /// retry; only affects `copilot-cli` rows, never `copilot-app` or others.
 const COPILOT_CLI_AGENT_MIGRATION_KEY: &str = "migration:copilot_cli_agent_split_v2";
+const COPILOT_CLI_EFFORT_MIGRATION_KEY: &str = "migration:copilot_cli_effort_v1";
 
 /// One-time backfill of `cwd` for existing Copilot rows (`copilot-cli` and
 /// `copilot-app`) that were written before CWD was populated from
@@ -2136,6 +2152,41 @@ fn run_omp_parser_migration(conn: &mut Connection) -> Result<(), String> {
         .map_err(|error| format!("OMP parser migration COMMIT 失敗: {error}"))
 }
 
+/// Reparse surviving Claude transcripts once so the assistant event's
+/// captured response effort is backfilled. Reset all source-kind cursors but
+/// retain rows for transcripts that have disappeared; each available file is
+/// replaced transactionally by `sync_claude_usage_logs_from`.
+fn run_claude_effort_parser_migration(conn: &mut Connection) -> Result<(), String> {
+    let migration_done: bool = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM sync_state WHERE filename = ?)",
+            params![CLAUDE_EFFORT_PARSER_MIGRATION_KEY],
+            |row| row.get(0),
+        )
+        .unwrap_or(false);
+    if migration_done {
+        return Ok(());
+    }
+
+    let tx = conn
+        .transaction()
+        .map_err(|error| format!("Claude effort migration BEGIN 失敗: {error}"))?;
+    tx.execute(
+        "DELETE FROM sync_state
+         WHERE filename LIKE 'claude:%' OR filename LIKE 'claude-%:%'",
+        [],
+    )
+    .map_err(|error| format!("清除 Claude transcript cursors 失敗: {error}"))?;
+    tx.execute(
+        "INSERT OR REPLACE INTO sync_state (filename, last_synced_size, last_synced_time)
+         VALUES (?, 1, 0)",
+        params![CLAUDE_EFFORT_PARSER_MIGRATION_KEY],
+    )
+    .map_err(|error| format!("記錄 Claude effort migration 失敗: {error}"))?;
+    tx.commit()
+        .map_err(|error| format!("Claude effort migration COMMIT 失敗: {error}"))
+}
+
 fn run_codex_source_kind_migration(conn: &mut Connection) -> Result<(), String> {
     let migration_done: bool = conn
         .query_row(
@@ -2692,7 +2743,14 @@ fn sync_copilot_app_usage_logs_from(conn: &mut Connection, app_dir: &Path) -> Re
                 SUM(input_tokens), SUM(output_tokens),
                 SUM(cache_read_tokens), SUM(cache_write_tokens),
                 SUM(reasoning_tokens), SUM(duration_ms),
-                model, MIN(reasoning_effort), agent_id, MIN(initiator)
+                model,
+                CASE
+                    WHEN COUNT(reasoning_effort) = COUNT(*)
+                     AND COUNT(DISTINCT reasoning_effort) = 1
+                    THEN NULLIF(MIN(reasoning_effort), '')
+                    ELSE NULL
+                END AS reasoning_effort,
+                agent_id, MIN(initiator)
          FROM assistant_usage_events
          WHERE session_id = ? AND turn_index = ?
          GROUP BY session_id, turn_index, agent_id, model";
@@ -3246,6 +3304,9 @@ struct CopilotCliAgentRow {
     /// `initiator` of the first event for this agent, used only to label
     /// subagent `agent_role` when it is `'sub-agent'`. Never guessed.
     initiator: Option<String>,
+    /// Captured CLI event-store effort only when the entire agent/model group
+    /// consistently records the same value.
+    reasoning_effort: Option<String>,
     /// Working directory from `session-store.db.sessions.cwd`.
     cwd: Option<String>,
     input_tokens: u64,
@@ -3378,6 +3439,14 @@ fn sync_copilot_cli_agent_usage_logs_from(
             |row| row.get(0),
         )
         .unwrap_or(false);
+    let effort_migration_done: bool = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM sync_state WHERE filename = ?)",
+            params![COPILOT_CLI_EFFORT_MIGRATION_KEY],
+            |row| row.get(0),
+        )
+        .unwrap_or(false);
+    let backfill_required = !migration_done || !effort_migration_done;
 
     let stored_cursor: Option<String> = conn
         .query_row(
@@ -3490,7 +3559,7 @@ fn sync_copilot_cli_agent_usage_logs_from(
     // just those after the cursor. This converts existing hook merged rows
     // into per-agent rows. Idempotent: the migration marker is set only after
     // a successful commit, and the cursor prevents re-scanning on retry.
-    if !migration_done {
+    if backfill_required {
         let mut all_sessions_stmt = session_store
             .prepare("SELECT DISTINCT session_id FROM assistant_usage_events")
             .map_err(|e| format!("準備 Copilot CLI backfill 查詢失敗: {}", e))?;
@@ -3518,16 +3587,26 @@ fn sync_copilot_cli_agent_usage_logs_from(
     if touched_cli_sessions.is_empty() && max_event_cursor.is_none() {
         // Nothing to do. Still record the migration marker on first run so the
         // backfill scan is not repeated.
-        if !migration_done {
+        if backfill_required {
             let tx = conn.transaction().map_err(|e| {
                 format!("開啟 Copilot CLI migration marker transaction 失敗: {}", e)
             })?;
-            tx.execute(
-                "INSERT OR REPLACE INTO sync_state (filename, last_synced_size, last_synced_time)
-                 VALUES (?, 1, 0)",
-                params![COPILOT_CLI_AGENT_MIGRATION_KEY],
-            )
-            .map_err(|e| format!("寫入 Copilot CLI migration marker 失敗: {}", e))?;
+            if !migration_done {
+                tx.execute(
+                    "INSERT OR REPLACE INTO sync_state (filename, last_synced_size, last_synced_time)
+                     VALUES (?, 1, 0)",
+                    params![COPILOT_CLI_AGENT_MIGRATION_KEY],
+                )
+                .map_err(|e| format!("寫入 Copilot CLI migration marker 失敗: {}", e))?;
+            }
+            if !effort_migration_done {
+                tx.execute(
+                    "INSERT OR REPLACE INTO sync_state (filename, last_synced_size, last_synced_time)
+                     VALUES (?, 1, 0)",
+                    params![COPILOT_CLI_EFFORT_MIGRATION_KEY],
+                )
+                .map_err(|e| format!("寫入 Copilot CLI effort migration marker 失敗: {}", e))?;
+            }
             if let Some((created_at, id)) = max_event_cursor {
                 write_copilot_cli_agent_cursor(&tx, &cursor_key_prefix, &created_at, id)?;
             }
@@ -3539,12 +3618,18 @@ fn sync_copilot_cli_agent_usage_logs_from(
 
     // Aggregate each touched CLI session from its FULL event history, grouped
     // by (agent_id, model). turn_index is unreliable for CLI (often all 0), so
-    // we aggregate across all turns for a stable, non-duplicated per-agent row.
-    // `MIN(model)` is safe because the group key already includes model.
+    // the usage row aggregates across turns. Preserve effort only when every
+    // event in that exact agent/model group records one identical value.
     let aggregate_query = "SELECT MIN(created_at) AS ts,
                 MIN(model) AS model,
                 agent_id,
                 MIN(initiator) AS initiator,
+                CASE
+                    WHEN COUNT(reasoning_effort) = COUNT(*)
+                     AND COUNT(DISTINCT reasoning_effort) = 1
+                    THEN NULLIF(MIN(reasoning_effort), '')
+                    ELSE NULL
+                END AS reasoning_effort,
                 SUM(input_tokens), SUM(output_tokens),
                 SUM(cache_read_tokens), SUM(cache_write_tokens),
                 SUM(reasoning_tokens), SUM(duration_ms)
@@ -3561,8 +3646,8 @@ fn sync_copilot_cli_agent_usage_logs_from(
         let session_cwd = resolve_session_store_cwd(&session_store, session_id);
 
         let rows_res = agg_stmt.query_map(params![session_id], |row| {
-            let raw_input: i64 = row.get::<_, Option<i64>>(4)?.unwrap_or(0).max(0);
-            let cache_read: i64 = row.get::<_, Option<i64>>(6)?.unwrap_or(0).max(0);
+            let raw_input: i64 = row.get::<_, Option<i64>>(5)?.unwrap_or(0).max(0);
+            let cache_read: i64 = row.get::<_, Option<i64>>(7)?.unwrap_or(0).max(0);
             // Net non-cached input; clamp at 0 in case of schema drift.
             let net_input = (raw_input - cache_read).max(0) as u64;
             Ok(CopilotCliAgentRow {
@@ -3571,13 +3656,14 @@ fn sync_copilot_cli_agent_usage_logs_from(
                 model: row.get::<_, Option<String>>(1)?,
                 agent_id: row.get::<_, Option<String>>(2)?,
                 initiator: row.get::<_, Option<String>>(3)?,
+                reasoning_effort: row.get::<_, Option<String>>(4)?,
                 cwd: session_cwd.clone(),
                 input_tokens: net_input,
-                output_tokens: row.get::<_, Option<i64>>(5)?.unwrap_or(0).max(0) as u64,
+                output_tokens: row.get::<_, Option<i64>>(6)?.unwrap_or(0).max(0) as u64,
                 cache_read: cache_read as u64,
-                cache_write: row.get::<_, Option<i64>>(7)?.unwrap_or(0).max(0) as u64,
-                reasoning: row.get::<_, Option<i64>>(8)?.unwrap_or(0).max(0) as u64,
-                duration_ms: row.get::<_, Option<i64>>(9)?.unwrap_or(0).max(0) as u64,
+                cache_write: row.get::<_, Option<i64>>(8)?.unwrap_or(0).max(0) as u64,
+                reasoning: row.get::<_, Option<i64>>(9)?.unwrap_or(0).max(0) as u64,
+                duration_ms: row.get::<_, Option<i64>>(10)?.unwrap_or(0).max(0) as u64,
             })
         });
         match rows_res {
@@ -3791,8 +3877,7 @@ fn sync_copilot_cli_agent_usage_logs_from(
                     ?, ?, NULL, ?, ?, ?,
                     ?, ?, ?, ?, ?, ?,
                     ?, ?, ?, ?, ?, ?,
-                    ?, NULL, ?, NULL,
-                    ?, ?, ?
+                    ?, NULL, ?, ?, ?, ?, ?
                 )",
                 params![
                     "copilot",
@@ -3824,6 +3909,7 @@ fn sync_copilot_cli_agent_usage_logs_from(
                     total as i64,
                     row.duration_ms as i64,
                     import_source_id,
+                    row.reasoning_effort,
                     parent_session_id,
                     agent_nickname,
                     agent_role,
@@ -3862,6 +3948,14 @@ fn sync_copilot_cli_agent_usage_logs_from(
             params![COPILOT_CLI_AGENT_MIGRATION_KEY],
         )
         .map_err(|e| format!("寫入 Copilot CLI migration marker 失敗: {}", e))?;
+    }
+    if !effort_migration_done {
+        tx.execute(
+            "INSERT OR REPLACE INTO sync_state (filename, last_synced_size, last_synced_time)
+             VALUES (?, 1, 0)",
+            params![COPILOT_CLI_EFFORT_MIGRATION_KEY],
+        )
+        .map_err(|e| format!("寫入 Copilot CLI effort migration marker 失敗: {}", e))?;
     }
 
     tx.commit()
@@ -4723,6 +4817,7 @@ fn sync_claude_usage_logs_from(
         tx.commit()
             .map_err(|error| format!("Claude profile migration COMMIT 失敗: {error}"))?;
     }
+    run_claude_effort_parser_migration(conn)?;
 
     for source in sources {
         let claude_dir = &source.dir;
@@ -6663,6 +6758,7 @@ pub struct SessionData {
     pub cwd: Option<String>,
     pub model: Option<String>,
     pub turn_stats: HashMap<u32, (TokenStats, String)>,
+    pub turn_reasoning_efforts: SessionTurnReasoningEfforts,
 }
 
 impl SessionLookup {
@@ -6689,6 +6785,13 @@ impl SessionLookup {
                 source_dir_key,
             )?,
             turn_stats: get_session_turns_token_stats(
+                conn,
+                &self.assistant_type,
+                session_id,
+                source_kind,
+                source_dir_key,
+            )?,
+            turn_reasoning_efforts: get_session_turn_reasoning_efforts(
                 conn,
                 &self.assistant_type,
                 session_id,
@@ -7012,6 +7115,67 @@ pub fn get_session_model(
     } else {
         Ok(None)
     }
+}
+
+/// Load unanimous captured effort by source-scoped turn and model. If rows for
+/// the same turn/model disagree or include both known and missing effort, keep
+/// the key but return `None` so timeline enrichment cannot borrow one row's
+/// effort for another.
+pub fn get_session_turn_reasoning_efforts(
+    conn: &rusqlite::Connection,
+    assistant: &str,
+    session_id: &str,
+    source_kind: Option<&str>,
+    source_dir_key: Option<&str>,
+) -> Result<SessionTurnReasoningEfforts, String> {
+    let mut map = HashMap::new();
+    let Some(resolved_source_kind) =
+        resolve_session_source_kind(conn, assistant, session_id, source_kind, source_dir_key)?
+    else {
+        return Ok(map);
+    };
+
+    let mut sql = String::from(
+        "SELECT turn_no, model,
+                CASE
+                    WHEN COUNT(DISTINCT reasoning_effort) + MAX(reasoning_effort IS NULL) = 1
+                    THEN NULLIF(MIN(reasoning_effort), '')
+                    ELSE NULL
+                END
+         FROM usage_entries
+         WHERE assistant_type = ? AND session_id = ? AND source_kind = ?
+           AND model IS NOT NULL AND model != ''",
+    );
+    let mut params_vec: Vec<rusqlite::types::Value> = vec![
+        rusqlite::types::Value::Text(assistant.to_string()),
+        rusqlite::types::Value::Text(session_id.to_string()),
+        rusqlite::types::Value::Text(resolved_source_kind),
+    ];
+    if let Some(key) = source_dir_key {
+        sql.push_str(" AND source_dir_key = ?");
+        params_vec.push(rusqlite::types::Value::Text(key.to_string()));
+    } else {
+        sql.push_str(" AND source_dir_key IS NULL");
+    }
+    sql.push_str(" GROUP BY turn_no, model ORDER BY turn_no ASC, model ASC");
+
+    let mut stmt = conn.prepare(&sql).map_err(|error| error.to_string())?;
+    let rows = stmt
+        .query_map(rusqlite::params_from_iter(params_vec), |row| {
+            Ok((
+                row.get::<_, i64>(0)? as u32,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+            ))
+        })
+        .map_err(|error| error.to_string())?;
+    for row in rows {
+        let (turn_no, model, effort) = row.map_err(|error| error.to_string())?;
+        map.entry(turn_no)
+            .or_insert_with(HashMap::new)
+            .insert(model, effort);
+    }
+    Ok(map)
 }
 
 fn add_optional_token_total(current: &mut Option<u64>, incoming: Option<u64>) {
@@ -19280,5 +19444,264 @@ mod tests {
         );
 
         let _ = fs::remove_dir_all(root);
+    }
+    #[test]
+    fn claude_effort_migration_resets_source_cursors_without_deleting_usage() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        init_db(&conn).unwrap();
+        for filename in [
+            "claude-default:projects/source-a/session.jsonl",
+            "claude-profile:work:projects/source-b/session.jsonl",
+            "claude-source:abcdef:projects/source-c/session.jsonl",
+            "claude:legacy-transcript",
+            "codex:unrelated-rollout.jsonl",
+        ] {
+            conn.execute(
+                "INSERT INTO sync_state (filename, last_synced_size, last_synced_time)
+                 VALUES (?, 1, 1)",
+                params![filename],
+            )
+            .unwrap();
+        }
+        conn.execute(
+            "INSERT INTO usage_entries (
+                assistant_type, source_kind, timestamp, date, session_id, turn_no
+             ) VALUES ('claude', 'claude-profile:work', '2026-07-22T10:00:00Z',
+                       '2026-07-22', 'old-session', 1)",
+            [],
+        )
+        .unwrap();
+
+        run_claude_effort_parser_migration(&mut conn).unwrap();
+        let claude_cursor_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sync_state
+                 WHERE filename LIKE 'claude:%' OR filename LIKE 'claude-%:%'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let codex_cursor_exists: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sync_state WHERE filename = 'codex:unrelated-rollout.jsonl')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let preserved_usage_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM usage_entries WHERE assistant_type = 'claude' AND session_id = 'old-session'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(claude_cursor_count, 0);
+        assert!(codex_cursor_exists);
+        assert_eq!(preserved_usage_count, 1);
+
+        conn.execute(
+            "INSERT INTO sync_state (filename, last_synced_size, last_synced_time)
+             VALUES ('claude-default:new-transcript', 1, 1)",
+            [],
+        )
+        .unwrap();
+        run_claude_effort_parser_migration(&mut conn).unwrap();
+        let cursor_after_second_run: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sync_state WHERE filename = 'claude-default:new-transcript')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(
+            cursor_after_second_run,
+            "the cursor reset must be a one-time reparse, not delete fresh cursors"
+        );
+    }
+
+    #[test]
+    fn session_turn_efforts_are_scoped_by_source_and_model_and_hide_conflicts() {
+        let conn = Connection::open_in_memory().unwrap();
+        init_db(&conn).unwrap();
+        let insert = |source_dir_key: &str,
+                      turn_no: i64,
+                      model: &str,
+                      effort: Option<&str>,
+                      identity: &str| {
+            conn.execute(
+                "INSERT INTO usage_entries (
+                    assistant_type, source_kind, source_dir_key, usage_identity,
+                    timestamp, date, session_id, turn_no, model, reasoning_effort
+                 ) VALUES ('copilot', 'copilot-app', ?, ?, '2026-07-22T10:00:00Z',
+                           '2026-07-22', 'shared-session', ?, ?, ?)",
+                params![source_dir_key, identity, turn_no, model, effort],
+            )
+            .unwrap();
+        };
+        insert("source-a", 1, "main-model", Some("high"), "a-main");
+        insert("source-a", 1, "child-model", Some("low"), "a-child-known");
+        insert("source-a", 1, "child-model", None, "a-child-missing");
+        insert("source-b", 1, "main-model", Some("low"), "b-main");
+
+        let efforts = get_session_turn_reasoning_efforts(
+            &conn,
+            "copilot",
+            "shared-session",
+            Some("copilot-app"),
+            Some("source-a"),
+        )
+        .unwrap();
+        assert_eq!(
+            efforts.get(&1).and_then(|models| models.get("main-model")),
+            Some(&Some("high".to_string()))
+        );
+        assert_eq!(
+            efforts.get(&1).and_then(|models| models.get("child-model")),
+            Some(&None),
+            "a mixed known/missing set must not select one effort"
+        );
+        assert!(
+            efforts
+                .get(&1)
+                .is_none_or(|models| !models.contains_key("cross-source-model")),
+            "rows from another source directory must not enter this detail view"
+        );
+    }
+
+    #[test]
+    fn copilot_cli_effort_is_kept_only_for_unanimous_agent_model_groups() {
+        let base_dir = temp_jsonl_path("copilot-cli-effort").with_extension("");
+        let app_dir = base_dir.join("copilot");
+        fs::create_dir_all(&app_dir).unwrap();
+        let session_id = "effort-session";
+        let store = build_cli_reconciler_fixture(&app_dir, &[], &[session_id]);
+        let event_data = [
+            (1, "gpt-5.4", None, "2026-07-22T10:00:01", "high"),
+            (2, "gpt-5.4", None, "2026-07-22T10:00:02", "high"),
+            (
+                3,
+                "gpt-5.4",
+                Some("child-agent"),
+                "2026-07-22T10:00:03",
+                "low",
+            ),
+            (4, "gpt-5.5", None, "2026-07-22T10:00:04", "high"),
+            (5, "gpt-5.5", None, "2026-07-22T10:00:05", "low"),
+        ];
+        for (id, model, agent_id, created_at, effort) in event_data {
+            insert_cli_event(
+                &store,
+                CliEventIdentity {
+                    id,
+                    session_id,
+                    model,
+                    agent_id,
+                    initiator: agent_id.map(|_| "sub-agent"),
+                },
+                CliEventTokens {
+                    input: 10,
+                    output: 2,
+                    cache_read: 0,
+                    cache_write: 0,
+                    reasoning: 0,
+                    duration_ms: 1,
+                },
+                created_at,
+            );
+            store
+                .execute(
+                    "UPDATE assistant_usage_events SET reasoning_effort = ? WHERE id = ?",
+                    params![effort, id],
+                )
+                .unwrap();
+        }
+        drop(store);
+
+        let mut conn = Connection::open_in_memory().unwrap();
+        init_db(&conn).unwrap();
+        sync_copilot_cli_agent_usage_logs_from(&mut conn, &app_dir).unwrap();
+        let rows = {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT session_id, model, reasoning_effort
+                     FROM usage_entries
+                     WHERE assistant_type = 'copilot' AND source_kind = 'copilot-cli'
+                       AND (session_id = ? OR session_id LIKE ? ESCAPE '\\')
+                     ORDER BY session_id, model",
+                )
+                .unwrap();
+            stmt.query_map(params![session_id, format!("{}\\__%", session_id)], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                ))
+            })
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
+        };
+        assert_eq!(
+            rows,
+            vec![
+                (
+                    "effort-session".to_string(),
+                    Some("gpt-5.4".to_string()),
+                    Some("high".to_string())
+                ),
+                (
+                    "effort-session".to_string(),
+                    Some("gpt-5.5".to_string()),
+                    None
+                ),
+                (
+                    "effort-session__child-agent".to_string(),
+                    Some("gpt-5.4".to_string()),
+                    Some("low".to_string())
+                ),
+            ]
+        );
+        let _ = fs::remove_dir_all(base_dir);
+    }
+
+    #[test]
+    fn copilot_app_effort_keeps_unanimous_turns_and_omits_conflicts() {
+        let root = temp_jsonl_path("copilot-app-effort").with_extension("");
+        fs::create_dir_all(&root).unwrap();
+        let store = create_test_copilot_session_store(&root);
+        for (id, turn, effort) in [
+            (1, 0, Some("high")),
+            (2, 0, Some("high")),
+            (3, 1, Some("high")),
+            (4, 1, Some("low")),
+            (5, 2, Some("high")),
+            (6, 2, None),
+        ] {
+            insert_test_copilot_event(&store, id, "app-effort", turn, "2026-10-05 10:00:00");
+            store
+                .execute(
+                    "UPDATE assistant_usage_events SET reasoning_effort = ? WHERE id = ?",
+                    params![effort, id],
+                )
+                .unwrap();
+        }
+        drop(store);
+        create_copilot_app_registry(&root, &["app-effort"]);
+        let mut conn = Connection::open_in_memory().unwrap();
+        init_db(&conn).unwrap();
+        sync_copilot_app_usage_logs_from(&mut conn, &root).unwrap();
+        let efforts: Vec<Option<String>> = conn
+            .prepare(
+                "SELECT reasoning_effort FROM usage_entries
+             WHERE assistant_type='copilot' AND source_kind='copilot-app'
+             ORDER BY turn_no",
+            )
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(efforts, vec![Some("high".to_string()), None, None]);
+        fs::remove_dir_all(root).unwrap();
     }
 }

@@ -5,6 +5,7 @@ import {
   compareSessionRows,
   filterEntriesBySessionIdentity,
   formatSessionModelDisplay,
+  renderReasoningEffortBadge,
   matchesSessionIdentity,
   parentSessionIdentityKey,
   sessionIdentityKey,
@@ -119,40 +120,44 @@ test('raw usage filtering preserves the full session source identity', () => {
   assert.deepEqual(filterEntriesBySessionIdentity(entries, sessions), [entries[0]]);
 });
 
-test('OMP model display appends reasoning effort after the provider and model', () => {
-  assert.equal(
-    formatSessionModelDisplay('claude/opus-5-5', 'high', 'omp'),
-    'claude/opus-5-5:high',
-  );
-  assert.equal(
-    formatSessionModelDisplay('claude/opus-5-5:cloud', 'high', 'omp'),
-    'claude/opus-5-5:cloud:high',
-  );
-  assert.equal(
-    formatSessionModelDisplay('claude/opus-5-5:high', 'high', 'omp'),
-    'claude/opus-5-5:high',
-  );
-});
+test('model display preserves provider IDs without appending reasoning effort', () => {
+  const models = [
+    ['omp', 'claude/opus-5-5:cloud'],
+    ['claude', 'claude-opus-4-5'],
+    ['codex', 'openai/gpt-5.3-codex'],
+    ['copilot', 'glm-5.3'],
+    ['copilot', 'deepseek-v4.1-flash'],
+    ['antigravity', 'gemini-3-pro-preview'],
+    ['all', 'openai/gpt-5.3-codex'],
+  ];
 
-test('OMP model display preserves unknown models and blank effort labels', () => {
+  models.forEach(([assistantType, model]) => {
+    assert.equal(formatSessionModelDisplay(model, 'high', assistantType), model);
+  });
   assert.equal(formatSessionModelDisplay('', 'high', 'omp'), '');
-  assert.equal(
-    formatSessionModelDisplay('unknown-provider/unknown-model', '', 'omp'),
-    'unknown-provider/unknown-model',
-  );
-  assert.equal(
-    formatSessionModelDisplay('unknown-provider/unknown-model', 'medium', 'omp'),
-    'unknown-provider/unknown-model:medium',
-  );
+  assert.equal(formatSessionModelDisplay(null, 'high', 'codex'), '');
 });
 
-test('non-OMP model labels stay unchanged and the formatter does not escape HTML', () => {
-  assert.equal(
-    formatSessionModelDisplay('claude/<opus-5-5>', '<high>', 'claude'),
-    'claude/<opus-5-5>',
-  );
-  assert.equal(
-    formatSessionModelDisplay('claude/<opus-5-5>', '<high>', 'omp'),
-    'claude/<opus-5-5>:<high>',
-  );
+test('reasoning effort badge has visible text and an accessible label', () => {
+  const badge = renderReasoningEffortBadge('high', 'Reasoning Effort');
+
+  assert.match(badge, /class="badge reasoning-effort-badge"/);
+  assert.match(badge, /title="Reasoning Effort: high"/);
+  assert.match(badge, /aria-label="Reasoning Effort: high"/);
+  assert.match(badge, /class="reasoning-effort-icon"[^>]*aria-hidden="true"/);
+  assert.match(badge, /class="reasoning-effort-value">high<\/span>/);
+});
+
+test('reasoning effort badge omits missing or blank values', () => {
+  assert.equal(renderReasoningEffortBadge(undefined, 'Reasoning Effort'), '');
+  assert.equal(renderReasoningEffortBadge(null, 'Reasoning Effort'), '');
+  assert.equal(renderReasoningEffortBadge('  ', 'Reasoning Effort'), '');
+});
+
+test('reasoning effort badge escapes effort and label text in markup and attributes', () => {
+  const badge = renderReasoningEffortBadge('<high & "low">', 'Effort <label>');
+
+  assert.match(badge, /aria-label="Effort &lt;label&gt;: &lt;high &amp; &quot;low&quot;&gt;"/);
+  assert.match(badge, /class="reasoning-effort-value">&lt;high &amp; &quot;low&quot;&gt;<\/span>/);
+  assert.doesNotMatch(badge, /<high/);
 });

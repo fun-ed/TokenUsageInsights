@@ -215,7 +215,6 @@ pub(super) fn parse_codex_session_file_with_diagnostics(
     let mut agent_nickname: Option<String> = None;
     let mut agent_role: Option<String> = None;
     let mut current_model = "GPT-5.3-Codex".to_string();
-    let mut reasoning_effort: Option<String> = None;
     let mut source_kind = CODEX_OTHER_SOURCE_KIND.to_string();
     let mut session_identity_locked = false;
 
@@ -292,12 +291,6 @@ pub(super) fn parse_codex_session_file_with_diagnostics(
             if let Some(model) = payload.get("model").and_then(|model| model.as_str()) {
                 current_model = model.to_string();
             }
-            reasoning_effort = payload
-                .get("effort")
-                .or_else(|| payload.get("reasoning_effort"))
-                .and_then(|effort| effort.as_str())
-                .map(|effort| effort.to_string())
-                .or(reasoning_effort);
         }
 
         match (event_type, payload_type) {
@@ -354,7 +347,7 @@ pub(super) fn parse_codex_session_file_with_diagnostics(
 
     let mut results = Vec::new();
     let mut model_for_turn = current_model.clone();
-    let mut effort_for_turn = reasoning_effort.clone();
+    let mut effort_for_turn: Option<String> = None;
     let mut previous_total_usage: Option<CodexTokenUsage> = None;
 
     for event in events {
@@ -377,9 +370,8 @@ pub(super) fn parse_codex_session_file_with_diagnostics(
             effort_for_turn = payload
                 .get("effort")
                 .or_else(|| payload.get("reasoning_effort"))
-                .and_then(|effort| effort.as_str())
-                .map(|effort| effort.to_string())
-                .or(effort_for_turn);
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string);
             continue;
         }
 
@@ -717,5 +709,46 @@ mod tests {
         assert_eq!(blank_lines.malformed_lines, 0, "blank lines are not damage");
 
         let _ = fs::remove_file(&path);
+    }
+    #[test]
+    fn parse_codex_session_file_tracks_turn_context_effort_and_clears_missing_or_null() {
+        let path = temp_jsonl_path("codex-effort");
+        let content = r#"{"type":"session_meta","payload":{"id":"session-effort","model":"gpt-5.5"}}
+{"timestamp":"2026-09-30T10:00:00Z","type":"turn_context","payload":{"model":"gpt-5.4","effort":"high"}}
+{"timestamp":"2026-09-30T10:00:01Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":10,"output_tokens":2,"total_tokens":12}}}}
+{"timestamp":"2026-09-30T10:01:00Z","type":"turn_context","payload":{"model":"gpt-5.3","reasoning_effort":"low"}}
+{"timestamp":"2026-09-30T10:01:01Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":20,"output_tokens":4,"total_tokens":24}}}}
+{"timestamp":"2026-09-30T10:02:00Z","type":"turn_context","payload":{"model":"gpt-5.2","effort":null}}
+{"timestamp":"2026-09-30T10:02:01Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":30,"output_tokens":6,"total_tokens":36}}}}
+{"timestamp":"2026-09-30T10:03:00Z","type":"turn_context","payload":{"model":"gpt-5.0"}}
+{"timestamp":"2026-09-30T10:03:01Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":40,"output_tokens":8,"total_tokens":48}}}}
+"#;
+        fs::write(&path, content).unwrap();
+
+        let entries = parse_codex_session_file_with_diagnostics(&path)
+            .unwrap()
+            .entries;
+        let _ = fs::remove_file(&path);
+
+        assert_eq!(entries.len(), 4);
+        assert_eq!(
+            entries
+                .iter()
+                .map(|entry| entry.model.as_deref())
+                .collect::<Vec<_>>(),
+            vec![
+                Some("gpt-5.4"),
+                Some("gpt-5.3"),
+                Some("gpt-5.2"),
+                Some("gpt-5.0")
+            ]
+        );
+        assert_eq!(
+            entries
+                .iter()
+                .map(|entry| entry.reasoning_effort.as_deref())
+                .collect::<Vec<_>>(),
+            vec![Some("high"), Some("low"), None, None]
+        );
     }
 }

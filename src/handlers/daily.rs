@@ -91,7 +91,7 @@ fn aggregate_usage_details(
             parent_session_id: last_entry.parent_session_id.clone(),
             agent_nickname: last_entry.agent_nickname.clone(),
             agent_role: last_entry.agent_role.clone(),
-            reasoning_effort: last_entry.reasoning_effort.clone(),
+            reasoning_effort: session_usage.display_reasoning_effort.clone(),
             has_manifest_auto: s_entries.iter().any(|entry| {
                 entry
                     .session_pricing
@@ -632,6 +632,48 @@ mod tests {
             agent_role: None,
             reasoning_effort: None,
             session_pricing: None,
+        }
+    }
+
+    #[test]
+    fn all_harness_session_summaries_preserve_model_effort_pairs() {
+        let mut rows = Vec::new();
+        for (assistant, model, effort) in [
+            ("omp", "deepseek/deepseek-v4.1", "high"),
+            ("claude", "claude-opus-5-5", "medium"),
+            ("codex", "gpt-6.1-sol", "xhigh"),
+            ("copilot", "glm-5.3", "low"),
+        ] {
+            let tokens = TokenStats {
+                input: 10,
+                output: 5,
+                cache_read: None,
+                cache_write: None,
+                cache_write_5m: None,
+                cache_write_1h: None,
+                reasoning: None,
+                total: 15,
+            };
+            let mut entry =
+                delta_usage_entry("shared-session-id", 1, model, tokens.clone(), tokens);
+            entry.source_kind = Some(format!("{assistant}-session"));
+            entry.reasoning_effort = Some(effort.to_string());
+            rows.push(usage_day_record(entry, assistant));
+        }
+        let (summary, sessions, _) =
+            aggregate_usage_details(&rows, &PreparedPricingRules::from_rules(vec![]));
+        assert_eq!(summary.total_sessions, 4);
+        assert_eq!(summary.total_tokens, 60);
+        for row in rows {
+            let session = sessions
+                .iter()
+                .find(|session| session.assistant_type == row.assistant_type)
+                .unwrap();
+            assert_eq!(
+                Some(session.model.as_str()),
+                row.record.entry.model.as_deref()
+            );
+            assert_eq!(session.reasoning_effort, row.record.entry.reasoning_effort);
         }
     }
 

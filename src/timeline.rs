@@ -953,6 +953,7 @@ pub fn parse_codex_timeline(
     metadata: &mut HashMap<String, serde_json::Value>,
 ) {
     let mut current_model = "GPT-5.3-Codex".to_string();
+    let mut current_context_model: Option<String> = None;
     let mut current_turn_no = 0u32;
     let mut next_agent_turn_no = 1u32;
     let mut tool_calls_map: HashMap<String, usize> = HashMap::new();
@@ -1011,6 +1012,7 @@ pub fn parse_codex_timeline(
                 }
                 if let Some(model) = payload.get("model").and_then(|m| m.as_str()) {
                     current_model = model.to_string();
+                    current_context_model = Some(model.to_string());
                 }
                 timeline.push(TimelineItem::SystemStatus {
                     timestamp,
@@ -1026,13 +1028,15 @@ pub fn parse_codex_timeline(
                 }
                 if let Some(model) = payload.get("model").and_then(|m| m.as_str()) {
                     current_model = model.to_string();
+                    current_context_model = Some(model.to_string());
+                } else {
+                    current_context_model = None;
                 }
                 reasoning_effort = payload
                     .get("effort")
                     .or_else(|| payload.get("reasoning_effort"))
-                    .and_then(|effort| effort.as_str())
-                    .map(|effort| effort.to_string())
-                    .or(reasoning_effort);
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_string);
             }
             "event_msg" => match payload_type {
                 "user_message" => {
@@ -1072,6 +1076,12 @@ pub fn parse_codex_timeline(
                         } else {
                             None
                         };
+                        let reply_effort =
+                            if current_context_model.as_deref() == Some(current_model.as_str()) {
+                                reasoning_effort.clone()
+                            } else {
+                                None
+                            };
                         timeline.push(TimelineItem::AgentReply {
                             timestamp,
                             reply,
@@ -1080,7 +1090,7 @@ pub fn parse_codex_timeline(
                             model: current_model.clone(),
                             tokens,
                             duration_ms: None,
-                            reasoning_effort: reasoning_effort.clone(),
+                            reasoning_effort: reply_effort,
                         });
                     }
                 }
@@ -1137,6 +1147,13 @@ pub fn parse_codex_timeline(
                                 } else {
                                     None
                                 };
+                                let reply_effort = if current_context_model.as_deref()
+                                    == Some(current_model.as_str())
+                                {
+                                    reasoning_effort.clone()
+                                } else {
+                                    None
+                                };
                                 timeline.push(TimelineItem::AgentReply {
                                     timestamp,
                                     reply,
@@ -1145,7 +1162,7 @@ pub fn parse_codex_timeline(
                                     model: current_model.clone(),
                                     tokens,
                                     duration_ms: None,
-                                    reasoning_effort: reasoning_effort.clone(),
+                                    reasoning_effort: reply_effort,
                                 });
                             }
                         }
@@ -1358,9 +1375,14 @@ pub fn parse_claude_timeline(
             continue;
         }
 
-        if let Some(model) = message.get("model").and_then(|m| m.as_str()) {
-            current_model = model.to_string();
+        let response_model = message
+            .get("model")
+            .and_then(|m| m.as_str())
+            .map(str::to_string);
+        if let Some(model) = &response_model {
+            current_model = model.clone();
         }
+        let response_effort = crate::db::claude_effort_for_assistant_event(&event);
 
         let request_key = event
             .get("requestId")
@@ -1420,7 +1442,13 @@ pub fn parse_claude_timeline(
                                     model: current_model.clone(),
                                     tokens,
                                     duration_ms: None,
-                                    reasoning_effort: None,
+                                    reasoning_effort: if response_model.as_deref()
+                                        == Some(current_model.as_str())
+                                    {
+                                        response_effort.clone()
+                                    } else {
+                                        None
+                                    },
                                 });
                                 reasoning_parts.clear();
                             }
@@ -1469,7 +1497,13 @@ pub fn parse_claude_timeline(
                         model: current_model.clone(),
                         tokens,
                         duration_ms: None,
-                        reasoning_effort: None,
+                        reasoning_effort: if response_model.as_deref()
+                            == Some(current_model.as_str())
+                        {
+                            response_effort
+                        } else {
+                            None
+                        },
                     });
                 }
             }
@@ -2158,6 +2192,123 @@ mod tests {
             "AgentReply.model must follow subagent.started model, got {:?}",
             reply_models
         );
+        let _ = fs::remove_file(path);
+    }
+    #[test]
+    fn codex_timeline_tracks_turn_effort_and_only_pairs_matching_models() {
+        let events = vec![
+            r#"{"type":"session_meta","payload":{"model":"session-model"}}"#,
+            r#"{"type":"turn_context","payload":{"model":"gpt-5.4","effort":"high"}}"#,
+            r#"{"type":"event_msg","timestamp":"u1","payload":{"type":"user_message","message":"first prompt"}}"#,
+            r#"{"type":"event_msg","timestamp":"a1","payload":{"type":"agent_message","message":"first reply"}}"#,
+            r#"{"type":"turn_context","payload":{"model":"gpt-5.2","reasoning_effort":"low"}}"#,
+            r#"{"type":"event_msg","timestamp":"u2","payload":{"type":"user_message","message":"second prompt"}}"#,
+            r#"{"type":"event_msg","timestamp":"a2","payload":{"type":"agent_message","message":"second reply"}}"#,
+            r#"{"type":"turn_context","payload":{"model":"gpt-5.1","effort":null}}"#,
+            r#"{"type":"event_msg","timestamp":"u3","payload":{"type":"user_message","message":"third prompt"}}"#,
+            r#"{"type":"event_msg","timestamp":"a3","payload":{"type":"agent_message","message":"third reply"}}"#,
+            r#"{"type":"turn_context","payload":{"model":"gpt-5.0","effort":"high"}}"#,
+            r#"{"type":"event_msg","timestamp":"u4","payload":{"type":"user_message","message":"fourth prompt"}}"#,
+            r#"{"type":"event_msg","timestamp":"a4","payload":{"type":"agent_message","message":"fourth reply"}}"#,
+            r#"{"type":"turn_context","payload":{"model":"gpt-4.9"}}"#,
+            r#"{"type":"event_msg","timestamp":"u5","payload":{"type":"user_message","message":"fifth prompt"}}"#,
+            r#"{"type":"event_msg","timestamp":"a5","payload":{"type":"agent_message","message":"fifth reply"}}"#,
+        ];
+        let make_stats = || TokenStats {
+            input: 0,
+            output: 0,
+            cache_read: None,
+            cache_write: None,
+            cache_write_5m: None,
+            cache_write_1h: None,
+            reasoning: None,
+            total: 0,
+        };
+        let db_entries = HashMap::from([
+            (1, (make_stats(), "gpt-5.4".to_string())),
+            (2, (make_stats(), "gpt-5.2".to_string())),
+            (3, (make_stats(), "gpt-5.1".to_string())),
+            (4, (make_stats(), "database-model".to_string())),
+            (5, (make_stats(), "gpt-4.9".to_string())),
+        ]);
+        let (reader, path) = reader_for_events(&events);
+        let mut timeline = Vec::new();
+        let mut metadata = HashMap::new();
+        parse_codex_timeline(reader, &db_entries, &mut timeline, &mut metadata);
+
+        let replies = timeline
+            .iter()
+            .filter_map(|item| match item {
+                TimelineItem::AgentReply {
+                    model,
+                    reasoning_effort,
+                    ..
+                } => Some((model.clone(), reasoning_effort.clone())),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            replies,
+            vec![
+                ("gpt-5.4".to_string(), Some("high".to_string())),
+                ("gpt-5.2".to_string(), Some("low".to_string())),
+                ("gpt-5.1".to_string(), None),
+                ("database-model".to_string(), None),
+                ("gpt-4.9".to_string(), None),
+            ]
+        );
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn claude_timeline_shows_response_effort_and_omits_db_model_mismatch() {
+        let events = vec![
+            r#"{"type":"assistant","timestamp":"t1","requestId":"request-1","effort":"high","perTurnEffort":null,"message":{"id":"message-1","role":"assistant","model":"claude-model","content":[{"type":"text","text":"reply"}]}}"#,
+        ];
+        let (reader, path) = reader_for_events(&events);
+        let mut timeline = Vec::new();
+        let mut metadata = HashMap::new();
+        parse_claude_timeline(reader, &HashMap::new(), &mut timeline, &mut metadata);
+        let matching_effort = timeline.iter().find_map(|item| match item {
+            TimelineItem::AgentReply {
+                model,
+                reasoning_effort,
+                ..
+            } if model == "claude-model" => reasoning_effort.as_deref(),
+            _ => None,
+        });
+        assert_eq!(matching_effort, Some("high"));
+        let _ = fs::remove_file(path);
+
+        let (reader, path) = reader_for_events(&events);
+        let db_entries = HashMap::from([(
+            1,
+            (
+                TokenStats {
+                    input: 1,
+                    output: 1,
+                    cache_read: None,
+                    cache_write: None,
+                    cache_write_5m: None,
+                    cache_write_1h: None,
+                    reasoning: None,
+                    total: 2,
+                },
+                "database-model".to_string(),
+            ),
+        )]);
+        let mut timeline = Vec::new();
+        let mut metadata = HashMap::new();
+        parse_claude_timeline(reader, &db_entries, &mut timeline, &mut metadata);
+        let mismatched_effort = timeline.iter().find_map(|item| match item {
+            TimelineItem::AgentReply {
+                model,
+                reasoning_effort,
+                ..
+            } if model == "database-model" => Some(reasoning_effort.clone()),
+            _ => None,
+        });
+        assert_eq!(mismatched_effort, Some(None));
         let _ = fs::remove_file(path);
     }
 }

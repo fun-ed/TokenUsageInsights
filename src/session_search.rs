@@ -148,6 +148,7 @@ pub(crate) fn search_user_prompts(
             &session.source_kind,
             &filepath,
             &db_entries,
+            &HashMap::new(),
             session.agent_nickname.as_deref(),
             session.model.as_deref(),
         ) {

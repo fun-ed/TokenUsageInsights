@@ -73,6 +73,7 @@ pub(crate) struct SessionUsageAggregation {
     pub usage: UsageAggregation,
     pub models: Vec<ModelUsageAggregation>,
     pub display_model: String,
+    pub display_reasoning_effort: Option<String>,
 }
 
 #[derive(Serialize, Default, Clone)]
@@ -341,6 +342,8 @@ pub(crate) fn summarize_session_usage(
         .and_then(entry_model)
         .unwrap_or("Unknown Model")
         .to_string();
+    result.display_reasoning_effort =
+        display_entry.and_then(|entry| entry.reasoning_effort.clone());
     result
 }
 
@@ -1069,7 +1072,7 @@ mod tests {
                 output_price: 4.0,
             },
         ];
-        let entries = vec![
+        let mut entries = vec![
             summary_entry(
                 1,
                 "claude-opus-4-8",
@@ -1084,6 +1087,8 @@ mod tests {
             ),
             summary_entry(3, "<synthetic>", token_stats(0, 0, 0), true),
         ];
+        entries[1].reasoning_effort = Some("high".to_string());
+        entries[2].reasoning_effort = Some("low".to_string());
 
         let result =
             summarize_session_usage(&PreparedPricingRules::from_rules(rules.into()), &entries);
@@ -1091,6 +1096,7 @@ mod tests {
         assert!((result.usage.cost_usd - 1.74).abs() < 1e-9);
         assert_eq!(result.usage.total_tokens, 465_000);
         assert_eq!(result.display_model, "claude-fable-5");
+        assert_eq!(result.display_reasoning_effort.as_deref(), Some("high"));
         assert_eq!(result.models.len(), 2);
         assert!(result
             .models

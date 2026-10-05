@@ -15,8 +15,9 @@ import {
   sessionIdentityKey,
   SESSION_PRICING_MODELS,
   buildSessionPricingPayload,
+  renderReasoningEffortBadge,
   formatSessionModelDisplay,
-} from './session-utils.js?v=6';
+} from './session-utils.js?v=7';
 import { parseUsageTimestamp } from './time-utils.js?v=1';
 import { getClaudeSessionSourceBadge, getOmpSessionSourceBadge } from './source-utils.js?v=2';
 
@@ -4891,7 +4892,8 @@ function renderSessionTable(sessions) {
       `;
     }
 
-    const modelDisplay = formatSessionModelDisplay(s.model, s.reasoning_effort, s.assistant_type);
+    const modelDisplay = formatSessionModelDisplay(s.model);
+    const reasoningEffortBadge = renderReasoningEffortBadge(s.reasoning_effort, t('drawer_effort'));
 
     const sessionPricingControl = getSessionPricingControl(s, sessionIndex);
 
@@ -4904,9 +4906,9 @@ function renderSessionTable(sessions) {
       ${astColumn}
       <td class="model-column">
         <div class="model-cell-content">
-          <span class="badge highlight">${escapeHtml(modelDisplay)}</span>
+          <span class="badge highlight" title="${escapeHtml(modelDisplay)}">${escapeHtml(modelDisplay)}</span>
           ${modelSourceBadge}
-          ${s.reasoning_effort && s.assistant_type !== 'omp' ? `<span class="badge" style="background: rgba(127, 142, 163, 0.15); color: #aeb9c8; font-size: 11px; font-weight: 600;">${escapeHtml(s.reasoning_effort)}</span>` : ''}
+          ${reasoningEffortBadge}
         </div>
       </td>
       <td><span class="badge">${s.max_turn_no}</span></td>
@@ -5126,7 +5128,9 @@ function renderTimeline(data) {
   document.getElementById('meta-cwd').textContent = displayCwd;
   document.getElementById('meta-cwd').title = displayCwd;
   document.getElementById('meta-branch').textContent = metadata.git_branch || '-';
-  document.getElementById('meta-model').textContent = finalModel;
+  const metaModel = document.getElementById('meta-model');
+  metaModel.textContent = finalModel;
+  metaModel.title = finalModel;
   document.getElementById('meta-repo').textContent = metadata.repository || '-';
   document.getElementById('meta-repo').title = metadata.repository || '';
 
@@ -5149,12 +5153,9 @@ function renderTimeline(data) {
 
   const metaEffort = document.getElementById('meta-effort');
   if (metaEffort) {
-    if (metadata.reasoning_effort) {
-      metaEffort.textContent = metadata.reasoning_effort;
-      metaEffort.style.display = 'inline-block';
-    } else {
-      metaEffort.style.display = 'none';
-    }
+    const effortBadge = renderReasoningEffortBadge(metadata.reasoning_effort, t('drawer_effort'));
+    metaEffort.innerHTML = effortBadge;
+    metaEffort.style.display = effortBadge ? 'inline-flex' : 'none';
   }
 
   // 取得最終使用的 Token 數據（若單一 session events 日誌無 token stats，則使用列表正確累積數據）
@@ -5288,9 +5289,8 @@ function renderTimeline(data) {
         const turnNo = item.event_data.turn_no || currentTurnNo;
         const reasoningEffort = item.event_data.reasoning_effort;
         const finalAssistantType = metadata.assistant_type || currentSessionAssistantType || currentAssistant;
-        const modelDisplay = finalAssistantType === 'omp'
-          ? formatSessionModelDisplay(model, reasoningEffort, finalAssistantType)
-          : reasoningEffort ? `${model} (${t('drawer_effort')}: ${reasoningEffort})` : model;
+        const modelDisplay = formatSessionModelDisplay(model);
+        const reasoningEffortBadge = renderReasoningEffortBadge(reasoningEffort, t('drawer_effort'));
 
         let senderLogoHtml = '';
         let senderNameText = 'AGENT';
@@ -5340,7 +5340,9 @@ function renderTimeline(data) {
             <div class="bubble-header">
               <div class="header-left">
                 <span class="turn-no-badge">#${turnNo}</span>
-                <span class="sender">${senderLogoHtml} ${senderNameText} (${escapeHtml(modelDisplay)})</span>
+                <span class="sender">${senderLogoHtml} ${senderNameText}</span>
+                ${modelDisplay ? `<span class="reply-model" title="${escapeHtml(modelDisplay)}">${escapeHtml(modelDisplay)}</span>` : ''}
+                ${reasoningEffortBadge}
               </div>
               <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
                 ${copyButtonHtml}
@@ -6252,14 +6254,29 @@ function renderModelSessionDrilldown(sessions) {
                   const name = session.session_name || session.session_id;
                   const cwd = session.cwd || t('unknown_cwd');
                   const time = formatLocalTime(session.timestamp, true) || '—';
+                  const sessionModel = formatSessionModelDisplay(session.session_model || session.model || '');
+                  const sessionEffort = session.reasoning_effort;
+                  const modelEffortBadge = renderReasoningEffortBadge(sessionEffort, t('drawer_effort'));
+                  const sessionAriaLabel = [
+                    `${t('open_session')}: ${name}`,
+                    sessionModel && `${t('drawer_model')}: ${sessionModel}`,
+                    sessionEffort && `${t('drawer_effort')}: ${sessionEffort}`,
+                  ].filter(Boolean).join(', ');
+                  const modelInfoRow = sessionModel || modelEffortBadge
+                    ? `<span class="model-session-model-row">
+                        ${sessionModel ? `<span class="badge highlight model-session-model-badge" title="${escapeHtml(sessionModel)}">${escapeHtml(sessionModel)}</span>` : ''}
+                        ${modelEffortBadge}
+                      </span>`
+                    : '';
                   return `
-                    <button type="button" class="model-session-link" data-session-id="${escapeHtml(session.session_id)}" data-assistant-type="${escapeHtml(session.assistant_type || '')}" data-source-kind="${escapeHtml(session.source_kind || '')}" data-source-dir-key="${escapeHtml(session.source_dir_key || '')}" aria-label="${escapeHtml(`${t('open_session')}: ${name}`)}">
+                    <button type="button" class="model-session-link" data-session-id="${escapeHtml(session.session_id)}" data-assistant-type="${escapeHtml(session.assistant_type || '')}" data-source-kind="${escapeHtml(session.source_kind || '')}" data-source-dir-key="${escapeHtml(session.source_dir_key || '')}" aria-label="${escapeHtml(sessionAriaLabel)}">
                       <span class="model-session-primary">
                         <span class="model-session-name-row">
                           <span class="model-session-name">${escapeHtml(name)}</span>
                           ${getAllScopeAgentBadge(session.assistant_type)}
                           ${getSessionSourceBadge(session)}
                         </span>
+                        ${modelInfoRow}
                         <span class="model-session-cwd" title="${escapeHtml(cwd)}">${escapeHtml(cwd)}</span>
                       </span>
                       <span class="model-session-time">${escapeHtml(time)}</span>
@@ -6321,7 +6338,7 @@ function appendModelSummaryRows(tbody, models, period) {
       <td>
         <button type="button" class="model-drilldown-toggle" aria-expanded="false" aria-controls="${detailsId}" title="${escapeHtml(t('model_drilldown_hint'))}">
           <span class="model-drilldown-chevron" aria-hidden="true">›</span>
-          <span class="badge highlight model-badge">${escapeHtml(model.model)}</span>
+          <span class="badge highlight model-badge" title="${escapeHtml(model.model)}">${escapeHtml(model.model)}</span>
           ${getCursorModeBadge(modelMode)}
         </button>
       </td>

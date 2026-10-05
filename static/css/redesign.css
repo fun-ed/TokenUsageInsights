@@ -839,6 +839,86 @@ input {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.reasoning-effort-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+  width: max-content;
+  max-width: none;
+  padding: 3px 7px;
+  border: 1px solid rgba(167, 139, 250, 0.28);
+  border-radius: var(--radius-sm);
+  background: rgba(167, 139, 250, 0.09);
+  color: var(--text-secondary);
+  font-size: 0.68rem;
+  font-weight: 650;
+  line-height: 1.2;
+  white-space: nowrap;
+  word-break: normal;
+  overflow-wrap: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.premium-table .reasoning-effort-badge {
+  display: inline-flex;
+  flex: 0 0 auto;
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
+.reasoning-effort-icon {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  color: var(--accent-purple);
+}
+
+.drawer-model-values {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+  margin-top: 4px;
+}
+
+.drawer-model-values #meta-model {
+  min-width: 0;
+  max-width: 100%;
+  margin-top: 0;
+}
+
+.drawer-model-values #meta-effort {
+  flex: 0 0 auto;
+}
+
+.assistant-bubble .bubble-header .header-left {
+  min-width: 0;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.reply-model {
+  display: inline-block;
+  min-width: 0;
+  max-width: min(100%, 24rem);
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: normal;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+}
+
 
 .cursor-mode-badge {
   flex: 0 0 auto;
@@ -891,6 +971,14 @@ input {
 .model-drilldown-toggle:hover .model-badge {
   border-color: color-mix(in srgb, var(--accent-cyan) 48%, transparent);
 }
+.model-drilldown-toggle .model-badge {
+  min-width: 0;
+  max-width: min(100%, 260px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 
 .model-drilldown-toggle:focus-visible,
 .model-date-button:focus-visible,
@@ -1017,6 +1105,24 @@ input {
 
 .model-session-name-row .source-badge {
   flex: 0 0 auto;
+  white-space: nowrap;
+}
+.model-session-model-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+  margin-top: 3px;
+}
+
+.model-session-model-badge {
+  display: inline-block;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: min(100%, 220px);
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 

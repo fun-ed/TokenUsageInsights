@@ -183,7 +183,7 @@ fn collect_model_session_details(
             parent_session_id: last_entry.parent_session_id.clone(),
             agent_nickname: last_entry.agent_nickname.clone(),
             agent_role: last_entry.agent_role.clone(),
-            reasoning_effort: last_entry.reasoning_effort.clone(),
+            reasoning_effort: session_usage.display_reasoning_effort.clone(),
         });
     }
 

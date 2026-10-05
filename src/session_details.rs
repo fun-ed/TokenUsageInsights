@@ -61,6 +61,7 @@ pub(crate) fn parse_session_timeline_file(
     source_kind: &str,
     filepath: &Path,
     db_entries: &HashMap<u32, (TokenStats, String)>,
+    turn_reasoning_efforts: &db::SessionTurnReasoningEfforts,
     copilot_agent_filter: Option<&str>,
     copilot_session_model: Option<&str>,
 ) -> SessionTimelineResult {
@@ -116,8 +117,52 @@ pub(crate) fn parse_session_timeline_file(
         "muse" => parse_muse_timeline(reader, db_entries, &mut timeline, &mut metadata),
         _ => return Err((StatusCode::BAD_REQUEST, "不支援的助理類型".to_string())),
     }
+    if assistant == "copilot" && source_kind == "copilot-app" {
+        enrich_copilot_app_timeline_efforts(&mut timeline, turn_reasoning_efforts);
+    }
+    let display_effort = metadata
+        .get("selected_model")
+        .and_then(serde_json::Value::as_str)
+        .and_then(|selected_model| {
+            timeline.iter().rev().find_map(|item| match item {
+                TimelineItem::AgentReply {
+                    model,
+                    reasoning_effort,
+                    ..
+                } if model == selected_model => Some(reasoning_effort.clone()),
+                _ => None,
+            })
+        })
+        .flatten();
+    if let Some(effort) = display_effort {
+        metadata.insert("reasoning_effort".to_string(), serde_json::json!(effort));
+    } else {
+        metadata.remove("reasoning_effort");
+    }
 
     Ok((timeline, metadata))
+}
+
+fn enrich_copilot_app_timeline_efforts(
+    timeline: &mut [TimelineItem],
+    turn_reasoning_efforts: &db::SessionTurnReasoningEfforts,
+) {
+    for item in timeline {
+        if let TimelineItem::AgentReply {
+            turn_no,
+            model,
+            reasoning_effort,
+            ..
+        } = item
+        {
+            if let Some(effort) = turn_reasoning_efforts
+                .get(turn_no)
+                .and_then(|models| models.get(model))
+            {
+                *reasoning_effort = effort.clone();
+            }
+        }
+    }
 }
 
 fn get_git_info(cwd: &str) -> (Option<String>, Option<String>) {
@@ -355,6 +400,7 @@ pub(crate) fn load_session_details(
     let session_cwd = session_data.cwd;
     let session_model = session_data.model;
     let db_entries = session_data.turn_stats;
+    let turn_reasoning_efforts = session_data.turn_reasoning_efforts;
 
     let agent_filter = (lookup.assistant_type == "copilot"
         && matches!(lookup.source_kind.as_str(), "copilot-app" | "copilot-cli"))
@@ -365,6 +411,7 @@ pub(crate) fn load_session_details(
         &lookup.source_kind,
         &filepath,
         &db_entries,
+        &turn_reasoning_efforts,
         agent_filter,
         session_model.as_deref(),
     )
@@ -644,6 +691,7 @@ mod tests {
             "copilot-cli",
             &resolved,
             &db_entries,
+            &HashMap::new(),
             Some(agent),
             Some("gpt-5.4-mini"),
         )
@@ -683,6 +731,83 @@ mod tests {
         assert!(
             !replies.iter().any(|r| r == "main agent reply"),
             "main agent reply must not leak into the subagent drawer"
+        );
+
+        let _ = fs::remove_dir_all(tmp);
+    }
+    #[test]
+    fn copilot_app_detail_effort_matches_turn_model_and_agent() {
+        let tmp = std::env::temp_dir().join(format!(
+            "app-effort-details-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&tmp).unwrap();
+        let filepath = tmp.join("events.jsonl");
+        let events = [
+            r#"{"type":"session.start","data":{"selectedModel":"main-model"}}"#,
+            r#"{"type":"user.message","data":{"content":"prompt"}}"#,
+            r#"{"type":"assistant.message","data":{"content":"main reply","model":"main-model"}}"#,
+            r#"{"type":"subagent.started","agentId":"child-agent","data":{"model":"child-model"}}"#,
+            r#"{"type":"assistant.message","agentId":"child-agent","data":{"content":"child reply","model":"child-model"}}"#,
+        ];
+        fs::write(&filepath, events.join("\n")).unwrap();
+        let turn_efforts = HashMap::from([(
+            1,
+            HashMap::from([
+                ("main-model".to_string(), Some("low".to_string())),
+                ("child-model".to_string(), Some("high".to_string())),
+            ]),
+        )]);
+        let db_entries = HashMap::new();
+
+        let (main_timeline, _) = parse_session_timeline_file(
+            "copilot",
+            "copilot-app",
+            &filepath,
+            &db_entries,
+            &turn_efforts,
+            None,
+            None,
+        )
+        .unwrap();
+        let main_effort = main_timeline.iter().find_map(|item| match item {
+            TimelineItem::AgentReply {
+                model,
+                reasoning_effort,
+                ..
+            } if model == "main-model" => reasoning_effort.as_deref(),
+            _ => None,
+        });
+        assert_eq!(main_effort, Some("low"));
+
+        let (child_timeline, child_metadata) = parse_session_timeline_file(
+            "copilot",
+            "copilot-app",
+            &filepath,
+            &db_entries,
+            &turn_efforts,
+            Some("child-agent"),
+            Some("child-model"),
+        )
+        .unwrap();
+        let child_effort = child_timeline.iter().find_map(|item| match item {
+            TimelineItem::AgentReply {
+                model,
+                reasoning_effort,
+                ..
+            } if model == "child-model" => reasoning_effort.as_deref(),
+            _ => None,
+        });
+        assert_eq!(child_effort, Some("high"));
+        assert_eq!(
+            child_metadata
+                .get("reasoning_effort")
+                .and_then(serde_json::Value::as_str),
+            Some("high")
         );
 
         let _ = fs::remove_dir_all(tmp);
