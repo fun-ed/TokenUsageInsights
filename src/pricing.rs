@@ -789,6 +789,30 @@ mod tests {
     use super::*;
 
     #[test]
+    fn gemini_4_argon_thinking_levels_use_packaged_pricing() {
+        let rules = load_pricing_rules();
+        for model_name in [
+            "Gemini 4 Argon",
+            "Gemini 4 Argon (Medium)",
+            "Gemini 4 Argon (High)",
+            "Gemini 4 Argon (Low)",
+            "gemini-4-argon",
+        ] {
+            let cost = calculate_usage_cost(
+                &rules,
+                Some(model_name),
+                1_000_000,
+                1_000_000,
+                1_000_000,
+                0,
+                0,
+            )
+            .unwrap();
+            assert!((cost - 24.20).abs() < 1e-9, "{model_name}: {cost}");
+        }
+    }
+
+    #[test]
     fn zero_token_usage_without_model_costs_zero() {
         let cost = calculate_usage_cost(&[], None, 0, 0, 0, 0, 0).unwrap();
         assert_eq!(cost, 0.0);
