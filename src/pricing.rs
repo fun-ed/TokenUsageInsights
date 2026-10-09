@@ -813,6 +813,44 @@ mod tests {
     }
 
     #[test]
+    fn claude_haiku_5_5_context_tiers_use_packaged_pricing() {
+        let rules = load_pricing_rules();
+        for model_name in ["claude-haiku-5-5", "Claude Haiku 5.5", "claude-haiku-5.5"] {
+            // Prompt includes both cache-write durations, but not output.
+            for (input, cache_read, cache_5m, cache_1h, rate) in [
+                (40_000, 30_000, 20_000, 9_999, 0.10),
+                (40_000, 30_000, 20_000, 10_000, 0.10),
+                (40_000, 30_000, 20_000, 10_001, 0.50),
+                (100_001, 0, 0, 0, 0.50),
+                (0, 100_001, 0, 0, 0.50),
+                (0, 0, 100_001, 0, 0.50),
+                (0, 0, 0, 100_001, 0.50),
+            ] {
+                let cost = calculate_usage_cost(
+                    &rules,
+                    Some(model_name),
+                    input,
+                    10_000,
+                    cache_read,
+                    cache_5m,
+                    cache_1h,
+                )
+                .unwrap();
+                let expected = (input as f64 * rate
+                    + cache_read as f64 * rate * 0.1
+                    + cache_5m as f64 * rate * 1.25
+                    + cache_1h as f64 * rate * 2.0
+                    + 10_000.0 * rate * 5.0)
+                    / 1_000_000.0;
+                assert!(
+                    (cost - expected).abs() < 1e-9,
+                    "{model_name}: {cost} != {expected}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn zero_token_usage_without_model_costs_zero() {
         let cost = calculate_usage_cost(&[], None, 0, 0, 0, 0, 0).unwrap();
         assert_eq!(cost, 0.0);
