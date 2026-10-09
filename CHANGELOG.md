@@ -4,6 +4,29 @@
 
 ## [未發行]
 
+### 新增與改善
+
+- 選擇性移植 upstream `v1.1.4...v1.2.0` 的 macOS／Linux 適用變更，保留 fork 的多 profile、額外來源、總覽、thinking effort 與 `fun-ed` 發行來源。
+- 移植 `817e7af`、`43a0e0b` 的定價資料：新增 Gemini 4 Argon 與 Medium／High／Low 變體，以及 Claude Haiku 5.5 的 100K Prompt Token 分段費率與 Cursor 條目。費率沿用上游標準牌價，用於估算，不代表實際帳單。
+- 移植 `30596c7`：月度與年度「最常活動的專案目錄」表格顯示各專案的估算費用。
+
+### 修正
+
+- 移植 `26ce703` 的 shell 變更：Antigravity 與 Copilot collector 使用同一次 UTC 時間讀取產生 timestamp 與每日 JSONL 檔名，保留原有增量寫入與同步狀態。
+- 移植 `f60989e`：Claude 子代理使用獨立 Session ID，保留父子階層、workflow 與 `.meta.json` 中介資料，避免覆蓋主會話。忽略 workflow journal 與本機命令輸出，從 slash command 參數或自訂標題取得會話名稱，串流同一回覆採較完整的用量。
+- Claude parser 遷移按來源重新解析仍存在的逐字稿，保留已失去逐字稿的歷史資料；同步與刪除維持 profile／額外來源隔離。孤立子代理仍顯示 badge，詳情可沿用列表的 nickname 與 role。
+- 移植 `befa32c`：費用四捨五入後達 US$1,000 時顯示千分位整數，較低金額維持兩位小數。
+
+### 相容性
+
+- 不變更資料表、HTTP API、環境變數或安裝流程；版本維持 `10.0.16`，本次僅同步原始碼，不發布 release。
+- 排除 Windows PowerShell collector 與測試、上游版本／發行文件提交；未引入 Windows、CI/CD、額外 README 語系或上游下載來源。
+
+### 驗證
+
+- Rust 435 個測試與 Node 34 個測試通過；Clippy、release build 零警告、零錯誤，`cargo fmt --check`、shell 語法與 npm package dry run 通過。
+- 隔離 API 與 Firefox 驗證預設／profile 同 ID 子代理詳情、串流 Token、reasoning、重複同步，以及單一助理／總覽的月度與年度專案費用；瀏覽器無 console error。未操作正式使用者資料或常駐服務。
+
 ## [10.0.16] - 2026-10-05
 
 ### 新增與改善
