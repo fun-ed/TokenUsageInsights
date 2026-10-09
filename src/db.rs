@@ -276,6 +276,7 @@ const VSCODE_EMPTY_SESSION_MIGRATION_KEY: &str = "migration:vscode_empty_session
 const COPILOT_CACHED_INPUT_MIGRATION_KEY: &str = "migration:copilot_cached_input_v1";
 const CLAUDE_CACHE_WRITE_PRICING_MIGRATION_KEY: &str = "migration:claude_cache_write_pricing_v1";
 const CLAUDE_EFFORT_PARSER_MIGRATION_KEY: &str = "migration:claude_per_turn_effort_v1";
+const CLAUDE_SUBAGENT_PARSER_MIGRATION_KEY: &str = "migration:claude_code_subagents_v2";
 const SESSION_NAME_SELECTION_MIGRATION_KEY: &str = "migration:session_name_selection_v1";
 static IMPORT_BATCH_COUNTER: AtomicU64 = AtomicU64::new(0);
 const CURSOR_MODEL_ATTRIBUTION_MIGRATION_KEY: &str = "migration:cursor_model_attribution_v2";
@@ -2185,6 +2186,42 @@ fn run_claude_effort_parser_migration(conn: &mut Connection) -> Result<(), Strin
     .map_err(|error| format!("記錄 Claude effort migration 失敗: {error}"))?;
     tx.commit()
         .map_err(|error| format!("Claude effort migration COMMIT 失敗: {error}"))
+}
+
+/// Reset every Claude source cursor once, retaining historical usage whose
+/// transcript no longer exists. Each surviving file is replaced atomically;
+/// failed files retain no cursor and are retried on the next sync.
+fn run_claude_subagent_parser_migration(conn: &mut Connection) -> Result<(), String> {
+    let migration_done: bool = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM sync_state WHERE filename = ?)",
+            params![CLAUDE_SUBAGENT_PARSER_MIGRATION_KEY],
+            |row| row.get(0),
+        )
+        .map_err(|error| format!("讀取 Claude subagent migration 狀態失敗: {error}"))?;
+    if migration_done {
+        return Ok(());
+    }
+    let tx = conn
+        .transaction()
+        .map_err(|error| format!("Claude subagent migration BEGIN 失敗: {error}"))?;
+    tx.execute(
+        "DELETE FROM sync_state
+         WHERE filename GLOB 'claude:*'
+            OR filename GLOB 'claude-default:*'
+            OR filename GLOB 'claude-profile:*'
+            OR filename GLOB 'claude-source:*'",
+        [],
+    )
+    .map_err(|error| format!("清除 Claude subagent transcript cursors 失敗: {error}"))?;
+    tx.execute(
+        "INSERT INTO sync_state (filename, last_synced_size, last_synced_time)
+         VALUES (?, 1, 0)",
+        params![CLAUDE_SUBAGENT_PARSER_MIGRATION_KEY],
+    )
+    .map_err(|error| format!("記錄 Claude subagent migration 失敗: {error}"))?;
+    tx.commit()
+        .map_err(|error| format!("Claude subagent migration COMMIT 失敗: {error}"))
 }
 
 fn run_codex_source_kind_migration(conn: &mut Connection) -> Result<(), String> {
@@ -4818,6 +4855,7 @@ fn sync_claude_usage_logs_from(
             .map_err(|error| format!("Claude profile migration COMMIT 失敗: {error}"))?;
     }
     run_claude_effort_parser_migration(conn)?;
+    run_claude_subagent_parser_migration(conn)?;
 
     for source in sources {
         let claude_dir = &source.dir;
@@ -4841,6 +4879,8 @@ fn sync_claude_usage_logs_from(
                     params![state_key],
                     |row| Ok((row.get(0)?, row.get(1)?)),
                 )
+                .optional()
+                .map_err(|error| format!("讀取 Claude 同步狀態失敗: {error}"))?
                 .unwrap_or((0, 0));
 
             let metadata = match fs::metadata(&filepath) {
@@ -4859,8 +4899,8 @@ fn sync_claude_usage_logs_from(
             if current_size != last_synced_size || changed {
                 let parsed_entries = match parse_claude_session_file(&filepath) {
                     Ok(entries) => entries,
-                    Err(e) => {
-                        eprintln!("解析 Claude Code 會話檔案 {:?} 失敗: {}", filepath, e);
+                    Err(error) => {
+                        eprintln!("解析 Claude Code 會話檔案 {:?} 失敗: {error}", filepath);
                         continue;
                     }
                 };
@@ -4869,31 +4909,36 @@ fn sync_claude_usage_logs_from(
                     .transaction()
                     .map_err(|e| format!("Transaction BEGIN 失敗: {}", e))?;
 
-                // First delete old entries for this session
+                // Legacy subagents used the parent's sessionId. Remove their
+                // old rows by transcript as well as the corrected session ID,
+                // always within this source's complete local identity.
+                tx.execute(
+                    "DELETE FROM usage_entries
+                     WHERE assistant_type = 'claude' AND source_kind = ?
+                       AND source_dir_key IS NULL AND transcript_path = ?",
+                    params![source.source_kind, filepath.to_string_lossy().as_ref()],
+                )
+                .map_err(|error| format!("清空舊 Claude Code Transcript 資料失敗: {error}"))?;
                 let session_ids: HashSet<String> = parsed_entries
                     .iter()
                     .map(|entry| entry.session_id.clone())
                     .collect();
                 for session_id in session_ids {
-                    let delete_res = tx.execute(
+                    tx.execute(
                         "DELETE FROM usage_entries
-                     WHERE assistant_type = 'claude' AND source_kind = ? AND session_id = ?",
+                         WHERE assistant_type = 'claude' AND source_kind = ?
+                           AND source_dir_key IS NULL AND session_id = ?",
                         params![source.source_kind, session_id],
-                    );
-
-                    if let Err(e) = delete_res {
-                        eprintln!("清空舊 Claude Code Session 資料失敗: {}", e);
-                        continue;
-                    }
+                    )
+                    .map_err(|error| format!("清空舊 Claude Code Session 資料失敗: {error}"))?;
                 }
 
-                let mut success = true;
                 for entry in &parsed_entries {
                     let tokens = entry.tokens.as_ref();
                     let delta = entry.delta_tokens.as_ref();
                     let cost = entry.cost.as_ref();
 
-                    let insert_res = tx.execute(
+                    tx.execute(
                     "INSERT INTO usage_entries (
                         assistant_type, source_kind, timestamp, date, session_id, session_name, transcript_path, cwd, version, turn_no, model, model_id,
                         tokens_input, tokens_output, tokens_cache_read, tokens_cache_write, tokens_cache_write_5m, tokens_cache_write_1h, tokens_reasoning, tokens_total,
@@ -4936,30 +4981,17 @@ fn sync_claude_usage_logs_from(
                         entry.agent_role.as_deref(),
                         entry.reasoning_effort.as_deref()
                     ],
-                );
-
-                    if let Err(e) = insert_res {
-                        eprintln!(
-                            "寫入 Claude Code 資料庫失敗 (turn_no {}): {}",
-                            entry.turn_no, e
-                        );
-                        success = false;
-                        break;
-                    }
+                )
+                .map_err(|error| format!("寫入 Claude Code 資料庫失敗 (turn_no {}): {error}", entry.turn_no))?;
                 }
 
-                if success {
-                    let update_state_res = tx.execute(
+                tx.execute(
                     "INSERT OR REPLACE INTO sync_state (filename, last_synced_size, last_synced_time) VALUES (?, ?, ?)",
                     params![state_key, current_size as i64, modified_time],
-                );
-
-                    if update_state_res.is_ok() {
-                        if let Err(e) = tx.commit() {
-                            eprintln!("Transaction COMMIT 失敗: {}", e);
-                        }
-                    }
-                }
+                )
+                .map_err(|error| format!("寫入 Claude 同步狀態失敗: {error}"))?;
+                tx.commit()
+                    .map_err(|error| format!("Claude 同步 COMMIT 失敗: {error}"))?;
             }
         }
     }
@@ -11184,6 +11216,396 @@ mod tests {
             std::env::remove_var("CLAUDE_DIR");
         }
         fs::remove_dir_all(claude_dir).unwrap();
+    }
+
+    fn claude_subagent_sync_fixture(
+        dir: PathBuf,
+        source_kind: &str,
+    ) -> (ClaudeSource, Vec<PathBuf>) {
+        let project = dir.join("projects/test-project");
+        let subagents = project.join("root/subagents");
+        let workflow = subagents.join("workflows/wf-test");
+        fs::create_dir_all(&workflow).unwrap();
+        let main = project.join("root.jsonl");
+        let direct = subagents.join("agent-direct.jsonl");
+        let nested = workflow.join("agent-workflow.jsonl");
+        for (path, input, output, prompt, agent_id) in [
+            (&main, 100, 20, "Orchestrate workflow", None),
+            (&direct, 50, 10, "Scan files", Some("direct")),
+            (&nested, 80, 30, "Write code", Some("workflow")),
+        ] {
+            let user = serde_json::json!({
+                "sessionId":"root", "agentId":agent_id,
+                "message":{"role":"user","content":prompt},
+            });
+            let assistant = serde_json::json!({
+                "sessionId":"root", "agentId":agent_id, "requestId":"r1",
+                "timestamp":"2026-10-08T01:00:00Z", "effort":"high",
+                "message":{"role":"assistant","model":"claude-test",
+                    "usage":{"input_tokens":input,"output_tokens":output}},
+            });
+            fs::write(path, format!("{user}\n{assistant}\n")).unwrap();
+        }
+        fs::write(
+            direct.with_extension("meta.json"),
+            r#"{"agentType":"Explore","description":"Explore repo"}"#,
+        )
+        .unwrap();
+        fs::write(
+            nested.with_extension("meta.json"),
+            r#"{"agentType":"workflow","name":"lead","workflowPhase":"implement","description":"Implement feature"}"#,
+        ).unwrap();
+        fs::write(workflow.join("journal.jsonl"), "{}\n").unwrap();
+        (
+            ClaudeSource {
+                label: source_kind.to_string(),
+                source_kind: source_kind.to_string(),
+                dir,
+            },
+            vec![main, direct, nested],
+        )
+    }
+
+    fn mark_previous_claude_sync_migrations(conn: &Connection) {
+        for key in [
+            "migration:claude_code_source_v2",
+            "migration:claude_profiles_v2",
+            CLAUDE_EFFORT_PARSER_MIGRATION_KEY,
+        ] {
+            conn.execute(
+                "INSERT OR REPLACE INTO sync_state (filename, last_synced_size, last_synced_time)
+                 VALUES (?, 1, 0)",
+                params![key],
+            )
+            .unwrap();
+        }
+    }
+
+    #[test]
+    fn claude_subagent_sync_migrates_default_profile_additional_sources_in_isolation() {
+        let root = temp_jsonl_path("claude-subagent-sources").with_extension("");
+        let mut conn = Connection::open_in_memory().unwrap();
+        init_db(&conn).unwrap();
+        mark_previous_claude_sync_migrations(&conn);
+        let mut sources = Vec::new();
+        let mut fixture_paths = Vec::new();
+        for (folder, kind) in [
+            ("default", "claude-default"),
+            ("profile", "claude-profile:work"),
+            ("additional", "claude-source:abcdef"),
+        ] {
+            let (source, paths) = claude_subagent_sync_fixture(root.join(folder), kind);
+            // The legacy subagent overwrote the main session using its parent ID.
+            conn.execute(
+                "INSERT INTO usage_entries (
+                    assistant_type, source_kind, session_id, turn_no, timestamp, date,
+                    tokens_input, tokens_output, transcript_path
+                 ) VALUES ('claude', ?, 'root', 1, '2026-10-08T01:00:00Z',
+                           '2026-10-08', 777, 1, ?)",
+                params![kind, paths[2].to_string_lossy().as_ref()],
+            )
+            .unwrap();
+            for path in &paths {
+                let metadata = fs::metadata(path).unwrap();
+                let relative = path.strip_prefix(&source.dir).unwrap().to_string_lossy();
+                conn.execute(
+                    "INSERT INTO sync_state (filename, last_synced_size, last_synced_time)
+                     VALUES (?, ?, ?)",
+                    params![
+                        format!("{kind}:{relative}"),
+                        metadata.len() as i64,
+                        file_modified_nanos(&metadata)
+                    ],
+                )
+                .unwrap();
+            }
+            fixture_paths.push(paths);
+            sources.push(source);
+        }
+        // Same stored path in another source must not be deleted by the new
+        // transcript cleanup; a keyed identity must also remain independent.
+        conn.execute(
+            "INSERT INTO usage_entries (
+                assistant_type, source_kind, source_dir_key, session_id, turn_no,
+                timestamp, date, tokens_input, transcript_path
+             ) VALUES ('claude', 'claude-profile:offline', NULL, 'root', 1,
+                       '2026-10-08T01:00:00Z', '2026-10-08', 999, ?),
+                      ('claude', 'claude-default', 'independent-key', 'root', 1,
+                       '2026-10-08T01:00:00Z', '2026-10-08', 999, ?)",
+            params![
+                fixture_paths[0][0].to_string_lossy().as_ref(),
+                fixture_paths[0][0].to_string_lossy().as_ref(),
+            ],
+        )
+        .unwrap();
+        sync_claude_usage_logs_from(&mut conn, &sources).unwrap();
+        for source in &sources {
+            for (id, parent, name, nickname, role, input, output) in [
+                ("root", None, "Orchestrate workflow", None, None, 100, 20),
+                (
+                    "agent-direct",
+                    Some("root"),
+                    "Explore repo",
+                    None,
+                    Some("Explore"),
+                    50,
+                    10,
+                ),
+                (
+                    "agent-workflow",
+                    Some("root"),
+                    "Implement feature",
+                    Some("lead"),
+                    Some("implement"),
+                    80,
+                    30,
+                ),
+            ] {
+                let row: (
+                    Option<String>,
+                    String,
+                    Option<String>,
+                    Option<String>,
+                    i64,
+                    i64,
+                    String,
+                ) = conn
+                    .query_row(
+                        "SELECT parent_session_id, session_name, agent_nickname, agent_role,
+                                tokens_input, tokens_output, reasoning_effort
+                         FROM usage_entries
+                         WHERE assistant_type = 'claude' AND source_kind = ?
+                           AND source_dir_key IS NULL AND session_id = ?",
+                        params![source.source_kind, id],
+                        |row| {
+                            Ok((
+                                row.get(0)?,
+                                row.get(1)?,
+                                row.get(2)?,
+                                row.get(3)?,
+                                row.get(4)?,
+                                row.get(5)?,
+                                row.get(6)?,
+                            ))
+                        },
+                    )
+                    .unwrap();
+                assert_eq!(
+                    row,
+                    (
+                        parent.map(str::to_string),
+                        name.to_string(),
+                        nickname.map(str::to_string),
+                        role.map(str::to_string),
+                        input,
+                        output,
+                        "high".to_string()
+                    )
+                );
+            }
+        }
+        let preserved: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM usage_entries WHERE tokens_input = 999",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(preserved, 2);
+        let ids_before: Vec<i64> = conn
+            .prepare("SELECT id FROM usage_entries ORDER BY id")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        sync_claude_usage_logs_from(&mut conn, &sources).unwrap();
+        let ids_after: Vec<i64> = conn
+            .prepare("SELECT id FROM usage_entries ORDER BY id")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(
+            ids_after, ids_before,
+            "unchanged transcripts must not be rewritten"
+        );
+        assert_eq!(ids_after.len(), 11);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn claude_subagent_migration_rolls_back_cursor_reset_and_retries_once() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        init_db(&conn).unwrap();
+        let keys = [
+            "claude:projects/legacy.jsonl",
+            "claude-default:projects/main.jsonl",
+            "claude-profile:work:projects/main.jsonl",
+            "claude-source:abcd:projects/main.jsonl",
+            "codex:sessions/unrelated.jsonl",
+        ];
+        for key in keys {
+            conn.execute(
+                "INSERT INTO sync_state (filename, last_synced_size, last_synced_time) VALUES (?, 10, 20)",
+                params![key],
+            ).unwrap();
+        }
+        conn.execute(
+            "INSERT INTO usage_entries (
+                assistant_type, source_kind, session_id, turn_no, timestamp, date
+             ) VALUES ('claude', 'claude-profile:work', 'missing-transcript', 1,
+                       '2026-10-08T01:00:00Z', '2026-10-08')",
+            [],
+        )
+        .unwrap();
+        conn.execute_batch(
+            "CREATE TRIGGER fail_claude_migration BEFORE INSERT ON sync_state
+             WHEN NEW.filename = 'migration:claude_code_subagents_v2'
+             BEGIN SELECT RAISE(ABORT, 'injected migration failure'); END;",
+        )
+        .unwrap();
+        assert!(run_claude_subagent_parser_migration(&mut conn).is_err());
+        for key in keys {
+            assert!(conn
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM sync_state WHERE filename = ?)",
+                    params![key],
+                    |row| row.get::<_, bool>(0),
+                )
+                .unwrap());
+        }
+        assert!(!conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sync_state WHERE filename = ?)",
+                params![CLAUDE_SUBAGENT_PARSER_MIGRATION_KEY],
+                |row| row.get::<_, bool>(0),
+            )
+            .unwrap());
+        conn.execute_batch("DROP TRIGGER fail_claude_migration")
+            .unwrap();
+        run_claude_subagent_parser_migration(&mut conn).unwrap();
+        for key in keys {
+            let exists: bool = conn
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM sync_state WHERE filename = ?)",
+                    params![key],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(exists, key.starts_with("codex:"));
+        }
+        conn.execute(
+            "INSERT INTO sync_state (filename, last_synced_size, last_synced_time)
+             VALUES ('claude-default:fresh', 1, 2)",
+            [],
+        )
+        .unwrap();
+        run_claude_subagent_parser_migration(&mut conn).unwrap();
+        assert!(conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sync_state WHERE filename = 'claude-default:fresh')",
+                [],
+                |row| row.get::<_, bool>(0),
+            )
+            .unwrap());
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM usage_entries", [], |row| row
+                .get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+    }
+
+    #[test]
+    fn claude_subagent_sync_transaction_failures_preserve_usage_and_retry() {
+        for failure in ["delete", "insert", "cursor", "commit"] {
+            let root = temp_jsonl_path(&format!("claude-failure-{failure}")).with_extension("");
+            let (source, paths) = claude_subagent_sync_fixture(root.clone(), "claude-default");
+            let mut conn = Connection::open_in_memory().unwrap();
+            init_db(&conn).unwrap();
+            mark_previous_claude_sync_migrations(&conn);
+            conn.execute(
+                "INSERT INTO usage_entries (
+                    assistant_type, source_kind, session_id, turn_no, timestamp, date,
+                    tokens_input, transcript_path
+                 ) VALUES ('claude', 'claude-default', 'root', 1,
+                           '2026-10-08T01:00:00Z', '2026-10-08', 777, ?)",
+                params![paths[0].to_string_lossy().as_ref()],
+            )
+            .unwrap();
+            let trigger = match failure {
+                "delete" => {
+                    "CREATE TRIGGER fail_sync BEFORE DELETE ON usage_entries
+                    WHEN OLD.session_id = 'root'
+                    BEGIN SELECT RAISE(ABORT, 'injected delete failure'); END;"
+                }
+                "insert" => {
+                    "CREATE TRIGGER fail_sync BEFORE INSERT ON usage_entries
+                    WHEN NEW.session_id = 'root'
+                    BEGIN SELECT RAISE(ABORT, 'injected insert failure'); END;"
+                }
+                "cursor" => {
+                    "CREATE TRIGGER fail_sync BEFORE INSERT ON sync_state
+                    WHEN NEW.filename = 'claude-default:projects/test-project/root.jsonl'
+                    BEGIN SELECT RAISE(ABORT, 'injected cursor failure'); END;"
+                }
+                "commit" => {
+                    "PRAGMA foreign_keys = ON;
+                    CREATE TABLE test_parent (id INTEGER PRIMARY KEY);
+                    CREATE TABLE test_deferred (
+                        parent_id INTEGER REFERENCES test_parent(id) DEFERRABLE INITIALLY DEFERRED);
+                    CREATE TRIGGER fail_sync AFTER INSERT ON sync_state
+                    WHEN NEW.filename = 'claude-default:projects/test-project/root.jsonl'
+                    BEGIN INSERT INTO test_deferred VALUES (1); END;"
+                }
+                _ => unreachable!(),
+            };
+            conn.execute_batch(trigger).unwrap();
+            assert!(
+                sync_claude_usage_logs_from(&mut conn, std::slice::from_ref(&source)).is_err(),
+                "{failure}"
+            );
+            let stored: i64 = conn.query_row(
+                "SELECT tokens_input FROM usage_entries
+                 WHERE assistant_type = 'claude' AND source_kind = 'claude-default' AND session_id = 'root'",
+                [], |row| row.get(0),
+            ).unwrap();
+            assert_eq!(
+                stored, 777,
+                "{failure}: rollback must preserve the previous rows"
+            );
+            assert!(
+                !conn
+                    .query_row(
+                        "SELECT EXISTS(SELECT 1 FROM sync_state
+                 WHERE filename = 'claude-default:projects/test-project/root.jsonl')",
+                        [],
+                        |row| row.get::<_, bool>(0),
+                    )
+                    .unwrap(),
+                "{failure}: failed file must remain retryable"
+            );
+            conn.execute_batch("DROP TRIGGER fail_sync").unwrap();
+            sync_claude_usage_logs_from(&mut conn, std::slice::from_ref(&source)).unwrap();
+            let rows: (i64, i64) = conn.query_row(
+                "SELECT COUNT(*), SUM(tokens_input) FROM usage_entries WHERE assistant_type = 'claude'",
+                [], |row| Ok((row.get(0)?, row.get(1)?)),
+            ).unwrap();
+            assert_eq!(rows, (3, 230));
+            sync_claude_usage_logs_from(&mut conn, std::slice::from_ref(&source)).unwrap();
+            assert_eq!(
+                conn.query_row(
+                    "SELECT COUNT(*) FROM usage_entries WHERE assistant_type = 'claude'",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .unwrap(),
+                3
+            );
+            fs::remove_dir_all(root).unwrap();
+        }
     }
 
     #[test]

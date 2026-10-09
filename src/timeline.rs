@@ -1266,6 +1266,7 @@ pub fn parse_claude_timeline(
     let mut request_turns: HashMap<String, u32> = HashMap::new();
     let mut emitted_reply_tokens: HashSet<String> = HashSet::new();
     let mut tool_calls_map: HashMap<String, usize> = HashMap::new();
+    let mut reasoning_parts: Vec<String> = Vec::new();
     let mut user_turn_no = 0u32;
 
     for line_res in reader.lines() {
@@ -1358,6 +1359,7 @@ pub fn parse_claude_timeline(
                 } else {
                     let prompt = claude_text_from_content(content);
                     if !prompt.trim().is_empty() {
+                        reasoning_parts.clear();
                         user_turn_no += 1;
                         timeline.push(TimelineItem::UserPrompt {
                             timestamp,
@@ -1413,7 +1415,6 @@ pub fn parse_claude_timeline(
 
         if let Some(content) = content {
             if let Some(items) = content.as_array() {
-                let mut reasoning_parts = Vec::new();
                 for item in items {
                     match item.get("type").and_then(|t| t.as_str()).unwrap_or("") {
                         "thinking" => {
@@ -1492,7 +1493,11 @@ pub fn parse_claude_timeline(
                     timeline.push(TimelineItem::AgentReply {
                         timestamp,
                         reply,
-                        reasoning: None,
+                        reasoning: if reasoning_parts.is_empty() {
+                            None
+                        } else {
+                            Some(reasoning_parts.join("\n"))
+                        },
                         turn_no,
                         model: current_model.clone(),
                         tokens,
@@ -1505,6 +1510,7 @@ pub fn parse_claude_timeline(
                             None
                         },
                     });
+                    reasoning_parts.clear();
                 }
             }
         }
@@ -2258,6 +2264,77 @@ mod tests {
             ]
         );
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn claude_timeline_aggregates_streamed_reasoning_through_tools_and_resets_at_prompt() {
+        let events = [
+            r#"{"message":{"role":"user","content":"Start"}}"#,
+            r#"{"requestId":"r1","message":{"role":"assistant","model":"model-a","content":[{"type":"thinking","thinking":"First thought"}]}}"#,
+            r#"{"requestId":"r1","message":{"role":"assistant","model":"model-a","content":[{"type":"thinking","thinking":"Second thought"},{"type":"tool_use","id":"call1","name":"Read","input":{}}]}}"#,
+            r#"{"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"call1","content":"File contents"}]}}"#,
+            r#"{"requestId":"r1","effort":"high","message":{"role":"assistant","model":"model-a","content":[{"type":"text","text":"Result"}]}}"#,
+            r#"{"requestId":"r1","message":{"role":"assistant","model":"model-a","content":[{"type":"text","text":"More text"}]}}"#,
+            r#"{"requestId":"r2","message":{"role":"assistant","content":[{"type":"thinking","thinking":"Abandoned thought"}]}}"#,
+            r#"{"message":{"role":"user","content":"Next task"}}"#,
+            r#"{"requestId":"r3","message":{"role":"assistant","model":"model-a","content":[{"type":"text","text":"Next result"}]}}"#,
+            r#"{"requestId":"r4","message":{"role":"assistant","model":"model-a","content":[{"type":"thinking","thinking":"String reply thought"}]}}"#,
+            r#"{"requestId":"r4","message":{"role":"assistant","model":"model-a","content":"String result"}}"#,
+        ];
+        let (reader, path) = reader_for_events(&events);
+        let db_entries = HashMap::from([(
+            1,
+            (
+                TokenStats {
+                    input: 10,
+                    output: 8,
+                    cache_read: None,
+                    cache_write: None,
+                    cache_write_5m: None,
+                    cache_write_1h: None,
+                    reasoning: None,
+                    total: 18,
+                },
+                "model-a".to_string(),
+            ),
+        )]);
+        let mut timeline = Vec::new();
+        let mut metadata = HashMap::new();
+        parse_claude_timeline(reader, &db_entries, &mut timeline, &mut metadata);
+        let replies: Vec<_> = timeline
+            .iter()
+            .filter_map(|item| match item {
+                TimelineItem::AgentReply {
+                    reasoning,
+                    tokens,
+                    reasoning_effort,
+                    ..
+                } => Some((
+                    reasoning.as_deref(),
+                    tokens.as_ref().map(|t| t.total),
+                    reasoning_effort.as_deref(),
+                )),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            replies,
+            vec![
+                (
+                    Some("First thought\nSecond thought"),
+                    Some(18),
+                    Some("high")
+                ),
+                (None, None, None),
+                (None, None, None),
+                (Some("String reply thought"), None, None),
+            ]
+        );
+        assert!(timeline.iter().any(|item| matches!(
+            item, TimelineItem::ToolStep { status, stdout, .. }
+                if status == "success" && stdout == "File contents"
+        )));
+        fs::remove_file(path).unwrap();
     }
 
     #[test]
