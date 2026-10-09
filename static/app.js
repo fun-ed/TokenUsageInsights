@@ -6137,7 +6137,7 @@ function renderYearlyProjectsTable(projects) {
   tbody.innerHTML = '';
 
   if (projects.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="4" class="placeholder-text">${t('placeholder_no_projects')}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="5" class="placeholder-text">${t('placeholder_no_projects')}</td></tr>`;
     return;
   }
 
@@ -6156,6 +6156,7 @@ function renderYearlyProjectsTable(projects) {
         ${formatToken(p.total_tokens)}
         ${p.total_cache_read_tokens ? `<div style="font-size: 0.72rem; font-weight: normal; color: #a5b4fc; margin-top: 3px;" title="${t('chart_cache_label')}">${t('cache_prefix')}${formatToken(p.total_cache_read_tokens)}</div>` : ''}
       </td>
+      <td style="font-weight: 700; color: var(--neon-gold);">${formatCost(p.cost_usd || 0)}</td>
     `;
     tbody.appendChild(tr);
   });
@@ -6898,7 +6899,7 @@ function renderMonthlyProjectsTable(projects) {
   tbody.innerHTML = '';
 
   if (projects.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="4" class="placeholder-text">${t('placeholder_no_projects')}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="5" class="placeholder-text">${t('placeholder_no_projects')}</td></tr>`;
     return;
   }
 
@@ -6917,6 +6918,7 @@ function renderMonthlyProjectsTable(projects) {
         ${formatToken(p.total_tokens)}
         ${p.total_cache_read_tokens ? `<div style="font-size: 0.72rem; font-weight: normal; color: #a5b4fc; margin-top: 3px;" title="${t('chart_cache_label')}">${t('cache_prefix')}${formatToken(p.total_cache_read_tokens)}</div>` : ''}
       </td>
+      <td style="font-weight: 700; color: var(--neon-gold);">${formatCost(p.cost_usd || 0)}</td>
     `;
     tbody.appendChild(tr);
   });
