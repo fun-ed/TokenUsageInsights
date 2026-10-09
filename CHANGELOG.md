@@ -4,6 +4,8 @@
 
 ## [未發行]
 
+## [10.0.17] - 2026-10-10
+
 ### 新增與改善
 
 - 選擇性移植 upstream `v1.1.4...v1.2.0` 的 macOS／Linux 適用變更，保留 fork 的多 profile、額外來源、總覽、thinking effort 與 `fun-ed` 發行來源。
@@ -19,13 +21,17 @@
 
 ### 相容性
 
-- 不變更資料表、HTTP API、環境變數或安裝流程；版本維持 `10.0.16`，本次僅同步原始碼，不發布 release。
+- 不變更資料表、HTTP API、環境變數或安裝流程；Cargo 與 npm wrapper 版本同步為 `10.0.17`。
 - 排除 Windows PowerShell collector 與測試、上游版本／發行文件提交；未引入 Windows、CI/CD、額外 README 語系或上游下載來源。
 
 ### 驗證
 
 - Rust 435 個測試與 Node 34 個測試通過；Clippy、release build 零警告、零錯誤，`cargo fmt --check`、shell 語法與 npm package dry run 通過。
 - 隔離 API 與 Firefox 驗證預設／profile 同 ID 子代理詳情、串流 Token、reasoning、重複同步，以及單一助理／總覽的月度與年度專案費用；瀏覽器無 console error。未操作正式使用者資料或常駐服務。
+
+### 發行資產
+
+- macOS Apple Silicon 與 Intel CLI、完整 `.tar.gz` 安裝包、DMG 及 `SHA256SUMS`。未發行 Linux 二進位或 npm 套件。
 
 ## [10.0.16] - 2026-10-05
 
@@ -959,7 +965,8 @@
 - 修正行動版側邊欄遮擋、黑畫面、標題擠壓、圖表導覽索引與年度版面問題。
 - 修正並補齊多個 Gemini、Claude、GPT 與 GPT-OSS 模型的定價規則。
 
-[未發行]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.16...HEAD
+[未發行]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.17...HEAD
+[10.0.17]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.16...v10.0.17
 [10.0.16]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.15...v10.0.16
 [10.0.15]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.14...v10.0.15
 [10.0.14]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.13...v10.0.14
