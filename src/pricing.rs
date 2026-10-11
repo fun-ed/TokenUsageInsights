@@ -813,6 +813,64 @@ mod tests {
     }
 
     #[test]
+    fn claude_5_5_and_sonnet_5_use_upstream_standard_pricing() {
+        let rules: Vec<_> = load_pricing_rules()
+            .into_iter()
+            .filter(|rule| !rule.model_name.starts_with(MODELS_DEV_RULE_PREFIX))
+            .collect();
+        for (models, expected) in [
+            (
+                vec![
+                    "claude-opus-5-5",
+                    "Claude Opus 5.5",
+                    "opus-5-5",
+                    "claude-opus-5-5-1m · high",
+                ],
+                24.2,
+            ),
+            (
+                vec![
+                    "claude-opus-5-5-fast",
+                    "Claude Opus 5.5-fast",
+                    "claude-opus-5-5-fast · high",
+                ],
+                48.4,
+            ),
+            (
+                vec![
+                    "claude-sonnet-5-5",
+                    "Claude Sonnet 5.5",
+                    "claude-sonnet-5-5-1m · high",
+                ],
+                12.1,
+            ),
+            (
+                vec![
+                    "claude-sonnet-5",
+                    "Claude Sonnet 5",
+                    "claude-sonnet-5 · high",
+                ],
+                12.2,
+            ),
+            (vec!["opus-5", "claude-opus-5-1m · high"], 30.5),
+        ] {
+            for model in models {
+                let cost = calculate_usage_cost(
+                    &rules,
+                    Some(model),
+                    1_000_000,
+                    1_000_000,
+                    1_000_000,
+                    0,
+                    0,
+                )
+                .unwrap();
+                assert!((cost - expected).abs() < 1e-9, "{model}: {cost}");
+            }
+        }
+    }
+
+    #[test]
     fn claude_haiku_5_5_context_tiers_use_packaged_pricing() {
         let rules = load_pricing_rules();
         for model_name in ["claude-haiku-5-5", "Claude Haiku 5.5", "claude-haiku-5.5"] {
@@ -1135,7 +1193,7 @@ mod tests {
             let long_context_cost =
                 calculate_usage_cost(&rules, Some(model_name), 300_000, 50_000, 0, 0, 0).unwrap();
             assert!(
-                (long_context_cost - 3.9).abs() < 1e-9,
+                (long_context_cost - 2.2).abs() < 1e-9,
                 "unexpected Claude Opus 5.5 long-context cost for {model_name}: {long_context_cost}"
             );
         }
