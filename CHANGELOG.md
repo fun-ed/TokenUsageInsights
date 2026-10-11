@@ -4,6 +4,39 @@
 
 ## [未發行]
 
+## [10.0.18] - 2026-10-11
+
+### 新增與改善
+
+- 選擇性移植 upstream `v1.2.0...v1.2.1` 的 macOS／Linux 適用項目，保留本機優先、Claude／OMP 多 profile、額外來源、總覽、thinking effort 與 `fun-ed` 發行來源。
+- 移植 `ff258ab`：補齊 Global／Cursor 的 Claude Opus 5.5 Fast 與 Claude Sonnet 5.5 估算牌價。Opus 5.5 輸入／快取讀取／輸出每百萬 Token 為 US$4／0.20／20，Fast 為 US$8／0.40／40；Sonnet 5.5 為 US$2／0.10／10。這些是隨附估算規則，不代表實際帳單。
+- 移植 `4aaa49a`：Claude Code 讀取每回覆的 `usage.speed`，Fast Mode 為 `model` 與 `model_id` 加上 `-fast`，套用對應價格；標準或缺少速度的舊資料維持原模型，已含後綴不重複追加。
+
+### 修正
+
+- Sonnet 5 的隨附費率修正為 US$2／0.20／10；移除既有 Opus 5.5 的 200K 分段，對齊上游標準牌價，避免長上下文估算過高。其他模型的上下文分段不變。
+- 保留 fork 既有的 provider-aware 模糊比對與 models.dev 快取，新增短模型名稱及 Fast／標準模型回歸驗證，避免 `opus-5` 被誤配到 Opus 5.5 Fast。
+- Claude parser 遷移升至 v3，重新解析仍存在的預設、profile 與額外來源逐字稿，補入 Fast Mode 模型。來源隔離、交易替換與重複同步冪等維持不變；失去逐字稿的歷史資料保留，無法補判其速度。
+- Claude 詳情時間軸共用同一個 Fast Mode 模型轉換，避免資料庫模型加上 `-fast` 後，被判定與原始回覆模型不符而隱藏 thinking effort。沒有資料庫用量的回覆與同回覆多段文字也保留正確模型。
+- 修正重新解析父會話會刪除舊版同父 ID 子代理歷史列的風險。v3 遷移從儲存的逐字稿檔名還原獨立子代理 identity，逐字稿識別避免與已有子代理列衝突；同步只替換當次仍存在的逐字稿及無路徑舊列，保留已消失子代理的用量。
+- 移植 `023ff5c`，將 rustls 從 `0.23.44` 更新至 `0.23.45`，其餘相依維持原 lockfile。
+
+### 文件與相容性
+
+- Cargo／npm 版本與 lockfiles 同步為 `10.0.18`；更新三份 README 的發行說明、OMP profile 與本機 CLI 安裝方式。
+- 更新 `docs/fork-spec.md` 的同步基準、計價與遷移邊界；修正 `docs/npm-publishing.md` 殘留的 Release workflow 敘述及 npm 資產前置條件；修正 landing page 文件不能直接以 `/public` 作為 Pages 分支來源的說明，區分原站網域與 fork 部署。研究文件保留歷史來源紀錄，不改寫成新價格宣告。
+- 不變更資料表、HTTP API、環境變數或安裝腳本。未移植 Windows statusline、verbatim 路徑、PowerShell 測試、直接 base64 相依、CI/CD 或上游發行來源。
+
+### 驗證
+
+- 437 個 Rust 單元測試、3 個整合測試、34 個 Node 測試通過；`cargo fmt --check`、Clippy `-D warnings`、npm package dry run 與 `git diff --check` 通過。
+- 隔離 API 驗證 default／profile／額外來源的同 ID 會話、Fast／standard／舊格式的費用與詳情 effort、總覽、v2 到 v3 重新解析、失去逐字稿的歷史資料保留，以及重複同步冪等。未操作正式使用者資料或重啟常駐服務。
+- `make install-local` 安裝的 CLI 回報 `10.0.18`；Apple Silicon／Intel release build 零警告零錯誤，兩種架構安裝包都通過隔離安裝與 API 驗證，Intel 版本於本機 Rosetta 執行。DMG 完整性與四個資產的 SHA-256 檢查通過。
+
+### 發行資產
+
+- macOS Apple Silicon 與 Intel CLI、完整 `.tar.gz` 安裝包、DMG 及 `SHA256SUMS`。未發行 Linux 二進位或 npm Registry 套件。
+
 ## [10.0.17] - 2026-10-10
 
 ### 新增與改善
@@ -965,7 +998,8 @@
 - 修正行動版側邊欄遮擋、黑畫面、標題擠壓、圖表導覽索引與年度版面問題。
 - 修正並補齊多個 Gemini、Claude、GPT 與 GPT-OSS 模型的定價規則。
 
-[未發行]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.17...HEAD
+[未發行]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.18...HEAD
+[10.0.18]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.17...v10.0.18
 [10.0.17]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.16...v10.0.17
 [10.0.16]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.15...v10.0.16
 [10.0.15]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.14...v10.0.15

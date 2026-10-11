@@ -57,9 +57,18 @@
 - 其他工具共用主要來源的 `source_kind`，以 `<tool>:source:<hex>:` 前綴區隔同步游標；主要來源保留舊游標。
 - 路徑只展開 `~`、`$HOME`；不得加入 Windows 路徑展開或文件。
 
+### 2.7 Claude 模型與 Fast Mode 計價
+
+- v10.0.18 對齊 upstream v1.2.1 的非 Windows 變更。Claude Code 以 assistant event 的 `message.usage.speed` 辨識速度；值去除空白後不分大小寫為 `fast` 時，`model` 與 `model_id` 加上 `-fast` 後綴，已含後綴則不重複追加。`standard` 或缺值不改模型名稱，不從目前設定猜測歷史速度。
+- 隨附牌價新增 Global／Cursor 的 Opus 5.5 Fast 與 Sonnet 5.5，Sonnet 5 修正為輸入／快取讀取／輸出每百萬 Token US$2／0.20／10。Opus 5.5 為 US$4／0.20／20，Fast 為 US$8／0.40／40；移除舊 Opus 5.5 的 200K 分段條目，對齊上游標準牌價。這些是估算規則，不代表實際帳單。
+- 保留 fork 的 models.dev 價格快取、provider 識別與較具體模型優先比對。簡短名稱不得誤配到較長的 Fast 模型；原有其他模型的上下文分段維持不變。
+- Claude parser 遷移標記升至 `migration:claude_code_subagents_v3`，一次重置預設、profile 與額外來源的逐字稿游標，重新解析仍存在的檔案。來源隔離與交易替換維持不變；失去逐字稿的歷史資料保留，無法補判其速度。重複同步不重複計算 Token。
+- 詳情時間軸使用同一個速度後綴轉換，Fast Mode 的模型與 thinking effort 必須保持配對。遷移時由舊子代理儲存的 `agent-*.jsonl` 檔名還原獨立會話 ID 與父 ID，並以逐字稿識別隔離舊列，包含已消失的逐字稿；重新解析父會話不得刪除這些歷史子代理用量。
+
 ## 3. 版本與發行
 
 - Cargo 與 npm 版本為 `10.x.y`；release tag 為對應的 `v10.x.y`。不可重用 upstream 的 `v1.x.y`。
+- 目前 fork 發行版本為 `v10.0.18`，選擇性同步基準為 upstream `v1.2.1`。Windows statusline 命令、verbatim 路徑、PowerShell 測試及 workflow 均未移植；未新增直接 `base64` 相依。
 - 發行資產：macOS `aarch64-apple-darwin` 與 `x86_64-apple-darwin` 的 `.tar.gz`、`.dmg`，以及 `SHA256SUMS`。Linux 只有在 release 列出對應 tarball 時才宣稱可用。
 - 發行包內容：執行檔、`static/`、`shell/`、`scripts/`、`pricing.csv`、`README.md`、`LICENSE`、`VERSION`。
 - `scripts/get.sh` 與 npm 安裝器從 `fun-ed/TokenUsageInsights` 下載。
