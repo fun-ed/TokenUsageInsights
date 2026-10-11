@@ -16,6 +16,7 @@ pub use session_pricing::{
     is_manifest_auto_model, set_session_pricing_assignment, SessionPricingError,
 };
 
+pub(crate) use claude::apply_claude_speed_suffix;
 use claude::{find_claude_session_files, parse_claude_session_file};
 use codex::{find_codex_session_files, parse_codex_session_file_with_diagnostics};
 pub(crate) use cursor::parse_cursor_timestamp;
@@ -2205,6 +2206,49 @@ fn run_claude_subagent_parser_migration(conn: &mut Connection) -> Result<(), Str
     let tx = conn
         .transaction()
         .map_err(|error| format!("Claude subagent migration BEGIN 失敗: {error}"))?;
+    // Legacy subagents shared their parent's ID. Recover their filename identity
+    // before a surviving parent is reparsed, including vanished transcripts.
+    let legacy_subagents: Vec<(i64, String, String)> = {
+        let mut statement = tx
+            .prepare(
+                "SELECT id, session_id, transcript_path FROM usage_entries
+                 WHERE assistant_type = 'claude' AND source_dir_key IS NULL
+                   AND (source_kind = 'legacy' OR source_kind = 'claude-default'
+                        OR source_kind GLOB 'claude-profile:*'
+                        OR source_kind GLOB 'claude-source:*')
+                   AND transcript_path IS NOT NULL",
+            )
+            .map_err(|error| format!("讀取舊 Claude 子代理 identity 失敗: {error}"))?;
+        let rows = statement
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+            .map_err(|error| format!("查詢舊 Claude 子代理 identity 失敗: {error}"))?
+            .collect::<Result<_, _>>()
+            .map_err(|error| format!("解析舊 Claude 子代理 identity 失敗: {error}"))?;
+        rows
+    };
+    for (id, parent_id, transcript) in legacy_subagents {
+        let path = Path::new(&transcript);
+        let Some(agent_id) = path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .filter(|stem| stem.starts_with("agent-") && *stem != parent_id)
+        else {
+            continue;
+        };
+        tx.execute(
+            "UPDATE usage_entries
+             SET session_id = ?, parent_session_id = COALESCE(parent_session_id, ?),
+                 usage_identity = ?
+             WHERE id = ?",
+            params![
+                agent_id,
+                parent_id,
+                format!("claude-subagent:{transcript}"),
+                id
+            ],
+        )
+        .map_err(|error| format!("保留舊 Claude 子代理 identity 失敗: {error}"))?;
+    }
     tx.execute(
         "DELETE FROM sync_state
          WHERE filename GLOB 'claude:*'
@@ -4909,9 +4953,8 @@ fn sync_claude_usage_logs_from(
                     .transaction()
                     .map_err(|e| format!("Transaction BEGIN 失敗: {}", e))?;
 
-                // Legacy subagents used the parent's sessionId. Remove their
-                // old rows by transcript as well as the corrected session ID,
-                // always within this source's complete local identity.
+                // Replace only this surviving transcript. Historical subagents
+                // may have shared its session ID, but their rows must survive.
                 tx.execute(
                     "DELETE FROM usage_entries
                      WHERE assistant_type = 'claude' AND source_kind = ?
@@ -4927,7 +4970,8 @@ fn sync_claude_usage_logs_from(
                     tx.execute(
                         "DELETE FROM usage_entries
                          WHERE assistant_type = 'claude' AND source_kind = ?
-                           AND source_dir_key IS NULL AND session_id = ?",
+                           AND source_dir_key IS NULL AND session_id = ?
+                           AND (transcript_path IS NULL OR transcript_path = '')",
                         params![source.source_kind, session_id],
                     )
                     .map_err(|error| format!("清空舊 Claude Code Session 資料失敗: {error}"))?;
@@ -11432,6 +11476,50 @@ mod tests {
             "unchanged transcripts must not be rewritten"
         );
         assert_eq!(ids_after.len(), 11);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn claude_reparse_preserves_missing_legacy_subagent_with_parent_turn_identity() {
+        let root = temp_jsonl_path("claude-missing-legacy-subagent").with_extension("");
+        let mut conn = Connection::open_in_memory().unwrap();
+        init_db(&conn).unwrap();
+        mark_previous_claude_sync_migrations(&conn);
+        let (source, _) = claude_subagent_sync_fixture(root.clone(), "claude-default");
+        let missing = root.join("projects/project/root/subagents/agent-missing.jsonl");
+        conn.execute(
+            "INSERT INTO usage_entries (
+                assistant_type, source_kind, session_id, turn_no, timestamp, date,
+                tokens_input, tokens_output, transcript_path
+             ) VALUES ('claude', 'claude-default', 'root', 1,
+                       '2026-10-08T01:00:00Z', '2026-10-08', 777, 1, ?)",
+            params![missing.to_string_lossy().as_ref()],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO sync_state (filename, last_synced_size, last_synced_time)
+             VALUES ('migration:claude_code_subagents_v2', 1, 0)",
+            [],
+        )
+        .unwrap();
+        for _ in 0..2 {
+            sync_claude_usage_logs_from(&mut conn, std::slice::from_ref(&source)).unwrap();
+            let preserved: (String, String, i64) = conn
+                .query_row(
+                    "SELECT session_id, parent_session_id, tokens_input FROM usage_entries
+                 WHERE assistant_type = 'claude' AND transcript_path = ?",
+                    params![missing.to_string_lossy().as_ref()],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                )
+                .unwrap();
+            assert_eq!(preserved, ("agent-missing".into(), "root".into(), 777));
+            assert_eq!(
+                conn.query_row("SELECT COUNT(*) FROM usage_entries", [], |row| row
+                    .get::<_, i64>(0))
+                    .unwrap(),
+                4
+            );
+        }
         fs::remove_dir_all(root).unwrap();
     }
 

@@ -151,7 +151,10 @@ fn extract_claude_user_prompt_for_session_name(raw_text: &str) -> Option<String>
 }
 
 /// Fast Mode is reported in usage rather than the API model name.
-fn apply_claude_speed_suffix(model: Option<String>, speed: Option<&str>) -> Option<String> {
+pub(crate) fn apply_claude_speed_suffix(
+    model: Option<String>,
+    speed: Option<&str>,
+) -> Option<String> {
     let is_fast = speed
         .map(str::trim)
         .is_some_and(|speed| speed.eq_ignore_ascii_case("fast"));

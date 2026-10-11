@@ -1377,10 +1377,16 @@ pub fn parse_claude_timeline(
             continue;
         }
 
-        let response_model = message
-            .get("model")
-            .and_then(|m| m.as_str())
-            .map(str::to_string);
+        let response_model = crate::db::apply_claude_speed_suffix(
+            message
+                .get("model")
+                .and_then(|m| m.as_str())
+                .map(str::to_string),
+            message
+                .get("usage")
+                .and_then(|usage| usage.get("speed"))
+                .and_then(|speed| speed.as_str()),
+        );
         if let Some(model) = &response_model {
             current_model = model.clone();
         }
@@ -2387,6 +2393,58 @@ mod tests {
         });
         assert_eq!(mismatched_effort, Some(None));
         let _ = fs::remove_file(path);
+    }
+    #[test]
+    fn claude_fast_timeline_preserves_model_and_response_effort() {
+        let events = [
+            r#"{"requestId":"fast","effort":"high","message":{"role":"assistant","model":"claude-opus-5-5","usage":{"speed":"fast"},"content":[{"type":"text","text":"First"},{"type":"text","text":"Second"}]}}"#,
+            r#"{"requestId":"standard","effort":"medium","message":{"role":"assistant","model":"claude-opus-5-5","usage":{"speed":"standard"},"content":[{"type":"text","text":"Standard"}]}}"#,
+        ];
+        for with_db in [false, true] {
+            let (reader, path) = reader_for_events(&events);
+            let db_entries = if with_db {
+                HashMap::from([(
+                    1,
+                    (
+                        TokenStats {
+                            input: 10,
+                            output: 5,
+                            total: 15,
+                            cache_read: None,
+                            cache_write: None,
+                            cache_write_5m: None,
+                            cache_write_1h: None,
+                            reasoning: None,
+                        },
+                        "claude-opus-5-5-fast".to_string(),
+                    ),
+                )])
+            } else {
+                HashMap::new()
+            };
+            let mut timeline = Vec::new();
+            parse_claude_timeline(reader, &db_entries, &mut timeline, &mut HashMap::new());
+            let replies: Vec<_> = timeline
+                .iter()
+                .filter_map(|item| match item {
+                    TimelineItem::AgentReply {
+                        model,
+                        reasoning_effort,
+                        ..
+                    } => Some((model.as_str(), reasoning_effort.as_deref())),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(
+                replies,
+                vec![
+                    ("claude-opus-5-5-fast", Some("high")),
+                    ("claude-opus-5-5-fast", Some("high")),
+                    ("claude-opus-5-5", Some("medium")),
+                ]
+            );
+            fs::remove_file(path).unwrap();
+        }
     }
 }
 
