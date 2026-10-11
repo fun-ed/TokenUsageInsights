@@ -276,7 +276,7 @@ const VSCODE_EMPTY_SESSION_MIGRATION_KEY: &str = "migration:vscode_empty_session
 const COPILOT_CACHED_INPUT_MIGRATION_KEY: &str = "migration:copilot_cached_input_v1";
 const CLAUDE_CACHE_WRITE_PRICING_MIGRATION_KEY: &str = "migration:claude_cache_write_pricing_v1";
 const CLAUDE_EFFORT_PARSER_MIGRATION_KEY: &str = "migration:claude_per_turn_effort_v1";
-const CLAUDE_SUBAGENT_PARSER_MIGRATION_KEY: &str = "migration:claude_code_subagents_v2";
+const CLAUDE_SUBAGENT_PARSER_MIGRATION_KEY: &str = "migration:claude_code_subagents_v3";
 const SESSION_NAME_SELECTION_MIGRATION_KEY: &str = "migration:session_name_selection_v1";
 static IMPORT_BATCH_COUNTER: AtomicU64 = AtomicU64::new(0);
 const CURSOR_MODEL_ATTRIBUTION_MIGRATION_KEY: &str = "migration:cursor_model_attribution_v2";
@@ -2188,9 +2188,9 @@ fn run_claude_effort_parser_migration(conn: &mut Connection) -> Result<(), Strin
         .map_err(|error| format!("Claude effort migration COMMIT 失敗: {error}"))
 }
 
-/// Reset every Claude source cursor once, retaining historical usage whose
-/// transcript no longer exists. Each surviving file is replaced atomically;
-/// failed files retain no cursor and are retried on the next sync.
+/// Reset every Claude source cursor once for subagent and Fast Mode parsing,
+/// retaining historical usage whose transcript no longer exists. Each surviving
+/// file is replaced atomically; failed files are retried on the next sync.
 fn run_claude_subagent_parser_migration(conn: &mut Connection) -> Result<(), String> {
     let migration_done: bool = conn
         .query_row(
@@ -11439,6 +11439,12 @@ mod tests {
     fn claude_subagent_migration_rolls_back_cursor_reset_and_retries_once() {
         let mut conn = Connection::open_in_memory().unwrap();
         init_db(&conn).unwrap();
+        conn.execute(
+            "INSERT INTO sync_state (filename, last_synced_size, last_synced_time)
+             VALUES ('migration:claude_code_subagents_v2', 1, 0)",
+            [],
+        )
+        .unwrap();
         let keys = [
             "claude:projects/legacy.jsonl",
             "claude-default:projects/main.jsonl",
@@ -11462,7 +11468,7 @@ mod tests {
         .unwrap();
         conn.execute_batch(
             "CREATE TRIGGER fail_claude_migration BEFORE INSERT ON sync_state
-             WHEN NEW.filename = 'migration:claude_code_subagents_v2'
+             WHEN NEW.filename = 'migration:claude_code_subagents_v3'
              BEGIN SELECT RAISE(ABORT, 'injected migration failure'); END;",
         )
         .unwrap();

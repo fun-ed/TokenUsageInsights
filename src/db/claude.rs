@@ -12,6 +12,8 @@ struct ClaudeUsage {
     output_tokens: u64,
     #[serde(default)]
     cache_creation: ClaudeCacheCreation,
+    #[serde(default)]
+    speed: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, serde::Deserialize)]
@@ -146,6 +148,23 @@ fn extract_claude_user_prompt_for_session_name(raw_text: &str) -> Option<String>
         }
     }
     Some(trimmed.to_string())
+}
+
+/// Fast Mode is reported in usage rather than the API model name.
+fn apply_claude_speed_suffix(model: Option<String>, speed: Option<&str>) -> Option<String> {
+    let is_fast = speed
+        .map(str::trim)
+        .is_some_and(|speed| speed.eq_ignore_ascii_case("fast"));
+    if !is_fast {
+        return model;
+    }
+    model.map(|model| {
+        if model.to_ascii_lowercase().ends_with("-fast") {
+            model
+        } else {
+            format!("{model}-fast")
+        }
+    })
 }
 
 pub(super) fn parse_claude_session_file(filepath: &Path) -> Result<Vec<UsageEntry>, String> {
@@ -284,10 +303,13 @@ pub(super) fn parse_claude_session_file(filepath: &Path) -> Result<Vec<UsageEntr
         };
 
         let reasoning_effort = super::claude_effort_for_assistant_event(&event);
-        let model = message
-            .get("model")
-            .and_then(|model| model.as_str())
-            .map(str::to_string);
+        let model = apply_claude_speed_suffix(
+            message
+                .get("model")
+                .and_then(|model| model.as_str())
+                .map(str::to_string),
+            usage.speed.as_deref(),
+        );
         if let Some(&existing_idx) = seen_response_indices.get(response_key) {
             let existing = &mut results[existing_idx];
             let existing_total = existing.tokens.as_ref().map_or(0, |stats| stats.total);
@@ -662,5 +684,48 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![Some("high"), Some("medium"), None, Some("low")]
         );
+    }
+    #[test]
+    fn apply_claude_speed_suffix_only_marks_fast_mode() {
+        for speed in [Some("fast"), Some(" FAST ")] {
+            assert_eq!(
+                apply_claude_speed_suffix(Some("claude-opus-5-5".into()), speed),
+                Some("claude-opus-5-5-fast".into())
+            );
+        }
+        for speed in [Some("standard"), None, Some("")] {
+            assert_eq!(
+                apply_claude_speed_suffix(Some("claude-opus-5-5".into()), speed),
+                Some("claude-opus-5-5".into())
+            );
+        }
+        assert_eq!(
+            apply_claude_speed_suffix(Some("claude-opus-5-5-fast".into()), Some("fast")),
+            Some("claude-opus-5-5-fast".into())
+        );
+        assert_eq!(apply_claude_speed_suffix(None, Some("fast")), None);
+    }
+
+    #[test]
+    fn parse_claude_session_file_marks_fast_mode_turns_for_pricing() {
+        let path = temp_jsonl_path("claude-fast-mode");
+        let content = r#"{"type":"assistant","sessionId":"session-fast","timestamp":"2026-10-10T01:00:00Z","requestId":"fast","effort":"high","message":{"role":"assistant","model":"claude-opus-5-5","usage":{"input_tokens":10,"output_tokens":5,"speed":"fast"}}}
+{"type":"assistant","sessionId":"session-fast","timestamp":"2026-10-10T01:00:01Z","requestId":"standard","message":{"role":"assistant","model":"claude-opus-5-5","usage":{"input_tokens":10,"output_tokens":5,"speed":"standard"}}}
+{"type":"assistant","sessionId":"session-fast","timestamp":"2026-10-10T01:00:02Z","requestId":"legacy","message":{"role":"assistant","model":"claude-opus-5-5","usage":{"input_tokens":10,"output_tokens":5}}}
+"#;
+        fs::write(&path, content).unwrap();
+        let entries = parse_claude_session_file(&path).unwrap();
+        fs::remove_file(path).unwrap();
+        assert_eq!(entries.len(), 3);
+        for (entry, model) in
+            entries
+                .iter()
+                .zip(["claude-opus-5-5-fast", "claude-opus-5-5", "claude-opus-5-5"])
+        {
+            assert_eq!(entry.model.as_deref(), Some(model));
+            assert_eq!(entry.model_id.as_deref(), Some(model));
+            assert_eq!(entry.tokens.as_ref().unwrap().total, 15);
+        }
+        assert_eq!(entries[0].reasoning_effort.as_deref(), Some("high"));
     }
 }
