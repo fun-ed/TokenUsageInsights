@@ -72,10 +72,16 @@
 - Antigravity 直接讀取 `brain/<session-id>/.system_generated/logs/transcript_full.jsonl`，唯讀查詢 `conversations/<session-id>.db` 的模型與 workspace URI；舊 `usage/` hook 記錄仍匯入，同會話以原生資料取代、不重複計費。workspace URI 只接受本機 `file://` 路徑，不處理 Windows 磁碟代號或 UNC。
 - 未移植 `7d9a170`（建置日期取代側欄日期）：fork 自 v10.0.7 起側欄顯示瀏覽器本地日期，兩者衝突時保留 fork 行為。
 
+### 2.9 會話標題顯示
+
+- v10.0.20 起，會話列表、圖表標籤、詳情標題與模型會話清單隱藏 `<pasted_content ...>` 開頭及結尾標記，保留其中的文字；缺少結尾標記時仍清除完整的開頭標記。
+- 標題以 `<system-reminder>` 開頭，且工作路徑不分大小寫含 `magpie` 時，顯示為 `Magpie`。其他標題不套用此標記。
+- 僅調整 UI 顯示，不修改原始逐字稿、資料庫標題、Harness 分類或 Token 統計，也不進行跨 Harness 去重。
+
 ## 3. 版本與發行
 
 - Cargo 與 npm 版本為 `10.x.y`；release tag 為對應的 `v10.x.y`。不可重用 upstream 的 `v1.x.y`。
-- 目前 fork 發行版本為 `v10.0.19`，選擇性同步基準為 upstream `v1.3.2`（見 §2.8）。Windows statusline 命令、verbatim 路徑、Windows workspace URI、PowerShell 測試及 workflow 均未移植；未新增直接 `base64` 相依。
+- 目前 fork 發行版本為 `v10.0.20`，選擇性同步基準維持 upstream `v1.3.2`（見 §2.8）。Windows statusline 命令、verbatim 路徑、Windows workspace URI、PowerShell 測試及 workflow 均未移植；未新增直接 `base64` 相依。
 - 發行資產：macOS `aarch64-apple-darwin` 與 `x86_64-apple-darwin` 的 `.tar.gz`、`.dmg`，以及 `SHA256SUMS`。Linux 只有在 release 列出對應 tarball 時才宣稱可用。
 - 發行包內容：執行檔、`static/`、`shell/`、`scripts/`、`pricing.csv`、`README.md`、`LICENSE`、`VERSION`。
 - `scripts/get.sh` 與 npm 安裝器從 `fun-ed/TokenUsageInsights` 下載。

@@ -12,7 +12,7 @@ OMP 同時讀取 `~/.omp/agent/sessions` 與 `~/.omp/profiles/<name>/agent/sessi
 
 Antigravity CLI 不需設定 Status Line 或收集腳本：看板直接讀取 `~/.gemini/antigravity-cli/brain/` 的原生會話記錄，並唯讀查詢 `conversations/<session-id>.db` 取得每次回應的模型。舊版 `usage/` 收集檔仍可匯入，同一會話不會重複計算。費用為依 `pricing.csv` 的估算；模型或價格不明時無法估算，不代表免費。
 
-目前版本為 [v10.0.19](https://github.com/fun-ed/TokenUsageInsights/releases/tag/v10.0.19)，選擇性對齊 upstream v1.3.2，排除 Windows 與 CI/CD。背景同步優先處理最新檔案，關閉程式時在目前檔案交易完成後即停止，啟動同步期間看板會自動刷新；Antigravity 改讀原生會話並還原工作目錄。v10.0.18 起 Claude Code 依每回覆的 `usage.speed` 辨識 Fast Mode，使用 `-fast` 模型計價，並同步 Opus 5.5、Sonnet 5.5 與 Sonnet 5 的隨附估算牌價。完整費率與 macOS 安裝指令見英文 README。
+目前版本為 [v10.0.20](https://github.com/fun-ed/TokenUsageInsights/releases/tag/v10.0.20)。會話標題隱藏 `<pasted_content ...>` 包裝並保留文字；標題以 `<system-reminder>` 開頭且工作路徑含 `magpie` 時顯示為 `Magpie`，不更動原始紀錄、Harness 分類或 Token 統計。沿用 v10.0.19 選擇性對齊的 upstream v1.3.2，排除 Windows 與 CI/CD。背景同步優先處理最新檔案，啟動同步期間看板會自動刷新；Antigravity 讀取原生會話並還原工作目錄。完整費率與 macOS 安裝指令見英文 README。
 
 要集中分析多個 `CODEX_HOME` 或雲端硬碟同步的其他電腦紀錄，可在 `config.yaml` 加入 `additional_sources`（例如 `codex: ['~/Cloud Drive/laptop/.codex']`）。額外目錄會追加在預設來源與 profile 之後，啟動、背景同步與「立即同步」都會重新讀取設定；額外的 Claude Code 與 OMP 目錄各自成為獨立來源。完整說明見英文 [README](README.md#additional-sources-multiple-homes-and-computers)。
 

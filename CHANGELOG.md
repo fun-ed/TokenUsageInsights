@@ -4,6 +4,19 @@
 
 ## [未發行]
 
+## [10.0.20] - 2026-10-16
+
+### 修正
+
+- 會話列表、圖表標籤、詳情標題與模型會話清單隱藏 `<pasted_content ...>` 包裝，保留其中的文字。標題以 `<system-reminder>` 開頭且工作路徑含 `magpie` 時，改顯示 `Magpie`。不更動原始逐字稿、Harness 分類或 Token 統計。
+
+### 驗證
+
+- Rust 457 個測試與 Node 38 個測試通過；`cargo fmt --check`、Clippy `-D warnings`、npm package dry run 通過。Apple Silicon 與 Intel release build 零警告零錯誤。
+- 本機 API 資料搭配新版 UI 的瀏覽器驗證：VPA 會話列表、提示文字與詳情標題均移除貼上包裝，符合路徑條件的提醒標題顯示為 `Magpie`。
+- 兩種架構安裝包均通過隔離安裝、CLI 版本、API 與 SQLite 建立檢查；DMG 驗證通過。Intel 版在 Apple Silicon 上透過 Rosetta 執行，未於實體 Intel Mac 驗證。
+- 本機 CLI 與 launchd 服務已更新為 `10.0.20`，保留既有 symlink、資料庫與來源探索設定。實際看板驗證標題清理與 `Magpie` 顯示正常，無瀏覽器錯誤。
+
 ## [10.0.19] - 2026-10-15
 
 ### 新增與改善
@@ -1031,7 +1044,9 @@
 - 修正行動版側邊欄遮擋、黑畫面、標題擠壓、圖表導覽索引與年度版面問題。
 - 修正並補齊多個 Gemini、Claude、GPT 與 GPT-OSS 模型的定價規則。
 
-[未發行]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.18...HEAD
+[未發行]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.20...HEAD
+[10.0.20]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.19...v10.0.20
+[10.0.19]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.18...v10.0.19
 [10.0.18]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.17...v10.0.18
 [10.0.17]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.16...v10.0.17
 [10.0.16]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.15...v10.0.16

@@ -5,11 +5,33 @@ import {
   compareSessionRows,
   filterEntriesBySessionIdentity,
   formatSessionModelDisplay,
+  formatSessionNameDisplay,
   renderReasoningEffortBadge,
   matchesSessionIdentity,
   parentSessionIdentityKey,
   sessionIdentityKey,
 } from '../static/session-utils.js';
+
+test('session titles hide pasted-content wrappers without removing their contents', () => {
+  assert.equal(
+    formatSessionNameDisplay('<pasted_content id="9a21"> VPA install'),
+    'VPA install',
+  );
+  assert.equal(
+    formatSessionNameDisplay('Review <pasted_content id="abc">report</pasted_content> now'),
+    'Review report now',
+  );
+  assert.equal(formatSessionNameDisplay('Keep <example> as text'), 'Keep <example> as text');
+});
+
+test('reminder titles are labeled Magpie only for Magpie working directories', () => {
+  const title = '<system-reminder> Context for this session';
+  assert.equal(formatSessionNameDisplay(title, '/tmp/magpie-claude-work-501'), 'Magpie');
+  assert.equal(formatSessionNameDisplay(title, '/tmp/Magpie-work'), 'Magpie');
+  assert.equal(formatSessionNameDisplay(title, '/work/project'), title);
+  assert.equal(formatSessionNameDisplay(title), title);
+  assert.equal(formatSessionNameDisplay('VPA install', '/tmp/magpie-work'), 'VPA install');
+});
 
 const mixedTimestampSessions = [
   {

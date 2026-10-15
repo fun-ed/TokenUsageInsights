@@ -92,7 +92,7 @@
 此 fork 沒有 GitHub Actions workflow。GitHub Pages 的分支來源只能選 repository 根目錄或 `/docs`，不能直接選 `/public`。要部署 `public/`，請另行手動將其內容發布到專用 Pages 分支的根目錄，或使用其他靜態網站服務；不要為此引入 CI/CD。
 
 - `public/CNAME` 保存原站網域 `token.gh.miniasp.com`。它不代表 `fun-ed` fork 已取得該網域或完成部署；只有確認網域權限與 DNS 後才能用於自己的站點。
-- 本文件記錄既有 landing page 的設計與產出，不是 CLI 發行紀錄。v10.0.19 的版本、支援平台與安裝方式以 [README](../README.md)、[fork 規格](fork-spec.md) 與 [CHANGELOG](../CHANGELOG.md) 為準；`docs/research/` 是各次調查的來源紀錄，不保證外部價格永遠有效。
+- 本文件記錄既有 landing page 的設計與產出，不是 CLI 發行紀錄。v10.0.20 的版本、支援平台與安裝方式以 [README](../README.md)、[fork 規格](fork-spec.md) 與 [CHANGELOG](../CHANGELOG.md) 為準；`docs/research/` 是各次調查的來源紀錄，不保證外部價格永遠有效。
 - 圖片與 OG 資產包含 1200x630 `og:image`。
 
 ### Chrome 截圖與 meta 驗證重點

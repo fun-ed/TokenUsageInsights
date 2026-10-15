@@ -12,6 +12,14 @@ export function formatSessionModelDisplay(model) {
   return String(model ?? '');
 }
 
+export function formatSessionNameDisplay(name, cwd = '') {
+  const title = String(name ?? '');
+  if (/magpie/i.test(cwd) && /^\s*<system-reminder>/.test(title)) {
+    return 'Magpie';
+  }
+  return title.replace(/<\/?pasted_content\b[^>]*>/g, '').trim();
+}
+
 function escapeHtml(value) {
   return String(value)
     .replace(/&/g, '&amp;')

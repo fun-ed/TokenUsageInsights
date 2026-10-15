@@ -17,7 +17,8 @@ import {
   buildSessionPricingPayload,
   renderReasoningEffortBadge,
   formatSessionModelDisplay,
-} from './session-utils.js?v=7';
+  formatSessionNameDisplay,
+} from './session-utils.js?v=8';
 import { parseUsageTimestamp } from './time-utils.js?v=1';
 import { getClaudeSessionSourceBadge, getOmpSessionSourceBadge } from './source-utils.js?v=2';
 
@@ -3986,7 +3987,7 @@ function renderSessionTrendChart(sessions) {
 
   const labels = displaySessions.map((s, idx) => {
     const timeStr = s.timestamp ? formatLocalTime(s.timestamp, false) : '';
-    return `${timeStr} (${s.session_name.substring(0, 10)}...)`;
+    return `${timeStr} (${formatSessionNameDisplay(s.session_name, s.cwd).substring(0, 10)}...)`;
   });
 
   const tokenData = displaySessions.map(s => s.total_tokens);
@@ -4602,7 +4603,7 @@ function sortAndGetFlatSessions(sessions, sortCol, sortDir) {
     });
     node.children
       .sort(compare)
-      .forEach(child => traverse(child, depth + 1, node.session_name));
+      .forEach(child => traverse(child, depth + 1, formatSessionNameDisplay(node.session_name, node.cwd)));
   };
   roots.forEach(r => traverse(r, 0, null));
   nodes.forEach(node => {
@@ -4925,7 +4926,7 @@ function renderSessionTable(sessions) {
       // Subagent 第一列只顯示具實際語意的角色，排除與 Subagent badge 重複的 sub-agent/subagent
       const rawRole = (s.agent_role || '').trim();
       const semanticRole = rawRole && !['sub-agent', 'subagent'].includes(rawRole.toLowerCase()) ? rawRole : '';
-      const subagentDisplayName = s.session_name || s.session_id;
+      const subagentDisplayName = formatSessionNameDisplay(s.session_name, s.cwd) || s.session_id;
       nameCellContent = `
         <div class="session-name-wrapper is-subagent" style="padding-left: ${paddingLeft}px;">
           ${s.depth > 0 ? `<span class="tree-connector" style="left: ${connectorLeft}px;" aria-hidden="true"></span>` : ''}
@@ -4942,7 +4943,7 @@ function renderSessionTable(sessions) {
     } else {
       nameCellContent = `
         <div class="session-name-wrapper">
-          <span class="session-name-text" title="${escapeHtml(s.session_name)}">${escapeHtml(s.session_name)}</span>
+          <span class="session-name-text" title="${escapeHtml(formatSessionNameDisplay(s.session_name, s.cwd))}">${escapeHtml(formatSessionNameDisplay(s.session_name, s.cwd))}</span>
           ${nameSourceBadge}
           <span class="session-id-sub">${escapeHtml(String(s.session_id))}</span>
         </div>
@@ -5056,13 +5057,14 @@ async function openSessionTimeline(session) {
   currentSessionAgentRole = agentRole || '';
 
   // 設定基礎抬頭 (截斷至 100 字元，滑鼠移過去可以看到全部)
-  let displayName = sessionName || '';
+  const title = formatSessionNameDisplay(sessionName, cwd);
+  let displayName = title;
   if (displayName.length > 100) {
     displayName = displayName.substring(0, 100) + '...';
   }
   const nameEl = document.getElementById('drawer-session-name');
   nameEl.textContent = displayName;
-  nameEl.title = sessionName || '';
+  nameEl.title = title;
   document.getElementById('drawer-session-id').textContent = sessionId;
   const sourceBadgeEl = document.getElementById('drawer-session-source');
   if (sourceBadgeEl) {
@@ -6313,7 +6315,7 @@ function renderModelSessionDrilldown(sessions) {
               </div>
               <div class="model-session-list">
                 ${group.sessions.map(session => {
-                  const name = session.session_name || session.session_id;
+                  const name = formatSessionNameDisplay(session.session_name, session.cwd) || session.session_id;
                   const cwd = session.cwd || t('unknown_cwd');
                   const time = formatLocalTime(session.timestamp, true) || '—';
                   const sessionModel = formatSessionModelDisplay(session.session_model || session.model || '');
