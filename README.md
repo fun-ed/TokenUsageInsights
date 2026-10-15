@@ -20,7 +20,7 @@ Single-agent monthly reports for OMP and Claude Code:
 
 ## Install a precompiled CLI on macOS
 
-The [v10.0.18 release](https://github.com/fun-ed/TokenUsageInsights/releases/tag/v10.0.18) provides CLI packages for Apple Silicon (`aarch64-apple-darwin`) and Intel (`x86_64-apple-darwin`) Macs. No Rust toolchain is needed.
+The [v10.0.19 release](https://github.com/fun-ed/TokenUsageInsights/releases/tag/v10.0.19) provides CLI packages for Apple Silicon (`aarch64-apple-darwin`) and Intel (`x86_64-apple-darwin`) Macs. No Rust toolchain is needed.
 
 For a quick local install from this fork's latest release (not the upstream repository), run:
 
@@ -33,7 +33,7 @@ The installer selects the matching macOS CLI, copies the dashboard into `~/.loca
 To verify the checksum before installing, download the release package manually (set `target=x86_64-apple-darwin` on an Intel Mac):
 
 ```bash
-version=v10.0.18
+version=v10.0.19
 target=aarch64-apple-darwin
 archive="token-usage-insights-${version}-${target}.tar.gz"
 mkdir -p "$HOME/Downloads/token-usage-insights"
@@ -47,7 +47,7 @@ bash "token-usage-insights-${version}-${target}/scripts/install.sh"
 "$HOME/.local/bin/token-usage-insights"
 ```
 
-To invoke the CLI by name from zsh, add `export PATH="$HOME/.local/bin:$PATH"` to `~/.zshrc` and start a new terminal. Run the quick installer again to upgrade. Both architectures are also available as [Apple Silicon DMG](https://github.com/fun-ed/TokenUsageInsights/releases/download/v10.0.18/token-usage-insights-v10.0.18-aarch64-apple-darwin.dmg) and [Intel DMG](https://github.com/fun-ed/TokenUsageInsights/releases/download/v10.0.18/token-usage-insights-v10.0.18-x86_64-apple-darwin.dmg). For Linux, build from source unless a matching Linux asset is listed in the release.
+To invoke the CLI by name from zsh, add `export PATH="$HOME/.local/bin:$PATH"` to `~/.zshrc` and start a new terminal. Run the quick installer again to upgrade. Both architectures are also available as [Apple Silicon DMG](https://github.com/fun-ed/TokenUsageInsights/releases/download/v10.0.19/token-usage-insights-v10.0.19-aarch64-apple-darwin.dmg) and [Intel DMG](https://github.com/fun-ed/TokenUsageInsights/releases/download/v10.0.19/token-usage-insights-v10.0.19-x86_64-apple-darwin.dmg). For Linux, build from source unless a matching Linux asset is listed in the release.
 
 ## Import automatically in the background
 
@@ -112,7 +112,9 @@ additional_sources:
 
 It does not send usage logs to AI providers. Prices are estimates. When a source does not report a cost, the dashboard uses a matching local pricing rule. The server refreshes its models.dev price cache when available.
 
-v10.0.18 selectively ports the non-Windows changes from upstream v1.2.1. Claude Code reads each response's `usage.speed`; Fast Mode adds `-fast` to the stored model and pricing ID. Bundled Opus 5.5 prices are USD 4/0.20/20 per million input/cache-read/output tokens, or 8/0.40/40 for Fast Mode, without the old 200K context tier. Sonnet 5.5 uses 2/0.10/10, and Sonnet 5 uses 2/0.20/10. An upgrade reparses surviving Claude transcripts once across default, profile, and additional sources; historical records without transcripts remain unchanged because their speed cannot be recovered. Windows statusline changes and CI workflows are excluded.
+v10.0.19 selectively ports the non-Windows changes from upstream v1.3.2. Background sync processes the newest files first, stops within the current file transaction on shutdown, and the dashboard refreshes itself while the startup sync advances. Antigravity CLI usage is imported from native session logs without a Status Line collector, and native sessions recover their working directory.
+
+Since v10.0.18 (upstream v1.2.1), Claude Code reads each response's `usage.speed`; Fast Mode adds `-fast` to the stored model and pricing ID. Bundled Opus 5.5 prices are USD 4/0.20/20 per million input/cache-read/output tokens, or 8/0.40/40 for Fast Mode, without the old 200K context tier. Sonnet 5.5 uses 2/0.10/10, and Sonnet 5 uses 2/0.20/10. Historical records without transcripts remain unchanged because their speed cannot be recovered. Windows-specific changes and CI workflows are excluded.
 
 
 On Daily, `manifest/auto` sessions default to 0 USD. Select `glm-5.3`, `deepseek-v4.1-flash`, or `glm-5.3-flash` in the session's estimated-cost model selector to save a pricing choice in SQLite and refresh the costs. The choice applies only to that source and session across all dates, survives synchronization and restarts, and leaves the original model display and source logs unchanged. Select the 0 USD default to clear it. The Overview remains read-only.

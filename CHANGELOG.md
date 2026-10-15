@@ -4,6 +4,8 @@
 
 ## [未發行]
 
+## [10.0.19] - 2026-10-15
+
 ### 新增與改善
 
 - 選擇性移植 upstream `v1.2.1...v1.3.2` 的 macOS／Linux 適用項目，保留本機優先、Claude／OMP 多 profile、額外來源、總覽與 `fun-ed` 發行來源。
@@ -20,8 +22,20 @@
 
 ### 文件與相容性
 
-- 三份 README 補 Antigravity 原生來源說明；`docs/fork-spec.md` 新增 §2.8。`/api/version` 新增 `syncing`、`initial_sync_completed`、`data_revision` 欄位；`usage_entries` 新增索引，無破壞性 schema 變更。
+- Cargo／npm 版本與 lockfiles 同步為 `10.0.19`；三份 README 更新發行說明並補 Antigravity 原生來源說明；`docs/fork-spec.md` 新增 §2.8 並將同步基準更新為 upstream `v1.3.2`；`npm test` 納入 Antigravity 設定指南測試。
+- `/api/version` 新增 `syncing`、`initial_sync_completed`、`data_revision` 欄位；`usage_entries` 新增索引，無破壞性 schema 變更。不變更環境變數或安裝腳本。
 - 未移植：Windows statusline 測試、Windows Clippy 修正、Windows 磁碟代號／UNC workspace URI 解碼、README.en/ja/ko、upstream 版本號與 tasks/ 紀錄，以及與 fork 側欄本地日期衝突的 `7d9a170` 建置日期。
+
+### 驗證
+
+- 454 個 Rust 單元測試、3 個整合測試、36 個 Node 測試通過；`cargo fmt --check`、Clippy `-D warnings`、npm package dry run、`git diff --check` 與 fork-spec §4.3 檢查通過。
+- 隔離 `INSIGHTS_DIR` 實機驗證：啟動同步期間 `data_revision` 遞增、SQLite 為 WAL、同步中 SIGTERM 約 47 ms 結束、重啟後筆數一致，Claude／OMP profile 來源保留；看板月度切每日日期、月度表格點日期與主題切換正常，無 console error。
+- 本機 Antigravity `brain/` 無資料，原生匯入由整合測試與 Node 測試驗證。
+- Apple Silicon／Intel release build 零警告零錯誤；兩種架構安裝包通過隔離安裝、`/api/antigravity/pricing` 與 SQLite 建立檢查，Intel 版本於本機 Rosetta 執行。DMG `hdiutil verify` 與四個資產的 SHA-256 檢查通過。
+
+### 發行資產
+
+- macOS Apple Silicon 與 Intel CLI、完整 `.tar.gz` 安裝包、DMG 及 `SHA256SUMS`。未發行 Linux 二進位或 npm Registry 套件。
 
 ## [10.0.18] - 2026-10-11
 
