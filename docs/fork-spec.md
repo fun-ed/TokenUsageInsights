@@ -65,10 +65,17 @@
 - Claude parser 遷移標記升至 `migration:claude_code_subagents_v3`，一次重置預設、profile 與額外來源的逐字稿游標，重新解析仍存在的檔案。來源隔離與交易替換維持不變；失去逐字稿的歷史資料保留，無法補判其速度。重複同步不重複計算 Token。
 - 詳情時間軸使用同一個速度後綴轉換，Fast Mode 的模型與 thinking effort 必須保持配對。遷移時由舊子代理儲存的 `agent-*.jsonl` 檔名還原獨立會話 ID 與父 ID，並以逐字稿識別隔離舊列，包含已消失的逐字稿；重新解析父會話不得刪除這些歷史子代理用量。
 
+### 2.8 背景同步與 Antigravity 原生來源（upstream v1.3.2）
+
+- `main` 已選擇性移植 upstream v1.2.1 → v1.3.2 的非 Windows 變更（`457d8d0`、`42fd4f3`、`5037a1f`、`e9fd923`、`82b83c8`、`9a72368`、`547f8c7`），尚未發行。
+- 背景同步最新檔案優先、可協作中斷，`/api/version` 回報 `syncing`、`initial_sync_completed`、`data_revision`，看板在啟動同步期間據此自動刷新。Claude 同步保留 `source_kind` 同步鍵與 mtime 變更判斷；OMP profile／額外來源保留各自 `state_prefix`。
+- Antigravity 直接讀取 `brain/<session-id>/.system_generated/logs/transcript_full.jsonl`，唯讀查詢 `conversations/<session-id>.db` 的模型與 workspace URI；舊 `usage/` hook 記錄仍匯入，同會話以原生資料取代、不重複計費。workspace URI 只接受本機 `file://` 路徑，不處理 Windows 磁碟代號或 UNC。
+- 未移植 `7d9a170`（建置日期取代側欄日期）：fork 自 v10.0.7 起側欄顯示瀏覽器本地日期，兩者衝突時保留 fork 行為。
+
 ## 3. 版本與發行
 
 - Cargo 與 npm 版本為 `10.x.y`；release tag 為對應的 `v10.x.y`。不可重用 upstream 的 `v1.x.y`。
-- 目前 fork 發行版本為 `v10.0.18`，選擇性同步基準為 upstream `v1.2.1`。Windows statusline 命令、verbatim 路徑、PowerShell 測試及 workflow 均未移植；未新增直接 `base64` 相依。
+- 目前 fork 發行版本為 `v10.0.18`，選擇性同步基準為 upstream `v1.2.1`；`main` 已同步至 upstream `v1.3.2`（未發行，見 §2.8）。Windows statusline 命令、verbatim 路徑、PowerShell 測試及 workflow 均未移植；未新增直接 `base64` 相依。
 - 發行資產：macOS `aarch64-apple-darwin` 與 `x86_64-apple-darwin` 的 `.tar.gz`、`.dmg`，以及 `SHA256SUMS`。Linux 只有在 release 列出對應 tarball 時才宣稱可用。
 - 發行包內容：執行檔、`static/`、`shell/`、`scripts/`、`pricing.csv`、`README.md`、`LICENSE`、`VERSION`。
 - `scripts/get.sh` 與 npm 安裝器從 `fun-ed/TokenUsageInsights` 下載。

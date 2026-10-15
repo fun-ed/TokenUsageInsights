@@ -4,6 +4,25 @@
 
 ## [未發行]
 
+### 新增與改善
+
+- 選擇性移植 upstream `v1.2.1...v1.3.2` 的 macOS／Linux 適用項目，保留本機優先、Claude／OMP 多 profile、額外來源、總覽與 `fun-ed` 發行來源。
+- 移植 `457d8d0`：背景同步最新檔案優先、預載同步狀態、SQLite WAL，關閉程式時在目前檔案交易完成後立即停止；看板在啟動同步期間依 `/api/version` 的 `data_revision` 自動刷新。
+- 移植 `e9fd923`：Antigravity CLI 不需 Status Line 或收集腳本，直接匯入原生會話的 Token 與模型；舊 `usage/` 記錄仍可匯入，同會話不重複計費。設定指南拆為 Antigravity 原生來源與 Copilot 收集器。
+- 移植 `82b83c8`：Antigravity 原生會話從會話 metadata 還原工作目錄，既有記錄自動回補 CWD。
+- 移植 `42fd4f3`：主題切換按鈕改為隨狀態變化的太陽／新月圖示。
+
+### 修正
+
+- 移植 `5037a1f`：月度網址切到每日時日期欄位不再留白；點每日分頁預設 UTC 今日，從月度表格點日期仍保留該日。
+- 移植 `9a72368`：Cursor `state.vscdb` 缺少 `cursorDiskKV` 表時不再每次同步報錯。
+- 移植 `547f8c7`：Antigravity 根目錄含符號連結時，舊 hook 與原生記錄仍能正確去重。
+
+### 文件與相容性
+
+- 三份 README 補 Antigravity 原生來源說明；`docs/fork-spec.md` 新增 §2.8。`/api/version` 新增 `syncing`、`initial_sync_completed`、`data_revision` 欄位；`usage_entries` 新增索引，無破壞性 schema 變更。
+- 未移植：Windows statusline 測試、Windows Clippy 修正、Windows 磁碟代號／UNC workspace URI 解碼、README.en/ja/ko、upstream 版本號與 tasks/ 紀錄，以及與 fork 側欄本地日期衝突的 `7d9a170` 建置日期。
+
 ## [10.0.18] - 2026-10-11
 
 ### 新增與改善
