@@ -73,6 +73,10 @@ Open <http://localhost:3003>.
 
 The dashboard reads local data from Antigravity, Copilot, Codex, Claude Code, Cursor, Grok Build, Pi, OMP, Muse Code, and MiniMax Code. It supports macOS and Linux.
 
+### Antigravity CLI
+
+Antigravity CLI needs no Status Line or collector script. The dashboard reads native session transcripts from `~/.gemini/antigravity-cli/brain/<session-id>/.system_generated/logs/transcript_full.jsonl` and resolves each response's model read-only from `conversations/<session-id>.db`. Costs are estimates from `pricing.csv`; an unknown model or price means the cost cannot be estimated, not that it was free. Older `usage/usage-YYYY-MM-DD.jsonl` collector files are still imported, and native rows replace hook rows for the same session without double counting. When copying history to another computer, keep both `brain/` and `conversations/`.
+
 ### Claude Code profiles
 
 Claude Code usage is read from `~/.claude` and from every `~/.claude-profiles/<name>/` directory that contains `projects/`. New profiles are picked up on the next sync. The dashboard labels each session with its source: `Default` or the profile name, such as `work` or `p2`. Setting `CLAUDE_DIR` reads only that directory and skips profile discovery.
@@ -97,7 +101,7 @@ additional_sources:
   copilot: ['~/Cloud Drive/laptop/.copilot']
 ```
 
-- Keys: `antigravity`, `copilot`, `copilot_app`, `vscode`, `codex`, `claude`, `cursor`, `grok`, `pi`, `omp`, `muse`, `mcode`. Each path is a tool root with its usual layout: `codex` → `sessions/` and `archived_sessions/`; `claude`, `cursor` → `projects/`; `pi`, `omp` → `agent/sessions/`; `grok`, `muse`, `mcode` → `sessions/`; `vscode` → a VS Code user data root containing `User/workspaceStorage/`.
+- Keys: `antigravity`, `copilot`, `copilot_app`, `vscode`, `codex`, `claude`, `cursor`, `grok`, `pi`, `omp`, `muse`, `mcode`. Each path is a tool root with its usual layout: `antigravity` → `brain/` and `conversations/` (legacy `usage/` also works); `codex` → `sessions/` and `archived_sessions/`; `claude`, `cursor` → `projects/`; `pi`, `omp` → `agent/sessions/`; `grok`, `muse`, `mcode` → `sessions/`; `vscode` → a VS Code user data root containing `User/workspaceStorage/`.
 - Extra roots **extend** the default sources, Claude Code profiles, and OMP profiles. `*_DIR` variables still choose the primary root.
 - Each extra Claude Code or OMP root is a separate source. The dashboard labels its sessions with the last two path components, for example `laptop/.claude`.
 - Paths accept absolute paths, `~`, and `$HOME`. Relative paths resolve against the config file's directory. Repeated paths and symlinks to the same directory are scanned once; missing directories are skipped until they appear.

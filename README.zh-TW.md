@@ -10,6 +10,8 @@ Claude Code 會讀取 `~/.claude` 與每個含 `projects/` 的 `~/.claude-profil
 
 OMP 同時讀取 `~/.omp/agent/sessions` 與 `~/.omp/profiles/<name>/agent/sessions`，保留各 profile 的獨立來源。設定 `OMP_DIR` 時停用自動 profile 探索。
 
+Antigravity CLI 不需設定 Status Line 或收集腳本：看板直接讀取 `~/.gemini/antigravity-cli/brain/` 的原生會話記錄，並唯讀查詢 `conversations/<session-id>.db` 取得每次回應的模型。舊版 `usage/` 收集檔仍可匯入，同一會話不會重複計算。費用為依 `pricing.csv` 的估算；模型或價格不明時無法估算，不代表免費。
+
 目前版本為 [v10.0.18](https://github.com/fun-ed/TokenUsageInsights/releases/tag/v10.0.18)，選擇性對齊 upstream v1.2.1，排除 Windows 與 CI/CD。Claude Code 依每回覆的 `usage.speed` 辨識 Fast Mode，使用 `-fast` 模型計價；同步 Opus 5.5、Sonnet 5.5 與 Sonnet 5 的隨附估算牌價。升級後會一次重新解析仍存在的 Claude transcript，保留已失去 transcript 的歷史資料。完整費率與 macOS 安裝指令見英文 README。
 
 要集中分析多個 `CODEX_HOME` 或雲端硬碟同步的其他電腦紀錄，可在 `config.yaml` 加入 `additional_sources`（例如 `codex: ['~/Cloud Drive/laptop/.codex']`）。額外目錄會追加在預設來源與 profile 之後，啟動、背景同步與「立即同步」都會重新讀取設定；額外的 Claude Code 與 OMP 目錄各自成為獨立來源。完整說明見英文 [README](README.md#additional-sources-multiple-homes-and-computers)。
