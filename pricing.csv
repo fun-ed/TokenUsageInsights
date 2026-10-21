@@ -56,10 +56,10 @@ Grok 4.7 Fast (Extra High),xAI API,1M Tokens,4.00,1.00,12.00,N/A
 Grok Build 0.1 (<200k),xAI API,1M Tokens,1.00,0.20,2.00,N/A
 Grok Build 0.1 (>200k),xAI API,1M Tokens,2.00,0.40,4.00,N/A
 Grok Build 0.1,xAI API,1M Tokens,1.00,0.20,2.00,N/A
-Gemini 4 Argon,Google AI,1M Tokens,4.00,0.20,20.00,2.00/0.10/10.00
-Gemini 4 Argon (Medium),Google AI,1M Tokens,4.00,0.20,20.00,2.00/0.10/10.00
-Gemini 4 Argon (High),Google AI,1M Tokens,4.00,0.20,20.00,2.00/0.10/10.00
-Gemini 4 Argon (Low),Google AI,1M Tokens,4.00,0.20,20.00,2.00/0.10/10.00
+Gemini 4 Argon,Google AI,1M Tokens,2.00,0.10,10.00,1.00/0.05/5.00
+Gemini 4 Argon (Medium),Google AI,1M Tokens,2.00,0.10,10.00,1.00/0.05/5.00
+Gemini 4 Argon (High),Google AI,1M Tokens,2.00,0.10,10.00,1.00/0.05/5.00
+Gemini 4 Argon (Low),Google AI,1M Tokens,2.00,0.10,10.00,1.00/0.05/5.00
 Gemini 3.8 Flash,Google AI,1M Tokens,1.50,0.15,7.50,0.75/0.075/3.75
 Gemini 3.8 Flash (Medium),Google AI,1M Tokens,1.50,0.15,7.50,0.75/0.075/3.75
 Gemini 3.8 Flash (High),Google AI,1M Tokens,1.50,0.15,7.50,0.75/0.075/3.75
@@ -128,6 +128,9 @@ Claude Haiku 5.5 (>100k),Global,1M Tokens,0.50,0.05,2.50,N/A
 Claude Haiku 5.5,Global,1M Tokens,0.10,0.01,0.50,N/A
 Claude Haiku 4.5,Global,1M Tokens,1.00,0.10,5.00,N/A
 Claude Fable 5,Global,1M Tokens,10.00,1.00,50.00,N/A
+Claude Fable 5.1,Global,1M Tokens,10.00,0.25,50.00,N/A
+Claude Mythos 5,Global,1M Tokens,10.00,1.00,50.00,N/A
+Claude Mythos 5.1,Global,1M Tokens,10.00,0.25,50.00,N/A
 Claude Opus 5.5-fast,Global,1M Tokens,8.00,0.40,40.00,N/A
 Claude Opus 5,Global,1M Tokens,5.00,0.50,25.00,N/A
 Claude Opus 4.8-fast,Global,1M Tokens,10.00,1.00,50.00,N/A
@@ -158,9 +161,13 @@ nemotron-3-super,Local/OSS,1M Tokens,0.00,0.00,0.00,N/A
 glm-5,Cloud,1M Tokens,0.84,0.42,3.08,N/A
 minimax-m2.5,Cloud,1M Tokens,0.30,0.075,1.20,N/A
 minimax-m3,Cloud,1M Tokens,0.30,0.075,1.20,N/A
+MiniMax-M3.1-Flash,Cloud,1M Tokens,0.15,0.015,0.60,N/A
 kimi-k2.6,Global,1M Tokens,0.95,0.16,4.00,N/A
-deepseek-v4-flash,Cloud,1M Tokens,0.14,0.0028,0.28,N/A
+deepseek-v4-flash,Cloud,1M Tokens,0.30,0.006,1.20,N/A
 deepseek-v4.1-flash,Cloud,1M Tokens,0.30,0.006,1.20,N/A
+deepseek-flash,Cloud,1M Tokens,0.30,0.006,1.20,N/A
+deepseek-v4.1-flash-1017,Cloud,1M Tokens,0.30,0.006,1.20,N/A
+deepseek-v4-flash-vision-exp,Cloud,1M Tokens,0.30,0.006,1.20,N/A
 deepseek-v4-pro,Cloud,1M Tokens,0.435,0.003625,0.87,N/A
 kimi-k2.5,Global,1M Tokens,0.58,0.10,3.10,N/A
 nemotron-3-ultra,Local/OSS,1M Tokens,0.00,0.00,0.00,N/A

@@ -4,6 +4,12 @@
 
 ## [未發行]
 
+### 修正
+
+- Gemini 4 Argon 與 Low／Medium／High 標籤改用至 2026-11-30 的官方 Standard 優惠價，輸入／快取讀取／輸出每百萬 Token 為 US$2／0.10／10，Batch 顯示費率為 US$1／0.05／5。
+- 補齊 MiniMax M3.1-Flash、DeepSeek Flash 的官方 ID／1017 版本標籤，以及 Claude Fable 5.1／Mythos 5.1 的估算牌價。DeepSeek 舊 Flash 別名更新為現行尖峰費率；Claude 5.1 快取讀取採輸入價的 2.5%，舊版 5 保留 10%。
+- 新增模型名稱、個別 token 費率、Claude 快取寫入與 Gemini Batch 費率回歸測試。官方來源、Gemini 優惠到期、DeepSeek 離峰估算限制及 Pro 路由矛盾見 [快取費率查核](docs/research/2026-10-21-prompt-cache-pricing.md)。不更動資料庫或來源回報的費用；需要重新估算的歷史報表仍會套用目前牌價。
+
 ## [10.0.20] - 2026-10-16
 
 ### 修正

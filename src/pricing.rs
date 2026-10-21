@@ -790,13 +790,18 @@ mod tests {
 
     #[test]
     fn gemini_4_argon_thinking_levels_use_packaged_pricing() {
-        let rules = load_pricing_rules();
+        let rules: Vec<_> = load_pricing_rules()
+            .into_iter()
+            .filter(|rule| !rule.model_name.starts_with(MODELS_DEV_RULE_PREFIX))
+            .collect();
         for model_name in [
             "Gemini 4 Argon",
             "Gemini 4 Argon (Medium)",
             "Gemini 4 Argon (High)",
             "Gemini 4 Argon (Low)",
             "gemini-4-argon",
+            "google/gemini-4-argon",
+            "gemini-4-argon-high",
         ] {
             let cost = calculate_usage_cost(
                 &rules,
@@ -808,7 +813,117 @@ mod tests {
                 0,
             )
             .unwrap();
-            assert!((cost - 24.20).abs() < 1e-9, "{model_name}: {cost}");
+            assert!((cost - 12.10).abs() < 1e-9, "{model_name}: {cost}");
+        }
+    }
+
+    #[test]
+    fn current_cache_pricing_uses_model_specific_rates() {
+        let rules: Vec<_> = load_pricing_rules()
+            .into_iter()
+            .filter(|rule| !rule.model_name.starts_with(MODELS_DEV_RULE_PREFIX))
+            .collect();
+        for (models, input, cached, output, writes) in [
+            (
+                vec![
+                    "MiniMax-M3.1-Flash",
+                    "minimax-m3.1-flash",
+                    "minimax/MiniMax-M3.1-Flash",
+                    "MiniMax M3.1 Flash",
+                ],
+                0.15,
+                0.015,
+                0.60,
+                false,
+            ),
+            (
+                vec![
+                    "deepseek-flash",
+                    "DeepSeek-V4.1-Flash-1017",
+                    "deepseek-v4-flash",
+                ],
+                0.30,
+                0.006,
+                1.20,
+                false,
+            ),
+            (
+                vec![
+                    "claude-fable-5-1",
+                    "Claude Fable 5.1",
+                    "anthropic/claude-fable-5-1",
+                ],
+                10.0,
+                0.25,
+                50.0,
+                true,
+            ),
+            (
+                vec![
+                    "claude-mythos-5-1",
+                    "Claude Mythos 5.1",
+                    "anthropic/claude-mythos-5-1",
+                ],
+                10.0,
+                0.25,
+                50.0,
+                true,
+            ),
+            (
+                vec!["claude-fable-5", "claude-mythos-5"],
+                10.0,
+                1.0,
+                50.0,
+                true,
+            ),
+        ] {
+            for model in models {
+                for (tokens, expected) in [
+                    ((1_000_000, 0, 0, 0, 0), input),
+                    ((0, 1_000_000, 0, 0, 0), output),
+                    ((0, 0, 1_000_000, 0, 0), cached),
+                    (
+                        (0, 0, 0, 1_000_000, 0),
+                        if writes { input * 1.25 } else { 0.0 },
+                    ),
+                    (
+                        (0, 0, 0, 0, 1_000_000),
+                        if writes { input * 2.0 } else { 0.0 },
+                    ),
+                ] {
+                    let (input, output, read, write_5m, write_1h) = tokens;
+                    let cost = calculate_usage_cost(
+                        &rules,
+                        Some(model),
+                        input,
+                        output,
+                        read,
+                        write_5m,
+                        write_1h,
+                    )
+                    .unwrap();
+                    assert!((cost - expected).abs() < 1e-9, "{model} {tokens:?}: {cost}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn gemini_4_argon_packaged_batch_prices_match_introductory_rates() {
+        let entries: Vec<_> = load_pricing_entries()
+            .into_iter()
+            .filter(|entry| {
+                entry.deployment_type == "Google AI"
+                    && entry.model_name.starts_with("Gemini 4 Argon")
+            })
+            .collect();
+        assert_eq!(entries.len(), 4);
+        for entry in entries {
+            assert_eq!(
+                entry.batch_api_price, "1.00/0.05/5.00",
+                "{}",
+                entry.model_name
+            );
         }
     }
 
@@ -1217,12 +1332,21 @@ mod tests {
 
     #[test]
     fn deepseek_v4_1_flash_uses_packaged_pricing() {
-        let rules = load_pricing_rules();
+        let rules: Vec<_> = load_pricing_rules()
+            .into_iter()
+            .filter(|rule| !rule.model_name.starts_with(MODELS_DEV_RULE_PREFIX))
+            .collect();
 
         for model_name in [
             "deepseek-v4.1-flash",
             "DeepSeek-V4.1-Flash",
             "deepseek-v4.1-flash:cloud",
+            "deepseek-flash",
+            "deepseek/deepseek-flash",
+            "deepseek-v4.1-flash-1017",
+            "DeepSeek-V4.1-Flash-1017",
+            "deepseek-v4-flash",
+            "deepseek-v4-flash-vision-exp",
         ] {
             let cost = calculate_usage_cost(
                 &rules,
