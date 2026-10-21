@@ -12,7 +12,7 @@ OMP 同时读取 `~/.omp/agent/sessions` 与 `~/.omp/profiles/<name>/agent/sessi
 
 Antigravity CLI 无需设置 Status Line 或收集脚本：看板直接读取 `~/.gemini/antigravity-cli/brain/` 的原生会话记录，并只读查询 `conversations/<session-id>.db` 获取每次回复的模型。旧版 `usage/` 收集文件仍可导入，同一会话不会重复计算。费用为依 `pricing.csv` 的预估；模型或价格不明时无法预估，不代表免费。
 
-当前版本为 [v10.0.20](https://github.com/fun-ed/TokenUsageInsights/releases/tag/v10.0.20)。会话标题隐藏 `<pasted_content ...>` 包装并保留文字；标题以 `<system-reminder>` 开头且工作路径含 `magpie` 时显示为 `Magpie`，不更改原始记录、Harness 分类或 Token 统计。沿用 v10.0.19 选择性对齐的 upstream v1.3.2，排除 Windows 与 CI/CD。后台同步优先处理最新文件，启动同步期间看板会自动刷新；Antigravity 读取原生会话并还原工作目录。完整费率与 macOS 安装命令见英文 README。
+当前版本为 [v10.0.21](https://github.com/fun-ed/TokenUsageInsights/releases/tag/v10.0.21)。更新 Gemini 4 Argon 至 2026-11-30 的优惠价，新增 MiniMax M3.1-Flash、Claude Fable／Mythos 5.1，并补齐 DeepSeek V4.1-Flash-1017 名称与旧别名的高峰预估费率。价格不按历史请求日期选择；优惠到期、低峰折扣与 DeepSeek Pro 路由矛盾见[官方价格核查](docs/research/2026-10-21-prompt-cache-pricing.md)。保留 v10.0.20 的会话标题显示修正，upstream 选择性同步基准维持 v1.3.2。完整价格与 macOS 安装命令见英文 README。
 
 要集中分析多个 `CODEX_HOME` 或云盘同步的其他电脑记录，可在 `config.yaml` 加入 `additional_sources`（例如 `codex: ['~/Cloud Drive/laptop/.codex']`）。额外目录会追加到默认来源与 profile 之后，启动、后台同步与「立即同步」都会重新读取设置；额外的 Claude Code 与 OMP 目录各自成为独立来源。完整说明见英文 [README](README.md#additional-sources-multiple-homes-and-computers)。
 

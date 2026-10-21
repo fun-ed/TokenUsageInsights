@@ -41,6 +41,6 @@ npx --yes token-usage-insights@X.Y.Z --help
 
 如果 npm 套件名稱仍屬於 upstream，請勿覆蓋或嘗試取得其控制權。改用 GitHub 安裝指令，或先選擇本 fork 專用的新套件名稱。
 
-## v10.0.20 的發布範圍
+## v10.0.21 的發布範圍
 
 本次只發行兩種 macOS 架構的 `.tar.gz`、DMG 與 `SHA256SUMS`，不發布 npm Registry 套件或 Linux 二進位。macOS 使用者可用上述 GitHub 安裝指令或 README 的 `scripts/get.sh`；Linux 使用者需從原始碼建置，直到 Release 提供對應 tarball。不要將套件版本同步誤認為已完成 npm 發布。

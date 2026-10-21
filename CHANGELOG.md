@@ -4,11 +4,19 @@
 
 ## [未發行]
 
+## [10.0.21] - 2026-10-21
+
 ### 修正
 
 - Gemini 4 Argon 與 Low／Medium／High 標籤改用至 2026-11-30 的官方 Standard 優惠價，輸入／快取讀取／輸出每百萬 Token 為 US$2／0.10／10，Batch 顯示費率為 US$1／0.05／5。
 - 補齊 MiniMax M3.1-Flash、DeepSeek Flash 的官方 ID／1017 版本標籤，以及 Claude Fable 5.1／Mythos 5.1 的估算牌價。DeepSeek 舊 Flash 別名更新為現行尖峰費率；Claude 5.1 快取讀取採輸入價的 2.5%，舊版 5 保留 10%。
 - 新增模型名稱、個別 token 費率、Claude 快取寫入與 Gemini Batch 費率回歸測試。官方來源、Gemini 優惠到期、DeepSeek 離峰估算限制及 Pro 路由矛盾見 [快取費率查核](docs/research/2026-10-21-prompt-cache-pricing.md)。不更動資料庫或來源回報的費用；需要重新估算的歷史報表仍會套用目前牌價。
+
+### 發行與驗證
+
+- Cargo／npm 版本、lockfiles、README 範例與 fork 發行規格同步為 `10.0.21`；提供 Apple Silicon／Intel macOS 的 `.tar.gz`、DMG 與 `SHA256SUMS`，不發布 Linux 二進位或 npm Registry 套件。
+- Rust 456 個單元測試與 3 個整合測試、Node 38 個測試通過；fmt、Clippy `-D warnings`、npm package dry run、雙架構 release build 與差異檢查通過，零警告零錯誤。
+- 兩種架構均通過隔離安裝、CLI／API 版本、模型牌價與空白 SQLite 建立檢查，DMG 驗證與四個資產的 SHA-256 檢查通過。Intel 版透過 Rosetta 執行，未於實體 Intel Mac 驗證；未替換或重啟既有常駐服務。
 
 ## [10.0.20] - 2026-10-16
 
@@ -1050,7 +1058,8 @@
 - 修正行動版側邊欄遮擋、黑畫面、標題擠壓、圖表導覽索引與年度版面問題。
 - 修正並補齊多個 Gemini、Claude、GPT 與 GPT-OSS 模型的定價規則。
 
-[未發行]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.20...HEAD
+[未發行]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.21...HEAD
+[10.0.21]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.20...v10.0.21
 [10.0.20]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.19...v10.0.20
 [10.0.19]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.18...v10.0.19
 [10.0.18]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.17...v10.0.18
