@@ -15,7 +15,7 @@
 - Auto import = resident server. `scripts/install.sh --service` → launchd `com.tokenusageinsights` (macOS) / systemd user service (Linux); HOST default `0.0.0.0`. Never run `install.sh` inside the install dir (it `rm -rf`s `static/` etc. before copying).
 - Only surviving transcripts import; Claude default `cleanupPeriodDays` 30 deletes them; `history.jsonl` has no token usage. Keep 365+ in every Claude root. Known gap: 2026-01..2026-07 Claude transcripts are gone.
 
-- Current release: `v10.0.20`, source/tag commit `c31a3c8e6e074238bc90e3345d9433faea687139`; see `mem:session-v10.0.20-release`. Earlier KB source checkpoints describe earlier releases. Memory mirrors are derived retrieval, not evidence.
+- 目前發行與來源標籤、隔離安裝及常駐服務的分別驗證狀態見 `mem:manual_release_and_readme`。舊版本 session 記憶與 KB 筆記只保留歷史證據，不能據以推定目前狀態。
 
 - Claude subagent identities and parser migrations must remain source-scoped, including NULL default source keys. Reset existing-source cursors transactionally, reparse surviving transcripts, preserve historical usage whose transcript is gone, and never mark a failed migration complete.
 - Streamed usage selection must keep model/effort from the same selected event. Reasoning can span streamed/tool events but resets on a new prompt. Orphan subagents retain their own badge and metadata fallback.
