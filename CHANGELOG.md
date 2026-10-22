@@ -4,6 +4,8 @@
 
 ## [未發行]
 
+## [10.0.22] - 2026-10-22
+
 ### 修正
 
 - 選擇性移植 upstream `dcad888`、`2797e2a` 的 Copilot CLI 修正。合併原生事件檔與 `session-store.db` 的逐筆呼叫並一對一去重，依實際 UTC 日期與時間保存用量，修正跨日續用與日內 K 線分布；相同時間、相同數值的不同呼叫仍分別保留。
@@ -15,7 +17,10 @@
 ### 驗證與交付範圍
 
 - 475 個 Rust 單元測試、3 個整合測試與 38 個 Node 測試通過；`cargo fmt --check`、Clippy `-D warnings`、release build、`git diff --check` 與 fork-spec §4.3 排除檢查通過，編譯零警告零錯誤。
-- 僅更新原始碼，Cargo／npm 維持 `10.0.21`；未發布、安裝或重啟現用服務，也未對現用資料庫執行歷史修補。未修改 UI，未執行瀏覽器驗證。
+- 修正額外來源整合測試的啟動競態：以 `/api/version` 的 `initial_sync_completed` 等待所有來源完成首次同步，避免 Codex 已就緒、Pi 尚未匯入時提前匯出而回報 404。僅調整測試等待條件，不改變產品同步行為。
+- Cargo／npm 版本、lockfiles、三份 README 與 fork 規格同步為 `10.0.22`。提供 Apple Silicon／Intel macOS 的 `.tar.gz`、DMG 與 `SHA256SUMS`，不發布 Linux 二進位或 npm Registry 套件。未修改 UI，未執行瀏覽器驗證。
+- 雙架構安裝包通過架構、隔離安裝、CLI／API 版本、空白 SQLite、Ollama 牌價與 DMG 完整性檢查。Intel 透過 Rosetta 執行，未於實體 Intel Mac 驗證。
+- 本機以 `make install-local` 更新 CLI 至 `10.0.22`，保留 symlink 並同步配套資源，更新前備份已驗證。未重啟常駐服務，其 `/api/version` 仍為 `10.0.21`；牌價已讀到新版，但 Copilot 逐筆修補要等新版程序啟動才會執行。
 
 ## [10.0.21] - 2026-10-21
 

@@ -206,17 +206,13 @@ async fn startup_and_manual_sync_reload_extra_homes_without_losing_defaults() {
     let deadline = Instant::now() + Duration::from_secs(20);
     loop {
         if let Ok(response) = client
-            .get(format!("{}/api/codex/dates", server.url))
+            .get(format!("{}/api/version", server.url))
             .send()
             .await
         {
             if response.status().is_success() {
-                let dates = response.json::<Value>().await.unwrap();
-                if dates["dates"]
-                    .as_array()
-                    .is_some_and(|dates| !dates.is_empty())
-                    && records(&client, &server, "pi").await.len() == 2
-                {
+                let status = response.json::<Value>().await.unwrap();
+                if status["initial_sync_completed"].as_bool() == Some(true) {
                     break;
                 }
             }

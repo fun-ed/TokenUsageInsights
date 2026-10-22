@@ -80,7 +80,7 @@
 
 ### 2.10 Copilot CLI 逐筆用量修補（upstream v1.4.1）
 
-- 未發行版本選擇性移植 upstream `v1.3.2...v1.4.1` 的 `dcad888`、`2797e2a` 與 `8b8639a`，不採用 upstream 版本號、發行設定或 Windows 專用內容。
+- v10.0.22 選擇性移植 upstream `v1.3.2...v1.4.1` 的 `dcad888`、`2797e2a` 與 `8b8639a`，不採用 upstream 版本號、發行設定或 Windows 專用內容。
 - Copilot CLI 合併 `session-state/<session-id>/events.jsonl` 的 `session.usage_record` 與 `session-store.db` 逐筆用量。一對一配對去重後，保留穩定呼叫識別碼及實際 UTC 時間，不再以最早時間代表整天或整個 session；累計快照不另外計入。來源間耗時欄位的細微差異不作為不同呼叫的依據。
 - `migration:copilot_cli_per_call_usage_v4:<source-key>` 依正規化根目錄觸發歷史修補，忽略舊游標。每個 session 獨立交易替換；未完成、無效或無法唯一配對的事件，以及不足以覆蓋既有用量的來源，保留原資料並以 pending 標記重試。SQLite 來源暫時缺席且無法保留既有呼叫或已知 effort 時，同樣延後替換，待來源恢復後重試。手動匯入、Copilot App 與其他來源不受替換影響，原始來源維持唯讀。
 - 保留 fork 的 thinking effort：SQLite 原生呼叫的 effort 隨一對一配對保存；只有事件檔且無已知 effort 的呼叫維持空值，不從目前設定推測歷史。來源識別、子代理歸屬與快取 Token 計算規則維持不變。
@@ -89,7 +89,7 @@
 ## 3. 版本與發行
 
 - Cargo 與 npm 版本為 `10.x.y`；release tag 為對應的 `v10.x.y`。不可重用 upstream 的 `v1.x.y`。
-- 目前 fork 發行版本為 `v10.0.21`；未發行原始碼的選擇性同步基準已更新至 upstream `v1.4.1`（見 §2.8、§2.10），不表示已發布或安裝新版本。Windows statusline 命令、verbatim 路徑、Windows workspace URI、PowerShell 測試及 workflow 均未移植；未新增直接 `base64` 相依。
+- 目前 fork 版本為 `v10.0.22`；選擇性同步基準為 upstream `v1.4.1`（見 §2.8、§2.10）。Windows statusline 命令、verbatim 路徑、Windows workspace URI、PowerShell 測試及 workflow 均未移植；未新增直接 `base64` 相依。
 - 發行資產：macOS `aarch64-apple-darwin` 與 `x86_64-apple-darwin` 的 `.tar.gz`、`.dmg`，以及 `SHA256SUMS`。Linux 只有在 release 列出對應 tarball 時才宣稱可用。
 - 發行包內容：執行檔、`static/`、`shell/`、`scripts/`、`pricing.csv`、`README.md`、`LICENSE`、`VERSION`。
 - `scripts/get.sh` 與 npm 安裝器從 `fun-ed/TokenUsageInsights` 下載。
