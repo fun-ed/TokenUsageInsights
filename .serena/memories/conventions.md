@@ -8,3 +8,4 @@
 - Frontend: descriptive `camelCase`, checked async fetches, existing DOM/API/assistant maps, persisted UI state; preserve bilingual zh-TW-oriented copy.
 - Source/fixture roots are environment-configured. Avoid reading or writing developers' real assistant data in tests.
 - Do not rename canonical assistant identifiers or bypass transcript path-security checks.
+- 開發工具遵守共用 Shell 規則與使用者確認的 `mise exec --` 偏好；Rust/Cargo、Python/uv、Node、Bun 等不可直接改用系統 runtime。命令範例、版本優先序與來源見 `mem:suggested_commands`。
