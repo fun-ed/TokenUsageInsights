@@ -4,6 +4,26 @@
 
 ## [未發行]
 
+## [10.0.23] - 2026-10-23
+
+### 新增與改善
+
+- 選擇性移植 upstream `e81697a`，每日報表新增「使用的模型佔比」，顯示模型排名、會話數、總 Token 與估算費用，點選模型可展開當日 Sessions。
+- 每日用量 API 新增 `models` 欄位；模型 Session API 接受 `YYYY-MM-DD`，保留既有年／月期間支援，拒絕無效日期。
+- 重用既有模型彙總、計價與下鑽元件，保留總覽、Claude／OMP profile 來源隔離與 thinking effort，彙總維持在 blocking thread 執行。
+
+### 相容性與發行範圍
+
+- 不變更資料庫結構、環境變數或安裝方式。不移植 upstream CI/CD、Windows 內容或 `v1.x.y` 發行設定。
+- Cargo／npm 版本、lockfiles、三份 README 與 fork 規格同步為 `10.0.23`。發行目標為 Apple Silicon／Intel macOS 的 `.tar.gz`、DMG 與 `SHA256SUMS`；不發布 Linux 二進位或 npm Registry 套件。
+
+### 驗證與交付
+
+- 475 個 Rust 單元測試、3 個整合測試與 38 個 Node 測試通過；`cargo fmt --check`、Clippy `-D warnings`、JavaScript 語法與 fork 排除清單檢查通過，雙架構 release 建置零警告零錯誤。
+- Firefox 以隔離合成資料驗證每日模型彙總、滑鼠收合與鍵盤展開、同名 Session 的三來源隔離、profile badge 與 thinking effort。
+- 兩種架構的壓縮檔解壓後通過隔離安裝、CLI／API 版本、配套資源、pricing API 與空白 SQLite 驗證；DMG 完整性與四個資產的 SHA-256 校驗通過。Intel 透過 Rosetta 執行，未在實體 Intel Mac 驗證。
+- 本機執行 `make install-local`，同步配套資源至 `10.0.23`，恢復原安裝 symlink，並以新檔案原子替換執行檔後通過 macOS 簽章與 CLI 啟動檢查。更新前備份已驗證；未重啟常駐服務，既有程序仍為 `10.0.22`。
+
 ## [10.0.22] - 2026-10-22
 
 ### 修正

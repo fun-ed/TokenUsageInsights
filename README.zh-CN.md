@@ -12,7 +12,7 @@ OMP 同时读取 `~/.omp/agent/sessions` 与 `~/.omp/profiles/<name>/agent/sessi
 
 Antigravity CLI 无需设置 Status Line 或收集脚本：看板直接读取 `~/.gemini/antigravity-cli/brain/` 的原生会话记录，并只读查询 `conversations/<session-id>.db` 获取每次回复的模型。旧版 `usage/` 收集文件仍可导入，同一会话不会重复计算。费用为依 `pricing.csv` 的预估；模型或价格不明时无法预估，不代表免费。
 
-当前版本为 [v10.0.22](https://github.com/fun-ed/TokenUsageInsights/releases/tag/v10.0.22)，选择性同步 upstream v1.4.1。Copilot CLI 合并事件文件与 SQLite 的逐次用量，保留实际 UTC 时间，修正跨日续用与日内 K 线分布；首次同步自动核对可取得的历史数据，不必清空数据库。来源不完整或无法唯一配对时保留旧数据并重试，保持手动导入、来源隔离、子代理与已知 thinking effort。新增 Ollama `muse-spark-open`／`:cloud` 定价，输入／缓存读取／输出每百万 Token 为 US$1.25／0.15／4.25。保留前版价格与标题修正；优惠期限及预估限制见[官方价格核查](docs/research/2026-10-21-prompt-cache-pricing.md)。完整 macOS 安装命令见英文 README。
+当前版本为 [v10.0.23](https://github.com/fun-ed/TokenUsageInsights/releases/tag/v10.0.23)，选择性同步 upstream v1.5.0 的每日模型占比。日报显示模型排名、会话数、Token 与预估费用，点击模型可展开当日 Sessions，保留总览、来源与 profile badge 及 thinking effort。每日用量 API 新增 `models`，模型 Session 查询支持 `YYYY-MM-DD`；不变更数据库结构、环境变量或安装方式，不引入 CI/CD 或 Windows 内容。保留前版 Copilot 逐次修补与价格；优惠期限及预估限制见[官方价格核查](docs/research/2026-10-21-prompt-cache-pricing.md)。完整 macOS 安装命令见英文 README。
 
 要集中分析多个 `CODEX_HOME` 或云盘同步的其他电脑记录，可在 `config.yaml` 加入 `additional_sources`（例如 `codex: ['~/Cloud Drive/laptop/.codex']`）。额外目录会追加到默认来源与 profile 之后，启动、后台同步与「立即同步」都会重新读取设置；额外的 Claude Code 与 OMP 目录各自成为独立来源。完整说明见英文 [README](README.md#additional-sources-multiple-homes-and-computers)。
 
