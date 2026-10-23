@@ -12,3 +12,4 @@
 - Blocking discipline and Result/serde response patterns are in `mem:conventions`; isolated backend test fixtures are in `mem:task_completion`.
 - 費率維護：隨附 `pricing.csv` 是現行估算快照，沒有依請求日期或尖峰／離峰選價；更新別名費率可能改變歷史報表估算，但不改來源回報的費用。快取 TTL、模型版本與費率是不同概念，需分開查核。
 - 快取費率來源、Gemini 優惠期限及 DeepSeek Pro 路由矛盾見 `docs/research/2026-10-21-prompt-cache-pricing.md`。隨附牌價回歸測試應排除 models.dev 快取，保留執行時原有的動態價格優先序。
+- Daily model reports (v10.0.23): `aggregate_usage_details` returns model summaries using `reporting::summarize_models_by_mode`; `/api/:assistant/usage/:date` adds `models`. `get_model_sessions` accepts a valid day, month or year; Day reads `get_usage_entries_by_date` and maps to `DatedUsageEntry` before the existing model-specific collector. Retain blocking-thread work and full source identity; invalid periods return 400, empty dates return an empty Session list. Tests live in daily/monthly handlers and the all-agent report integration test.
