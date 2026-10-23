@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use super::*;
 use crate::db;
 use crate::pricing::{load_prepared_pricing_rules, PreparedPricingRules};
-use crate::reporting::{group_sessions, latest_usage_entry};
+use crate::reporting::{group_sessions, latest_usage_entry, summarize_models_by_mode};
 use crate::session_details::load_session_details;
 use crate::session_files::is_safe_session_id;
 use crate::session_search;
@@ -25,7 +25,12 @@ use std::{fs::File, io::BufReader};
 fn aggregate_usage_details(
     entries_with_type: &[crate::db::UsageDayRecordWithAssistant],
     pricing_rules: &PreparedPricingRules,
-) -> (DaySummary, Vec<SessionSummary>, Vec<RawUsageEntry>) {
+) -> (
+    DaySummary,
+    Vec<SessionSummary>,
+    Vec<RawUsageEntry>,
+    Vec<crate::reporting::MonthlyModelSummary>,
+) {
     let mut summary = DaySummary::default();
     let sessions_map = group_sessions(
         entries_with_type
@@ -109,7 +114,8 @@ fn aggregate_usage_details(
     }
 
     sessions_summary.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
-    (summary, sessions_summary, entries)
+    let models = summarize_models_by_mode(&sessions_map, pricing_rules);
+    (summary, sessions_summary, entries, models)
 }
 
 #[derive(Deserialize)]
@@ -428,7 +434,7 @@ pub async fn get_usage_details(
     })
     .await
     .unwrap_or_else(|_| Err("執行緒執行失敗".to_string()));
-    let (summary, sessions_summary, entries) = match aggregate_res {
+    let (summary, sessions_summary, entries, models) = match aggregate_res {
         Ok(aggregate) => aggregate,
         Err(err) => {
             return (
@@ -448,6 +454,7 @@ pub async fn get_usage_details(
         summary,
         sessions: sessions_summary,
         raw_entries: entries,
+        models,
     })
     .into_response()
 }
@@ -689,10 +696,15 @@ mod tests {
             entry.reasoning_effort = Some(effort.to_string());
             rows.push(usage_day_record(entry, assistant));
         }
-        let (summary, sessions, _) =
+        let (summary, sessions, _, models) =
             aggregate_usage_details(&rows, &PreparedPricingRules::from_rules(vec![]));
         assert_eq!(summary.total_sessions, 4);
         assert_eq!(summary.total_tokens, 60);
+        assert_eq!(models.len(), 4);
+        assert_eq!(
+            models.iter().map(|model| model.total_tokens).sum::<u64>(),
+            60
+        );
         for row in rows {
             let session = sessions
                 .iter()
@@ -725,7 +737,7 @@ mod tests {
             pricing_model: None,
         });
         let records = [usage_day_record(entry, "omp")];
-        let (_, sessions, _) =
+        let (_, sessions, _, _) =
             aggregate_usage_details(&records, &PreparedPricingRules::from_rules(Vec::new()));
 
         assert_eq!(sessions.len(), 1);
@@ -898,7 +910,7 @@ mod tests {
         .unwrap();
 
         let entries = crate::db::get_usage_entries_by_date(&conn, "2026-07-20", "copilot").unwrap();
-        let (_, sessions, _) =
+        let (_, sessions, _, _) =
             aggregate_usage_details(&entries, &PreparedPricingRules::from_rules(Vec::new()));
 
         assert_eq!(
@@ -950,7 +962,7 @@ mod tests {
             usage_day_record(second, "codex"),
         ];
 
-        let (summary, sessions, raw_entries) =
+        let (summary, sessions, raw_entries, _) =
             aggregate_usage_details(&entries, &PreparedPricingRules::from_rules(Vec::new()));
 
         assert_eq!(summary.total_sessions, 2);
@@ -1073,12 +1085,19 @@ mod tests {
             },
         ];
 
-        let (summary, sessions, _) = aggregate_usage_details(
+        let (summary, sessions, _, models) = aggregate_usage_details(
             &entries_with_type,
             &PreparedPricingRules::from_rules(rules.into()),
         );
 
         assert_daily_summary_matches_session_totals(&summary, &sessions);
+        assert_eq!(models.len(), 2);
+        assert!(models.iter().any(|model| {
+            model.model == "gpt-5" && model.sessions_count == 1 && model.total_tokens == 235
+        }));
+        assert!(models.iter().any(|model| {
+            model.model == "gpt-5-mini" && model.sessions_count == 1 && model.total_tokens == 58
+        }));
     }
 
     #[test]
@@ -1168,7 +1187,7 @@ mod tests {
             },
         ];
 
-        let (summary, sessions, _) = aggregate_usage_details(
+        let (summary, sessions, _, _) = aggregate_usage_details(
             &entries_with_type,
             &PreparedPricingRules::from_rules(rules.into()),
         );

@@ -156,6 +156,7 @@ pub struct UsageDetailsResponse {
     pub summary: DaySummary,
     pub sessions: Vec<SessionSummary>,
     pub raw_entries: Vec<RawUsageEntry>,
+    pub models: Vec<MonthlyModelSummary>,
 }
 
 #[derive(Serialize)]
@@ -506,6 +507,64 @@ mod tests {
             .collect::<Vec<_>>();
         daily_agents.sort();
         assert_eq!(daily_agents, vec!["claude", "codex"]);
+
+        let daily_models = daily["models"].as_array().unwrap();
+        assert_eq!(daily_models.len(), 1);
+        assert_eq!(daily_models[0]["model"], "gpt-5.5");
+        assert_eq!(daily_models[0]["sessions_count"], 2);
+        assert_eq!(daily_models[0]["total_tokens"], 3_850);
+
+        let (status, details) = response_json(
+            super::get_model_sessions(
+                Path("all".to_string()),
+                Query(
+                    serde_json::from_value(serde_json::json!({
+                        "period": "2026-07-01",
+                        "model": "gpt-5.5",
+                    }))
+                    .unwrap(),
+                ),
+            )
+            .await
+            .into_response(),
+        )
+        .await;
+        assert_eq!(status, 200);
+        let sessions = details["sessions"].as_array().unwrap();
+        assert_eq!(sessions.len(), 2);
+        assert!(sessions
+            .iter()
+            .all(|session| session["date"] == "2026-07-01"));
+        assert_eq!(
+            sessions
+                .iter()
+                .map(|session| session["total_tokens"].as_u64().unwrap())
+                .sum::<u64>(),
+            3_850,
+        );
+        for (period, expected_status, expected_count) in
+            [("2026-02-30", 400, None), ("2026-07-02", 200, Some(0))]
+        {
+            let (status, result) = response_json(
+                super::get_model_sessions(
+                    Path("all".to_string()),
+                    Query(
+                        serde_json::from_value(serde_json::json!({
+                            "period": period,
+                            "model": "gpt-5.5",
+                        }))
+                        .unwrap(),
+                    ),
+                )
+                .await
+                .into_response(),
+            )
+            .await;
+            assert_eq!(status, expected_status);
+            if let Some(count) = expected_count {
+                assert_eq!(result["sessions"].as_array().unwrap().len(), count);
+            }
+        }
 
         // 需要明確單一來源的 API 仍拒絕合併範圍。
         let export = super::export_usage_day(Path(("all".to_string(), "2026-07-01".to_string())))
