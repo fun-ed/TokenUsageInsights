@@ -1161,7 +1161,7 @@ mod tests {
     }
 
     #[test]
-    fn gpt_6_1_sol_uses_packaged_pricing_at_prompt_boundaries() {
+    fn gpt_6_1_models_use_packaged_pricing_at_prompt_boundaries() {
         let rules: Vec<_> = load_pricing_rules()
             .into_iter()
             .filter(|rule| !rule.model_name.starts_with(MODELS_DEV_RULE_PREFIX))
@@ -1172,6 +1172,10 @@ mod tests {
             "GPT-6.1 Sol",
             "GPT-6.1-Sol",
             "openai-codex/gpt-6.1-sol · high",
+            "gpt-6.1-terra",
+            "GPT-6.1 Terra",
+            "GPT-6.1-Terra",
+            "openai-codex/gpt-6.1-terra · high",
         ] {
             for (input, output, cache_read, expected) in [
                 (100_000, 100_000, 100_000, 1.21),
@@ -1183,12 +1187,17 @@ mod tests {
                 (0, 100_000, 272_001, 1.554_400_2),
                 (300_000, 50_000, 0, 1.95),
             ] {
+                let expected = if model_name.to_ascii_lowercase().contains("terra") {
+                    expected / 2.0
+                } else {
+                    expected
+                };
                 let cost =
                     calculate_usage_cost(&rules, Some(model_name), input, output, cache_read, 0, 0)
                         .unwrap();
                 assert!(
                     (cost - expected).abs() < 1e-9,
-                    "unexpected GPT-6.1 Sol cost for {model_name}, input={input}, \
+                    "unexpected GPT-6.1 cost for {model_name}, input={input}, \
                      output={output}, cache_read={cache_read}: {cost}, expected {expected}"
                 );
             }
@@ -1196,7 +1205,7 @@ mod tests {
     }
 
     #[test]
-    fn gpt_6_1_sol_packaged_entries_include_global_and_cursor_rates() {
+    fn gpt_6_1_packaged_entries_include_global_and_cursor_rates() {
         let entries: Vec<_> = load_pricing_entries()
             .into_iter()
             .filter(|entry| {
@@ -1204,7 +1213,7 @@ mod tests {
                     && entry.model_name.to_ascii_lowercase().contains("gpt-6.1")
             })
             .collect();
-        assert_eq!(entries.len(), 4);
+        assert_eq!(entries.len(), 8);
 
         for (name, deployment, input, cache, output, batch) in [
             (
@@ -1225,6 +1234,24 @@ mod tests {
             ),
             ("GPT-6.1 Sol", "Global", 2.0, 0.1, 10.0, "1.00/0.05/5.00"),
             ("gpt-6.1-sol", "Cursor", 2.0, 0.1, 10.0, "N/A"),
+            (
+                "GPT-6.1 Terra (<272k)",
+                "Global",
+                1.0,
+                0.05,
+                5.0,
+                "0.50/0.025/2.50",
+            ),
+            (
+                "GPT-6.1 Terra (>272k)",
+                "Global",
+                2.0,
+                0.1,
+                7.5,
+                "1.00/0.05/3.75",
+            ),
+            ("GPT-6.1 Terra", "Global", 1.0, 0.05, 5.0, "0.50/0.025/2.50"),
+            ("gpt-6.1-terra", "Cursor", 1.0, 0.05, 5.0, "N/A"),
         ] {
             let entry = entries
                 .iter()
