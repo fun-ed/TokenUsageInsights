@@ -21,6 +21,12 @@ import {
 } from './session-utils.js?v=8';
 import { parseUsageTimestamp } from './time-utils.js?v=1';
 import { getClaudeSessionSourceBadge, getOmpSessionSourceBadge } from './source-utils.js?v=2';
+import {
+  OPTIONAL_INTEGRATIONS_ENABLED_STORAGE_KEY,
+  isOptionalIntegrationsEnabled,
+  shouldFetchOptionalIntegrationStatus,
+  sourceStateLabel,
+} from './optional-integrations.js?v=1';
 
 // Globals
 let tokenChartInstance = null;
@@ -29,6 +35,7 @@ let pendingUsageImport = null;
 let importHistoryAssistant = null;
 let setupModalAssistant = null;
 let latestAllAgentSetupInfo = null;
+let optionalIntegrationRequestController = null;
 const pendingSessionPricingKeys = new Set();
 
 const chartPalette = {
@@ -326,14 +333,109 @@ function updateUrlParams() {
   window.history.replaceState(null, '', url.toString());
 }
 
+function optionalIntegrationsEnabled() {
+  return isOptionalIntegrationsEnabled(window.localStorage);
+}
+
+function integrationText(value) {
+  return String(value || '—');
+}
+
+async function setOptionalIntegrationsGate(enabled) {
+  const response = await fetch('/api/integrations/enable', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled }),
+  });
+  if (!response.ok) throw new Error(response.statusText);
+}
+
+function renderOptionalIntegrationStatus(data) {
+  const container = document.getElementById('optional-integrations-status');
+  if (!container) return;
+  container.replaceChildren();
+
+  for (const source of data.sources || []) {
+    const card = document.createElement('article');
+    card.className = 'glass-card optional-integration-source';
+    const heading = document.createElement('div');
+    heading.className = 'optional-integration-source-head';
+    const titleGroup = document.createElement('div');
+    const title = document.createElement('h3');
+    title.textContent = integrationText(source.id);
+    const detail = document.createElement('p');
+    detail.textContent = integrationText(source.detail);
+    titleGroup.append(title, detail);
+    const badge = document.createElement('span');
+    badge.className = 'optional-integration-state';
+    badge.dataset.state = source.state || 'unverified';
+    badge.textContent = sourceStateLabel(source.state);
+    heading.append(titleGroup, badge);
+    card.append(heading);
+
+    const artifacts = Array.isArray(source.artifacts) ? source.artifacts : [];
+    if (artifacts.length > 0) {
+      const rows = document.createElement('div');
+      rows.className = 'optional-integration-artifacts';
+      for (const artifact of artifacts) {
+        const row = document.createElement('div');
+        row.className = 'optional-integration-artifact';
+        const label = document.createElement('strong');
+        label.textContent = integrationText(artifact.label);
+        const path = document.createElement('code');
+        path.textContent = integrationText(artifact.path_hint);
+        const state = document.createElement('span');
+        state.textContent = `${sourceStateLabel(artifact.state)} · ${integrationText(artifact.detail)}`;
+        row.append(label, path, state);
+        rows.append(row);
+      }
+      card.append(rows);
+    }
+    container.append(card);
+  }
+  container.classList.remove('hidden');
+}
+
+async function loadOptionalIntegrations() {
+  const disabled = document.getElementById('optional-integrations-disabled');
+  const status = document.getElementById('optional-integrations-status');
+  if (!shouldFetchOptionalIntegrationStatus(optionalIntegrationsEnabled(), activeTab)) {
+    optionalIntegrationRequestController?.abort();
+    optionalIntegrationRequestController = null;
+    if (disabled) disabled.classList.remove('hidden');
+    if (status) {
+      status.replaceChildren();
+      status.classList.add('hidden');
+    }
+    return;
+  }
+  if (disabled) disabled.classList.add('hidden');
+  try {
+    await setOptionalIntegrationsGate(true);
+    optionalIntegrationRequestController?.abort();
+    optionalIntegrationRequestController = new AbortController();
+    const response = await fetch('/api/integrations/status', {
+      signal: optionalIntegrationRequestController.signal,
+    });
+    if (!response.ok) throw new Error(response.statusText);
+    renderOptionalIntegrationStatus(await response.json());
+  } catch (error) {
+    if (error.name === 'AbortError') return;
+    if (status) {
+      status.textContent = `${t('optional_integrations_load_failed')} ${error.message}`;
+      status.classList.remove('hidden');
+    }
+  }
+}
+
 const urlParams = new URLSearchParams(window.location.search);
 const urlAgent = urlParams.get('agent');
 const savedAgent = isSelectableAssistant(urlAgent) ? urlAgent : getCookie('selected_agent');
 let currentAssistant = isSelectableAssistant(savedAgent) ? normalizeAssistant(savedAgent) : 'antigravity';
 
 const urlTab = urlParams.get('tab');
-const savedTab = ['daily', 'monthly', 'yearly'].includes(urlTab) ? urlTab : getCookie('active_tab');
-let activeTab = ['daily', 'monthly', 'yearly'].includes(savedTab) ? savedTab : 'daily'; // 'daily' or 'monthly' or 'yearly'
+const savedTab = ['daily', 'monthly', 'yearly', 'integrations'].includes(urlTab) ? urlTab : getCookie('active_tab');
+let activeTab = ['daily', 'monthly', 'yearly', 'integrations'].includes(savedTab) ? savedTab : 'daily';
 let isEmptyState = false;
 let currentChartSessions = [];
 let currentMonthlyBreakdown = [];
@@ -524,6 +626,7 @@ function clearTitleSpinner() {
 // 視窗載入狀態：切換日期/月份/年份時立即給予回饋，資料抵達後再更新內容
 // =========================================================================
 function getActiveViewContainer() {
+  if (activeTab === 'integrations') return document.getElementById('optional-integrations-view-container');
   if (activeTab === 'monthly') return document.getElementById('monthly-view-container');
   if (activeTab === 'yearly') return document.getElementById('yearly-view-container');
   return document.getElementById('daily-view-container');
@@ -915,6 +1018,31 @@ function initApp() {
   const dailyView = document.getElementById('daily-view-container');
   const monthlyView = document.getElementById('monthly-view-container');
   const yearlyView = document.getElementById('yearly-view-container');
+  const integrationsView = document.getElementById('optional-integrations-view-container');
+  const optionalIntegrationsToggle = document.getElementById('optional-integrations-enabled');
+  const optionalIntegrationsButton = document.getElementById('btn-optional-integrations');
+
+  if (optionalIntegrationsToggle) {
+    optionalIntegrationsToggle.checked = optionalIntegrationsEnabled();
+    optionalIntegrationsToggle.addEventListener('change', async () => {
+      const enabled = optionalIntegrationsToggle.checked;
+      if (!enabled) optionalIntegrationRequestController?.abort();
+      try {
+        await setOptionalIntegrationsGate(enabled);
+        window.localStorage.setItem(
+          OPTIONAL_INTEGRATIONS_ENABLED_STORAGE_KEY,
+          enabled ? 'true' : 'false',
+        );
+        loadOptionalIntegrations();
+      } catch (error) {
+        optionalIntegrationsToggle.checked = !enabled;
+        showNotification(`${t('optional_integrations_load_failed')} ${error.message}`, 'error');
+      }
+    });
+  }
+  if (optionalIntegrationsButton) {
+    optionalIntegrationsButton.addEventListener('click', () => switchTab('integrations'));
+  }
 
   if (activeTab === 'daily') {
     tabBtnDaily.classList.add('active');
@@ -952,6 +1080,20 @@ function initApp() {
     if (dailyView) dailyView.classList.add('hidden');
     if (monthlyView) monthlyView.classList.add('hidden');
     if (yearlyView) yearlyView.classList.remove('hidden');
+  } else if (activeTab === 'integrations') {
+    tabBtnDaily.classList.remove('active');
+    tabBtnMonthly.classList.remove('active');
+    if (tabBtnYearly) tabBtnYearly.classList.remove('active');
+    dailySelector.classList.add('hidden');
+    monthlySelector.classList.add('hidden');
+    if (yearlySelector) yearlySelector.classList.add('hidden');
+    if (quickStats) quickStats.classList.add('hidden');
+    if (dailyView) dailyView.classList.add('hidden');
+    if (monthlyView) monthlyView.classList.add('hidden');
+    if (yearlyView) yearlyView.classList.add('hidden');
+    if (integrationsView) integrationsView.classList.remove('hidden');
+    document.getElementById('empty-state-container')?.classList.add('hidden');
+    loadOptionalIntegrations();
   }
 
   // Set initial live refresh toggle checkbox state based on cookie
@@ -1045,16 +1187,20 @@ function initApp() {
         renderMonthlyDashboard(currentMonthlyData);
       } else if (activeTab === 'yearly' && currentYearlyData) {
         renderYearlyDashboard(currentYearlyData);
+    } else if (activeTab === 'integrations') {
+      loadOptionalIntegrations();
       }
     });
   }
 
-  // 載入日期清單
-  fetchDates();
-  // 載入月份清單
-  fetchMonths();
-  // 載入年份清單
-  fetchYears();
+  if (activeTab !== 'integrations') {
+    // 載入日期清單
+    fetchDates();
+    // 載入月份清單
+    fetchMonths();
+    // 載入年份清單
+    fetchYears();
+  }
 
   // Initialize and synchronize custom hover-dropdown selectors
   const tabHoverOpts = document.querySelectorAll('.tab-hover-dropdown .hover-dropdown-option');
@@ -1632,12 +1778,19 @@ function switchTab(tab, options = {}) {
   const dailyView = document.getElementById('daily-view-container');
   const monthlyView = document.getElementById('monthly-view-container');
   const yearlyView = document.getElementById('yearly-view-container');
+  const integrationsView = document.getElementById('optional-integrations-view-container');
 
   const updateVisibility = (activeView) => {
     dailyView.classList.add('hidden');
     monthlyView.classList.add('hidden');
     yearlyView.classList.add('hidden');
+    integrationsView?.classList.add('hidden');
     const emptyContainer = document.getElementById('empty-state-container');
+    if (tab === 'integrations') {
+      if (emptyContainer) emptyContainer.classList.add('hidden');
+      if (activeView) activeView.classList.remove('hidden');
+      return;
+    }
     if (isEmptyState) {
       if (emptyContainer) emptyContainer.classList.remove('hidden');
     } else {
@@ -1667,7 +1820,7 @@ function switchTab(tab, options = {}) {
     if (dateSelect && dateSelect.value && availableDates.length > 0) {
       loadUsageData(dateSelect.value);
     } else if (availableDates.length === 0) {
-      toggleEmptyState(true, currentAssistant);
+      fetchDates();
     }
   } else if (tab === 'monthly') {
     // 關閉即時自動刷新以節省資源
@@ -1721,6 +1874,22 @@ function switchTab(tab, options = {}) {
     } else {
       fetchYears();
     }
+  } else if (tab === 'integrations') {
+    const liveToggle = document.getElementById('live-toggle');
+    if (liveToggle && liveToggle.checked) {
+      liveToggle.checked = false;
+      toggleLiveRefresh(false);
+      setCookie('live_refresh', 'false');
+    }
+    tabBtnDaily.classList.remove('active');
+    tabBtnMonthly.classList.remove('active');
+    if (tabBtnYearly) tabBtnYearly.classList.remove('active');
+    dailySelector.classList.add('hidden');
+    monthlySelector.classList.add('hidden');
+    if (yearlySelector) yearlySelector.classList.add('hidden');
+    quickStats.classList.add('hidden');
+    updateVisibility(integrationsView);
+    loadOptionalIntegrations();
   }
   updateCodexRateLimit();
 }

@@ -9,11 +9,13 @@ use serde::Serialize;
 use std::collections::{BTreeMap, HashMap};
 
 pub mod daily;
+pub mod integrations;
 pub mod misc;
 pub mod monthly;
 pub mod yearly;
 
 pub use daily::*;
+pub use integrations::*;
 pub use misc::*;
 pub use monthly::*;
 pub use yearly::*;

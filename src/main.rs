@@ -7,6 +7,7 @@ use axum::{
 use std::{
     net::{IpAddr, SocketAddr},
     path::PathBuf,
+    sync::Arc,
 };
 use tower_http::cors::CorsLayer;
 use tower_http::services::ServeDir;
@@ -21,6 +22,7 @@ mod copilot;
 mod db;
 mod grok;
 mod handlers;
+mod integrations;
 mod mcode;
 mod muse;
 mod omp;
@@ -42,7 +44,10 @@ const MAX_IMPORT_PAYLOAD_BYTES: usize = 200_000_000;
 const DEFAULT_BIND_HOST: &str = "0.0.0.0";
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-fn import_usage_route() -> axum::routing::MethodRouter {
+fn import_usage_route<S>() -> axum::routing::MethodRouter<S>
+where
+    S: Clone + Send + Sync + 'static,
+{
     post(import_usage_day).layer(DefaultBodyLimit::max(MAX_IMPORT_PAYLOAD_BYTES))
 }
 
@@ -338,8 +343,17 @@ async fn main() {
     println!("📂 正在服務靜態檔案，目錄來源: {:?}", static_dir);
 
     // 建立 Axum 路由，支援帶助理前綴的 API 及 fallback 相容 API
+    let optional_integration_gate = Arc::new(integrations::OptionalIntegrationGate::default());
     let app = Router::new()
         .route("/api/version", get(get_app_version))
+        .route(
+            "/api/integrations/status",
+            get(get_optional_integrations_status),
+        )
+        .route(
+            "/api/integrations/enable",
+            post(set_optional_integrations_enabled),
+        )
         // 帶 :assistant 變數的路由
         .route("/api/:assistant/dates", get(get_available_dates))
         .route("/api/:assistant/setup-info", get(get_setup_info))
@@ -393,7 +407,8 @@ async fn main() {
                 ))
                 .service(ServeDir::new(&static_dir)),
         )
-        .layer(build_cors_layer());
+        .layer(build_cors_layer())
+        .with_state(optional_integration_gate);
 
     let port = std::env::var("PORT")
         .ok()
@@ -450,12 +465,15 @@ async fn main() {
             );
         });
     }
-    axum::serve(listener, app)
-        .with_graceful_shutdown(async move {
-            let _ = graceful_rx.await;
-        })
-        .await
-        .unwrap();
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(async move {
+        let _ = graceful_rx.await;
+    })
+    .await
+    .unwrap();
 
     // HTTP 伺服器已停止服務，但背景日誌同步（含 spawn_blocking 中的 SQLite 寫入）可能仍在進行；
     // 必須等待其確實結束後才繼續停機或更新流程。`.server.pid` 刻意保留到此時才移除，

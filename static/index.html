@@ -393,6 +393,7 @@
             </select>
           </label>
           <button id="btn-pricing-sheet" class="icon-btn has-tooltip" data-i18n-title="btn_pricing_sheet" title="費用標準" aria-label="費用標準"><span class="icon-glyph icon-currency" aria-hidden="true"></span></button>
+          <button id="btn-optional-integrations" class="icon-btn has-tooltip" data-i18n-title="optional_integrations_open" title="選用整合設定" aria-label="選用整合設定"><span class="icon-glyph icon-settings" aria-hidden="true">⚙</span></button>
           <button id="btn-setup-guide" class="icon-btn has-tooltip" data-i18n-title="setup_guide_title" title="前置作業啟用教學" aria-label="前置作業啟用教學"><span class="icon-glyph icon-help" aria-hidden="true"></span></button>
           <button id="btn-sync-db" class="icon-btn has-tooltip" data-i18n-title="sync_db_title" title="立即手動同步日誌檔到 SQLite 資料庫" aria-label="立即手動同步日誌檔到 SQLite 資料庫"><span class="icon-glyph icon-sync" aria-hidden="true"></span></button>
           <button id="theme-toggle-btn" class="icon-btn has-tooltip" data-i18n-title="theme_toggle_title_dark" title="切換主題" aria-label="切換主題"><span class="icon-glyph icon-theme" aria-hidden="true"></span></button>
@@ -412,6 +413,42 @@
           <span class="view-loading-text" data-i18n="loading_data">資料載入中…</span>
         </div>
       </div>
+
+      <section id="optional-integrations-view-container" class="optional-integrations-view hidden" aria-labelledby="optional-integrations-title">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker" data-i18n="optional_integrations_kicker">選用、本機、唯讀</p>
+            <h2 id="optional-integrations-title" data-i18n="optional_integrations_title">外部用量整合</h2>
+            <p data-i18n="optional_integrations_intro">預設不檢查。啟用後才會確認 ccusage、CodeBurn 與 Magpie 的公開資料檔是否存在與格式可讀；不安裝工具、不讀取憑證，也不匯入資料。</p>
+          </div>
+          <label class="optional-integrations-toggle" for="optional-integrations-enabled">
+            <span data-i18n="optional_integrations_toggle">啟用本機檢查</span>
+            <input id="optional-integrations-enabled" type="checkbox" role="switch">
+          </label>
+        </div>
+        <div id="optional-integrations-disabled" class="optional-integrations-notice" data-i18n="optional_integrations_disabled">目前已關閉，因此伺服器不會讀取任何選用整合檔案。</div>
+        <div id="optional-integrations-status" class="optional-integrations-status hidden" aria-live="polite"></div>
+        <div class="optional-integrations-guides">
+          <article class="glass-card optional-integration-guide">
+            <h3>ccusage</h3>
+            <p data-i18n="optional_ccusage_guide">不用全域安裝：先在終端執行下方命令產生 JSON 報告。ccusage 與既有 Agent session 可能重疊；此版本只驗證，不匯入或相加。</p>
+            <pre><code>npx ccusage@latest daily --json</code></pre>
+            <a href="https://github.com/ccusage/ccusage" target="_blank" rel="noopener noreferrer" data-i18n="optional_open_official_docs">開啟官方文件</a>
+          </article>
+          <article class="glass-card optional-integration-guide">
+            <h3>CodeBurn</h3>
+            <p data-i18n="optional_codeburn_guide">CodeBurn 需要 Node.js 22.13 以上。安裝後執行報告指令；此頁只檢查快取檔格式，並明示尚未匯入。</p>
+            <pre><code>npm install -g codeburn
+codeburn report --format json</code></pre>
+            <a href="https://codeburn.app/agent/docs" target="_blank" rel="noopener noreferrer" data-i18n="optional_open_official_docs">開啟官方文件</a>
+          </article>
+          <article class="glass-card optional-integration-guide">
+            <h3>Magpie</h3>
+            <p data-i18n="optional_magpie_guide">可由官方下載頁安裝。完成至少一個 gateway request 後，這個頁面才會檢查 usage.jsonl 與 quotas.json；不會讀取 settings 或帳戶檔。</p>
+            <a href="https://usemagpie.ai/" target="_blank" rel="noopener noreferrer" data-i18n="optional_download_magpie">開啟 Magpie 官方下載頁</a>
+          </article>
+        </div>
+      </section>
 
 
 
