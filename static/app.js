@@ -424,6 +424,21 @@ function renderMagpieUsage(data) {
   const coverage = data.coverage_start && data.coverage_end ? ` · coverage ${data.coverage_start}–${data.coverage_end}` : '';
   note.textContent = `${data.agent_dimension} · ${data.timezone}${coverage} · ${t('magpie_usage_not_imported')}${data.malformed_rows || data.skipped_rows || data.duplicate_rows || data.truncated ? ` · ${t('magpie_usage_partial')} ${t('magpie_usage_unaggregated')} ${data.malformed_rows || 0}, skipped ${data.skipped_rows || 0}, duplicate ${data.duplicate_rows || 0}${data.truncated ? ` · ${t('magpie_usage_truncated')}` : ''}` : ''}`;
 
+  const modelsBody = document.getElementById('magpie-models-body');
+  if (modelsBody) {
+    modelsBody.replaceChildren();
+    for (const model of data.models || []) {
+      const row = document.createElement('tr');
+      const reportedTokens = (model.input_tokens || 0) + (model.output_tokens || 0) + (model.cache_read_tokens || 0) + (model.cache_write_tokens || 0);
+      [model.model, formatNumber(model.events || 0), formatToken(reportedTokens), model.computed_api_equivalent_usd == null ? t('magpie_usage_not_reported') : formatCost(model.computed_api_equivalent_usd), `${formatNumber(model.priced_events || 0)}/${formatNumber(model.events || 0)} · ${formatNumber(model.unpriced_events || 0)} ${t('magpie_unpriced')}`].forEach(value => {
+        const cell = document.createElement('td');
+        cell.textContent = value;
+        row.append(cell);
+      });
+      modelsBody.append(row);
+    }
+  }
+
   const canvas = document.getElementById('magpieUsageChart');
   if (!canvas || typeof Chart === 'undefined') return;
   magpieUsageChartInstance?.destroy();

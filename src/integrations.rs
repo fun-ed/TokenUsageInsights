@@ -1,4 +1,4 @@
-use chrono::{Datelike, Duration, NaiveDate, Utc};
+use chrono::{Datelike, Duration, FixedOffset, NaiveDate, Utc};
 use serde::Serialize;
 use serde_json::Value;
 use std::{
@@ -346,6 +346,19 @@ pub struct MagpieAgentUsage {
     pub events: u64,
 }
 
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct MagpieModelUsage {
+    pub model: String,
+    pub events: u64,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub cache_read_tokens: u64,
+    pub cache_write_tokens: u64,
+    pub computed_api_equivalent_usd: Option<f64>,
+    pub priced_events: u64,
+    pub unpriced_events: u64,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct MagpieUsageResponse {
     pub period: String,
@@ -367,6 +380,7 @@ pub struct MagpieUsageResponse {
     pub daily: Vec<MagpieDailyUsage>,
     pub agents: Vec<MagpieAgentUsage>,
     pub available_agents: Vec<MagpieAgentUsage>,
+    pub models: Vec<MagpieModelUsage>,
 }
 
 fn value_u64(value: &Value, field: &str) -> u64 {
@@ -382,11 +396,14 @@ fn parse_magpie_usage_reader<R: Read>(
     period: MagpiePeriod,
     selected_agent: Option<&str>,
     today: NaiveDate,
+    offset: FixedOffset,
+    pricing_rules: &crate::pricing::PreparedPricingRules,
 ) -> Result<MagpieUsageResponse, String> {
     let mut reader = BufReader::new(reader.take(MAX_MAGPIE_SCAN_BYTES + 1));
     let mut daily = BTreeMap::<NaiveDate, MagpieDailyUsage>::new();
     let mut agent_counts = BTreeMap::<String, u64>::new();
     let mut available_agent_counts = BTreeMap::<String, u64>::new();
+    let mut models = BTreeMap::<String, MagpieModelUsage>::new();
     let mut seen_request_ids = HashSet::new();
     let mut events = 0;
     let mut input_tokens = 0;
@@ -455,11 +472,10 @@ fn parse_magpie_usage_reader<R: Read>(
             malformed_rows += 1;
             continue;
         };
-        let date = timestamp.with_timezone(&Utc).date_naive();
+        let date = timestamp.with_timezone(&offset).date_naive();
         if !period.includes(date, today) {
             continue;
         }
-        *available_agent_counts.entry(agent.to_string()).or_default() += 1;
         if selected_agent.is_some_and(|selected| selected != agent) {
             continue;
         }
@@ -467,10 +483,17 @@ fn parse_magpie_usage_reader<R: Read>(
             duplicate_rows += 1;
             continue;
         }
+        *available_agent_counts.entry(agent.to_string()).or_default() += 1;
         let row_input = value_u64(&value, "in");
         let row_output = value_u64(&value, "out");
         let row_cache_read = value_u64(&value, "cache_read");
         let row_cache_write = value_u64(&value, "cache_write");
+        let model = value
+            .get("model")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|model| !model.is_empty())
+            .unwrap_or("unknown");
         let bucket = daily.entry(date).or_insert_with(|| MagpieDailyUsage {
             date: date.to_string(),
             ..Default::default()
@@ -486,6 +509,36 @@ fn parse_magpie_usage_reader<R: Read>(
         cache_read_tokens += row_cache_read;
         cache_write_tokens += row_cache_write;
         *agent_counts.entry(agent.to_string()).or_default() += 1;
+        let model_usage = models
+            .entry(model.to_string())
+            .or_insert_with(|| MagpieModelUsage {
+                model: model.to_string(),
+                ..Default::default()
+            });
+        model_usage.events += 1;
+        model_usage.input_tokens += row_input;
+        model_usage.output_tokens += row_output;
+        model_usage.cache_read_tokens += row_cache_read;
+        model_usage.cache_write_tokens += row_cache_write;
+        if row_cache_write == 0 && (row_input > 0 || row_output > 0 || row_cache_read > 0) {
+            match pricing_rules.calculate_usage_cost(
+                Some(model),
+                row_input,
+                row_output,
+                row_cache_read,
+                0,
+                0,
+            ) {
+                Ok(cost) => {
+                    model_usage.computed_api_equivalent_usd =
+                        Some(model_usage.computed_api_equivalent_usd.unwrap_or(0.0) + cost);
+                    model_usage.priced_events += 1;
+                }
+                Err(_) => model_usage.unpriced_events += 1,
+            }
+        } else {
+            model_usage.unpriced_events += 1;
+        }
         coverage_start = Some(coverage_start.map_or(date, |current| current.min(date)));
         coverage_end = Some(coverage_end.map_or(date, |current| current.max(date)));
         if let Some(cost) = value
@@ -506,9 +559,10 @@ fn parse_magpie_usage_reader<R: Read>(
         .into_iter()
         .map(|(agent, events)| MagpieAgentUsage { agent, events })
         .collect::<Vec<_>>();
+    let models = models.into_values().collect::<Vec<_>>();
     Ok(MagpieUsageResponse {
         period: period.label().to_string(),
-        timezone: "UTC",
+        timezone: "GMT+8 (+08:00)",
         agent_dimension: "Magpie event.agent (initiating agent, not provider or route)",
         selected_agent: selected_agent.map(str::to_string),
         coverage_start: coverage_start.map(|date| date.to_string()),
@@ -526,6 +580,7 @@ fn parse_magpie_usage_reader<R: Read>(
         daily,
         agents,
         available_agents,
+        models,
     })
 }
 
@@ -536,8 +591,16 @@ pub fn load_magpie_usage(
     let path = magpie_usage_path();
     let file =
         fs::File::open(&path).map_err(|error| format!("無法讀取 Magpie usage.jsonl：{error}"))?;
-    let mut usage =
-        parse_magpie_usage_reader(file, period, selected_agent, Utc::now().date_naive())?;
+    let offset = FixedOffset::east_opt(8 * 60 * 60).expect("valid fixed offset");
+    let pricing_rules = crate::pricing::load_prepared_pricing_rules();
+    let mut usage = parse_magpie_usage_reader(
+        file,
+        period,
+        selected_agent,
+        Utc::now().with_timezone(&offset).date_naive(),
+        offset,
+        &pricing_rules,
+    )?;
     usage.truncated = fs::metadata(path)
         .map(|metadata| metadata.len() > MAX_MAGPIE_SCAN_BYTES)
         .unwrap_or(false);
@@ -616,6 +679,8 @@ mod tests {
             MagpiePeriod::All,
             Some("omp"),
             NaiveDate::from_ymd_opt(2026, 10, 29).unwrap(),
+            FixedOffset::east_opt(8 * 60 * 60).unwrap(),
+            &crate::pricing::PreparedPricingRules::from_rules(Vec::new()),
         )
         .unwrap();
         assert_eq!(usage.events, 1);
@@ -625,5 +690,56 @@ mod tests {
         assert_eq!(usage.malformed_rows, 1);
         assert_eq!(usage.duplicate_rows, 1);
         assert_eq!(usage.agents[0].agent, "omp");
+        assert_eq!(usage.timezone, "GMT+8 (+08:00)");
+    }
+
+    #[test]
+    fn magpie_month_period_uses_gmt_plus_eight_and_keeps_unknown_or_cache_write_pricing_unpriced() {
+        let log = concat!(
+            "{\"t\":\"2026-09-30T16:30:00Z\",\"agent\":\"omp\",\"model\":\"priced\",\"rid\":\"a\",\"in\":1000000}\n",
+            "{\"t\":\"2026-10-01T00:30:00Z\",\"agent\":\"omp\",\"model\":\"unknown\",\"rid\":\"b\",\"in\":1}\n",
+            "{\"t\":\"2026-10-01T01:30:00Z\",\"agent\":\"omp\",\"model\":\"priced\",\"rid\":\"c\",\"cache_write\":2}\n",
+            "{\"t\":\"2026-10-01T02:30:00Z\",\"agent\":\"omp\",\"model\":\"zero-unknown\",\"rid\":\"d\"}\n",
+        );
+        let rules =
+            crate::pricing::PreparedPricingRules::from_rules(vec![crate::pricing::PricingRule {
+                model_name: "priced".to_string(),
+                input_price: 2.0,
+                cache_input_price: 0.2,
+                output_price: 4.0,
+            }]);
+        let usage = parse_magpie_usage_reader(
+            log.as_bytes(),
+            MagpiePeriod::Month,
+            None,
+            NaiveDate::from_ymd_opt(2026, 10, 1).unwrap(),
+            FixedOffset::east_opt(8 * 60 * 60).unwrap(),
+            &rules,
+        )
+        .unwrap();
+        assert_eq!(usage.events, 4);
+        assert_eq!(usage.coverage_start.as_deref(), Some("2026-10-01"));
+        let priced = usage
+            .models
+            .iter()
+            .find(|model| model.model == "priced")
+            .unwrap();
+        assert_eq!(priced.priced_events, 1);
+        assert_eq!(priced.unpriced_events, 1);
+        assert_eq!(priced.computed_api_equivalent_usd, Some(2.0));
+        let unknown = usage
+            .models
+            .iter()
+            .find(|model| model.model == "unknown")
+            .unwrap();
+        assert_eq!(unknown.computed_api_equivalent_usd, None);
+        assert_eq!(unknown.unpriced_events, 1);
+        let zero_unknown = usage
+            .models
+            .iter()
+            .find(|model| model.model == "zero-unknown")
+            .unwrap();
+        assert_eq!(zero_unknown.priced_events, 0);
+        assert_eq!(zero_unknown.unpriced_events, 1);
     }
 }

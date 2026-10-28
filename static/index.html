@@ -436,12 +436,13 @@
               <p data-i18n="magpie_usage_intro">依 usage.jsonl 的 UTC 時間與 initiating agent 彙總。Provider、route 與帳戶不會被當成 Agent，也不會推論付款來源。</p>
             </div>
             <div class="magpie-usage-filters">
-              <label><span data-i18n="magpie_usage_period">期間</span><select id="magpie-usage-period"><option value="7d">7 days</option><option value="30d" selected>30 days</option><option value="month">This UTC month</option><option value="all">All available</option></select></label>
+              <label><span data-i18n="magpie_usage_period">期間</span><select id="magpie-usage-period"><option value="7d">7 days</option><option value="30d" selected>30 days</option><option value="month">This GMT+8 month</option><option value="all">All available</option></select></label>
               <label><span data-i18n="magpie_usage_agent">發起 Agent</span><select id="magpie-usage-agent"><option value="">All agents</option></select></label>
             </div>
           </div>
           <div id="magpie-usage-summary" class="magpie-usage-summary" aria-live="polite"></div>
           <div class="canvas-wrapper magpie-usage-chart"><canvas id="magpieUsageChart"></canvas></div>
+          <div class="table-wrapper magpie-model-table-wrapper"><table class="premium-table"><thead><tr><th data-i18n="magpie_model">模型</th><th data-i18n="magpie_events">請求</th><th data-i18n="magpie_tokens">Token 欄位</th><th data-i18n="magpie_api_equivalent">API 等效估值</th><th data-i18n="magpie_price_coverage">定價覆蓋</th></tr></thead><tbody id="magpie-models-body"></tbody></table></div>
           <p id="magpie-usage-note" class="magpie-usage-note"></p>
         </section>
         <div class="optional-integrations-guides">
