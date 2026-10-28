@@ -38,6 +38,8 @@ let latestAllAgentSetupInfo = null;
 let optionalIntegrationRequestController = null;
 let magpieUsageRequestController = null;
 let magpieUsageChartInstance = null;
+let currentMagpieUsageData = null;
+let magpieUsageMetric = 'tokens';
 const pendingSessionPricingKeys = new Set();
 
 const chartPalette = {
@@ -406,6 +408,7 @@ function renderOptionalIntegrationStatus(data) {
 }
 
 function renderMagpieUsage(data) {
+  currentMagpieUsageData = data;
   const summary = document.getElementById('magpie-usage-summary');
   const note = document.getElementById('magpie-usage-note');
   if (!summary || !note) return;
@@ -441,19 +444,64 @@ function renderMagpieUsage(data) {
 
   const canvas = document.getElementById('magpieUsageChart');
   if (!canvas || typeof Chart === 'undefined') return;
+  const isCostMetric = magpieUsageMetric === 'cost';
+  const daily = data.daily || [];
+  const totalPricedEvents = daily.reduce((total, row) => total + (row.priced_events || 0), 0);
+  const totalUnpricedEvents = daily.reduce((total, row) => total + (row.unpriced_events || 0), 0);
+  document.querySelectorAll('[data-magpie-usage-metric]').forEach(button => {
+    const isActive = button.dataset.magpieUsageMetric === magpieUsageMetric;
+    button.classList.toggle('is-active', isActive);
+    button.setAttribute('aria-pressed', String(isActive));
+  });
+  const coverageNotice = document.getElementById('magpie-usage-price-coverage');
+  if (coverageNotice) {
+    const isPartial = isCostMetric && totalUnpricedEvents > 0;
+    coverageNotice.classList.toggle('hidden', !isPartial);
+    coverageNotice.textContent = isPartial
+      ? t('magpie_usage_price_partial')
+        .replace('{priced}', formatNumber(totalPricedEvents))
+        .replace('{unpriced}', formatNumber(totalUnpricedEvents))
+      : '';
+  }
   magpieUsageChartInstance?.destroy();
   magpieUsageChartInstance = new Chart(canvas, {
     type: 'bar',
     data: {
-      labels: (data.daily || []).map(row => row.date),
-      datasets: [
-        { label: 'Input', data: (data.daily || []).map(row => row.input_tokens), backgroundColor: chartPalette.tokenFill },
-        { label: 'Output', data: (data.daily || []).map(row => row.output_tokens), backgroundColor: chartPalette.candleOutputFill },
-        { label: 'Cache read/write', data: (data.daily || []).map(row => (row.cache_read_tokens || 0) + (row.cache_write_tokens || 0)), backgroundColor: chartPalette.candleCacheFill },
-      ],
+      labels: daily.map(row => row.date),
+      datasets: isCostMetric
+        ? [{ label: t('magpie_usage_metric_cost'), data: daily.map(row => row.computed_api_equivalent_usd ?? null), backgroundColor: chartPalette.candleOutputFill }]
+        : [
+          { label: 'Input', data: daily.map(row => row.input_tokens), backgroundColor: chartPalette.tokenFill },
+          { label: 'Output', data: daily.map(row => row.output_tokens), backgroundColor: chartPalette.candleOutputFill },
+          { label: 'Cache read/write', data: daily.map(row => (row.cache_read_tokens || 0) + (row.cache_write_tokens || 0)), backgroundColor: chartPalette.candleCacheFill },
+        ],
     },
-    options: { responsive: true, maintainAspectRatio: false, scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } } },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: { x: { stacked: !isCostMetric }, y: { stacked: !isCostMetric, beginAtZero: true } },
+      plugins: {
+        tooltip: {
+          callbacks: {
+            label: context => isCostMetric ? `${context.dataset.label}: ${formatCost(context.parsed.y)}` : undefined,
+            footer: context => {
+              if (!isCostMetric) return '';
+              const row = daily[context[0]?.dataIndex];
+              return row ? t('magpie_usage_price_tooltip')
+                .replace('{priced}', formatNumber(row.priced_events || 0))
+                .replace('{unpriced}', formatNumber(row.unpriced_events || 0)) : '';
+            },
+          },
+        },
+      },
+    },
   });
+}
+
+function setMagpieUsageMetric(metric) {
+  if (!['tokens', 'cost'].includes(metric) || metric === magpieUsageMetric) return;
+  magpieUsageMetric = metric;
+  if (currentMagpieUsageData) renderMagpieUsage(currentMagpieUsageData);
 }
 
 async function loadMagpieUsage() {
@@ -1131,6 +1179,9 @@ function initApp() {
   }
   ['magpie-usage-period', 'magpie-usage-agent'].forEach(id => {
     document.getElementById(id)?.addEventListener('change', loadMagpieUsage);
+  });
+  document.querySelectorAll('[data-magpie-usage-metric]').forEach(button => {
+    button.addEventListener('click', () => setMagpieUsageMetric(button.dataset.magpieUsageMetric));
   });
 
   if (activeTab === 'daily') {

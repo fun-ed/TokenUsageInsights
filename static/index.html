@@ -441,7 +441,15 @@
             </div>
           </div>
           <div id="magpie-usage-summary" class="magpie-usage-summary" aria-live="polite"></div>
+          <div class="magpie-usage-chart-head">
+            <h4 data-i18n="magpie_usage_chart_title">每日用量</h4>
+            <div class="magpie-usage-metric-toggle" role="group" data-i18n-aria-label="magpie_usage_metric_label" aria-label="圖表指標">
+              <button type="button" class="chart-interval-button" data-magpie-usage-metric="tokens" aria-pressed="true" data-i18n="magpie_usage_metric_tokens">Token</button>
+              <button type="button" class="chart-interval-button" data-magpie-usage-metric="cost" aria-pressed="false" data-i18n="magpie_usage_metric_cost">API 等效 USD</button>
+            </div>
+          </div>
           <div class="canvas-wrapper magpie-usage-chart"><canvas id="magpieUsageChart"></canvas></div>
+          <p id="magpie-usage-price-coverage" class="magpie-usage-price-coverage hidden" role="status"></p>
           <div class="table-wrapper magpie-model-table-wrapper"><table class="premium-table"><thead><tr><th data-i18n="magpie_model">模型</th><th data-i18n="magpie_events">請求</th><th data-i18n="magpie_tokens">Token 欄位</th><th data-i18n="magpie_api_equivalent">API 等效估值</th><th data-i18n="magpie_price_coverage">定價覆蓋</th></tr></thead><tbody id="magpie-models-body"></tbody></table></div>
           <p id="magpie-usage-note" class="magpie-usage-note"></p>
         </section>

@@ -338,6 +338,9 @@ pub struct MagpieDailyUsage {
     pub output_tokens: u64,
     pub cache_read_tokens: u64,
     pub cache_write_tokens: u64,
+    pub computed_api_equivalent_usd: Option<f64>,
+    pub priced_events: u64,
+    pub unpriced_events: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -533,11 +536,18 @@ fn parse_magpie_usage_reader<R: Read>(
                     model_usage.computed_api_equivalent_usd =
                         Some(model_usage.computed_api_equivalent_usd.unwrap_or(0.0) + cost);
                     model_usage.priced_events += 1;
+                    bucket.computed_api_equivalent_usd =
+                        Some(bucket.computed_api_equivalent_usd.unwrap_or(0.0) + cost);
+                    bucket.priced_events += 1;
                 }
-                Err(_) => model_usage.unpriced_events += 1,
+                Err(_) => {
+                    model_usage.unpriced_events += 1;
+                    bucket.unpriced_events += 1;
+                }
             }
         } else {
             model_usage.unpriced_events += 1;
+            bucket.unpriced_events += 1;
         }
         coverage_start = Some(coverage_start.map_or(date, |current| current.min(date)));
         coverage_end = Some(coverage_end.map_or(date, |current| current.max(date)));
@@ -700,6 +710,7 @@ mod tests {
             "{\"t\":\"2026-10-01T00:30:00Z\",\"agent\":\"omp\",\"model\":\"unknown\",\"rid\":\"b\",\"in\":1}\n",
             "{\"t\":\"2026-10-01T01:30:00Z\",\"agent\":\"omp\",\"model\":\"priced\",\"rid\":\"c\",\"cache_write\":2}\n",
             "{\"t\":\"2026-10-01T02:30:00Z\",\"agent\":\"omp\",\"model\":\"zero-unknown\",\"rid\":\"d\"}\n",
+            "{\"t\":\"2026-10-02T02:30:00Z\",\"agent\":\"omp\",\"model\":\"unknown\",\"rid\":\"e\",\"in\":1}\n",
         );
         let rules =
             crate::pricing::PreparedPricingRules::from_rules(vec![crate::pricing::PricingRule {
@@ -717,7 +728,7 @@ mod tests {
             &rules,
         )
         .unwrap();
-        assert_eq!(usage.events, 4);
+        assert_eq!(usage.events, 5);
         assert_eq!(usage.coverage_start.as_deref(), Some("2026-10-01"));
         let priced = usage
             .models
@@ -727,13 +738,29 @@ mod tests {
         assert_eq!(priced.priced_events, 1);
         assert_eq!(priced.unpriced_events, 1);
         assert_eq!(priced.computed_api_equivalent_usd, Some(2.0));
+        let priced_day = usage
+            .daily
+            .iter()
+            .find(|day| day.date == "2026-10-01")
+            .unwrap();
+        assert_eq!(priced_day.computed_api_equivalent_usd, Some(2.0));
+        assert_eq!(priced_day.priced_events, 1);
+        assert_eq!(priced_day.unpriced_events, 3);
+        let unknown_day = usage
+            .daily
+            .iter()
+            .find(|day| day.date == "2026-10-02")
+            .unwrap();
+        assert_eq!(unknown_day.computed_api_equivalent_usd, None);
+        assert_eq!(unknown_day.priced_events, 0);
+        assert_eq!(unknown_day.unpriced_events, 1);
         let unknown = usage
             .models
             .iter()
             .find(|model| model.model == "unknown")
             .unwrap();
         assert_eq!(unknown.computed_api_equivalent_usd, None);
-        assert_eq!(unknown.unpriced_events, 1);
+        assert_eq!(unknown.unpriced_events, 2);
         let zero_unknown = usage
             .models
             .iter()
