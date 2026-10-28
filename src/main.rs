@@ -355,6 +355,11 @@ async fn main() {
             post(set_optional_integrations_enabled),
         )
         .route("/api/integrations/magpie-usage", get(get_magpie_usage))
+        .route("/api/integrations/codeburn-usage", get(get_codeburn_usage))
+        .route(
+            "/api/integrations/ccusage-report",
+            post(post_ccusage_report),
+        )
         // 帶 :assistant 變數的路由
         .route("/api/:assistant/dates", get(get_available_dates))
         .route("/api/:assistant/setup-info", get(get_setup_info))

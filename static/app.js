@@ -40,6 +40,12 @@ let magpieUsageRequestController = null;
 let magpieUsageChartInstance = null;
 let currentMagpieUsageData = null;
 let magpieUsageMetric = 'tokens';
+let codeburnUsageRequestController = null;
+let codeburnUsageChartInstance = null;
+let currentCodeburnUsageData = null;
+let codeburnUsageMetric = 'tokens';
+let ccusageReportRequestController = null;
+let ccusageUsageChartInstance = null;
 const pendingSessionPricingKeys = new Set();
 
 const chartPalette = {
@@ -398,12 +404,237 @@ function renderOptionalIntegrationStatus(data) {
     container.append(card);
   }
   container.classList.remove('hidden');
+  const codeburn = (data.sources || []).find(source => source.id === 'codeburn');
+  if (codeburn?.artifacts?.some(artifact => artifact.label === 'CodeBurn active daily cache' && artifact.state === 'found')) {
+    document.getElementById('codeburn-usage-panel')?.classList.remove('hidden');
+    loadCodeburnUsage();
+  } else {
+    document.getElementById('codeburn-usage-panel')?.classList.add('hidden');
+  }
+  document.getElementById('ccusage-report-panel')?.classList.remove('hidden');
   const magpie = (data.sources || []).find(source => source.id === 'magpie');
   if (magpie?.artifacts?.some(artifact => artifact.label === 'Magpie usage.jsonl' && artifact.state === 'found')) {
     document.getElementById('magpie-usage-panel')?.classList.remove('hidden');
     loadMagpieUsage();
   } else {
     document.getElementById('magpie-usage-panel')?.classList.add('hidden');
+  }
+}
+
+function formatExternalUsageTokens(data) {
+  return (data.input_tokens || 0) + (data.output_tokens || 0)
+    + (data.cache_read_tokens || 0) + (data.cache_write_tokens || 0);
+}
+
+function renderCodeburnUsage(data) {
+  currentCodeburnUsageData = data;
+  const summary = document.getElementById('codeburn-usage-summary');
+  const note = document.getElementById('codeburn-usage-note');
+  if (!summary || !note) return;
+  summary.replaceChildren();
+  [
+    [t('codeburn_usage_calls'), formatNumber(data.calls || 0)],
+    [t('codeburn_usage_tokens'), formatToken(formatExternalUsageTokens(data))],
+    [t('codeburn_usage_cost'), data.estimated_cost_usd == null ? t('codeburn_usage_not_reported') : formatCost(data.estimated_cost_usd)],
+  ].forEach(([label, value]) => {
+    const card = document.createElement('div');
+    const labelEl = document.createElement('span');
+    labelEl.textContent = label;
+    const valueEl = document.createElement('strong');
+    valueEl.textContent = value;
+    card.append(labelEl, valueEl);
+    summary.append(card);
+  });
+  const coverage = data.coverage_start && data.coverage_end ? `${data.coverage_start}–${data.coverage_end}` : t('codeburn_usage_no_days');
+  note.textContent = `${t('codeburn_usage_cache_version')} v${data.cache_version} · ${t('codeburn_usage_cache_timezone')} ${data.cache_timezone} · ${t('codeburn_usage_coverage')} ${coverage} · ${t('codeburn_usage_last_computed')} ${data.last_computed_date || '—'} · ${t('codeburn_usage_cache_state')} ${data.cache_complete ? t('codeburn_usage_complete') : t('codeburn_usage_incomplete')}/${data.cache_watermark_trusted ? t('codeburn_usage_trusted') : t('codeburn_usage_untrusted')} · ${t('codeburn_usage_not_imported')}`;
+
+  const modelsBody = document.getElementById('codeburn-models-body');
+  if (modelsBody) {
+    modelsBody.replaceChildren();
+    for (const model of data.models || []) {
+      const row = document.createElement('tr');
+      [
+        model.model,
+        formatNumber(model.calls || 0),
+        formatToken(formatExternalUsageTokens(model)),
+        model.estimated_cost_usd == null ? t('codeburn_usage_not_reported') : formatCost(model.estimated_cost_usd),
+      ].forEach(value => {
+        const cell = document.createElement('td');
+        cell.textContent = value;
+        row.append(cell);
+      });
+      modelsBody.append(row);
+    }
+  }
+
+  const canvas = document.getElementById('codeburnUsageChart');
+  if (!canvas || typeof Chart === 'undefined') return;
+  const isCostMetric = codeburnUsageMetric === 'cost';
+  const daily = data.daily || [];
+  updateCodeburnUsageMetricButtons();
+  const coverageNotice = document.getElementById('codeburn-usage-cost-coverage');
+  if (coverageNotice) {
+    const missingDays = data.days_without_estimated_cost || 0;
+    coverageNotice.classList.toggle('hidden', !isCostMetric || missingDays === 0);
+    coverageNotice.textContent = isCostMetric && missingDays > 0
+      ? t('codeburn_usage_partial_cost').replace('{count}', formatNumber(missingDays))
+      : '';
+  }
+  codeburnUsageChartInstance?.destroy();
+  codeburnUsageChartInstance = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels: daily.map(row => row.date),
+      datasets: isCostMetric
+        ? [{ label: t('codeburn_usage_metric_cost'), data: daily.map(row => row.estimated_cost_usd ?? null), backgroundColor: chartPalette.candleOutputFill }]
+        : [
+          { label: 'Input', data: daily.map(row => row.input_tokens), backgroundColor: chartPalette.tokenFill },
+          { label: 'Output', data: daily.map(row => row.output_tokens), backgroundColor: chartPalette.candleOutputFill },
+          { label: 'Cache read/write', data: daily.map(row => (row.cache_read_tokens || 0) + (row.cache_write_tokens || 0)), backgroundColor: chartPalette.candleCacheFill },
+        ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: { x: { stacked: !isCostMetric }, y: { stacked: !isCostMetric, beginAtZero: true } },
+      plugins: {
+        tooltip: {
+          callbacks: {
+            label: context => isCostMetric ? `${context.dataset.label}: ${formatCost(context.parsed.y)}` : undefined,
+            footer: context => {
+              if (!isCostMetric) return '';
+              const row = daily[context[0]?.dataIndex];
+              return row?.estimated_cost_usd == null ? t('codeburn_usage_not_reported') : '';
+            },
+          },
+        },
+      },
+    },
+  });
+}
+
+function updateCodeburnUsageMetricButtons() {
+  document.querySelectorAll('[data-codeburn-usage-metric]').forEach(button => {
+    const isActive = button.dataset.codeburnUsageMetric === codeburnUsageMetric;
+    button.classList.toggle('is-active', isActive);
+    button.setAttribute('aria-pressed', String(isActive));
+  });
+}
+
+function setCodeburnUsageMetric(metric) {
+  if (!['tokens', 'cost'].includes(metric) || metric === codeburnUsageMetric) return;
+  codeburnUsageMetric = metric;
+  updateCodeburnUsageMetricButtons();
+  if (currentCodeburnUsageData) renderCodeburnUsage(currentCodeburnUsageData);
+}
+
+async function loadCodeburnUsage() {
+  if (!shouldFetchOptionalIntegrationStatus(optionalIntegrationsEnabled(), activeTab)) return;
+  const period = document.getElementById('codeburn-usage-period')?.value || '30d';
+  codeburnUsageRequestController?.abort();
+  codeburnUsageRequestController = new AbortController();
+  try {
+    const response = await fetch(`/api/integrations/codeburn-usage?${new URLSearchParams({ period })}`, { signal: codeburnUsageRequestController.signal });
+    if (!response.ok) throw new Error(response.statusText);
+    renderCodeburnUsage(await response.json());
+  } catch (error) {
+    if (error.name !== 'AbortError') document.getElementById('codeburn-usage-note').textContent = `${t('codeburn_usage_load_failed')} ${error.message}`;
+  }
+}
+
+function renderCcusageReport(data) {
+  const summary = document.getElementById('ccusage-report-summary');
+  const note = document.getElementById('ccusage-report-note');
+  if (!summary || !note) return;
+  summary.replaceChildren();
+  [
+    [t('ccusage_report_tokens'), formatToken(formatExternalUsageTokens(data))],
+    [t('ccusage_report_cost'), data.reported_cost_usd == null ? t('ccusage_report_not_reported') : formatCost(data.reported_cost_usd)],
+    [t('ccusage_report_timezone'), data.reported_timezone],
+  ].forEach(([label, value]) => {
+    const card = document.createElement('div');
+    const labelEl = document.createElement('span');
+    labelEl.textContent = label;
+    const valueEl = document.createElement('strong');
+    valueEl.textContent = value;
+    card.append(labelEl, valueEl);
+    summary.append(card);
+  });
+  summary.classList.remove('hidden');
+  const coverage = data.coverage_start && data.coverage_end ? `${data.coverage_start}–${data.coverage_end}` : '—';
+  note.textContent = `${data.source} · ${t('ccusage_report_coverage')} ${coverage}${data.days_without_reported_cost ? ` · ${t('ccusage_report_partial_cost').replace('{count}', formatNumber(data.days_without_reported_cost))}` : ''}${data.unpriced_model_entries ? ` · ${t('ccusage_report_unpriced').replace('{days}', formatNumber(data.days_with_unpriced_models)).replace('{models}', formatNumber(data.unpriced_model_entries))}` : ''}`;
+
+  const modelsBody = document.getElementById('ccusage-models-body');
+  const modelsTable = document.getElementById('ccusage-model-table-wrapper');
+  if (modelsBody && modelsTable) {
+    modelsBody.replaceChildren();
+    for (const model of data.models || []) {
+      const row = document.createElement('tr');
+      [
+        model.model,
+        formatToken(formatExternalUsageTokens(model)),
+        model.estimated_cost_usd == null ? t('ccusage_report_not_reported') : formatCost(model.estimated_cost_usd),
+      ].forEach(value => {
+        const cell = document.createElement('td');
+        cell.textContent = value;
+        row.append(cell);
+      });
+      modelsBody.append(row);
+    }
+    modelsTable.classList.toggle('hidden', !(data.models || []).length);
+  }
+
+  const chartArea = document.getElementById('ccusage-report-chart-area');
+  const canvas = document.getElementById('ccusageUsageChart');
+  if (!chartArea || !canvas || typeof Chart === 'undefined') return;
+  chartArea.classList.remove('hidden');
+  ccusageUsageChartInstance?.destroy();
+  ccusageUsageChartInstance = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels: (data.daily || []).map(row => row.date),
+      datasets: [
+        { label: 'Input', data: (data.daily || []).map(row => row.input_tokens), backgroundColor: chartPalette.tokenFill },
+        { label: 'Output', data: (data.daily || []).map(row => row.output_tokens), backgroundColor: chartPalette.candleOutputFill },
+        { label: 'Cache read/write', data: (data.daily || []).map(row => (row.cache_read_tokens || 0) + (row.cache_write_tokens || 0)), backgroundColor: chartPalette.candleCacheFill },
+      ],
+    },
+    options: { responsive: true, maintainAspectRatio: false, scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } } },
+  });
+}
+
+async function importCcusageReport(file) {
+  const note = document.getElementById('ccusage-report-note');
+  if (!file) return;
+  if (!file.name.toLowerCase().endsWith('.json')) {
+    note.textContent = t('ccusage_report_json_only');
+    return;
+  }
+  if (file.size > 2 * 1024 * 1024) {
+    note.textContent = t('ccusage_report_too_large');
+    return;
+  }
+  let report;
+  try {
+    report = JSON.parse(await file.text());
+  } catch (_) {
+    note.textContent = t('ccusage_report_invalid_json');
+    return;
+  }
+  ccusageReportRequestController?.abort();
+  ccusageReportRequestController = new AbortController();
+  try {
+    const response = await fetch('/api/integrations/ccusage-report', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ report }),
+      signal: ccusageReportRequestController.signal,
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body.error || response.statusText);
+    renderCcusageReport(body);
+  } catch (error) {
+    if (error.name !== 'AbortError') note.textContent = `${t('ccusage_report_load_failed')} ${error.message}`;
   }
 }
 
@@ -540,12 +771,16 @@ async function loadOptionalIntegrations() {
   if (!shouldFetchOptionalIntegrationStatus(optionalIntegrationsEnabled(), activeTab)) {
     optionalIntegrationRequestController?.abort();
     magpieUsageRequestController?.abort();
+    codeburnUsageRequestController?.abort();
+    ccusageReportRequestController?.abort();
     optionalIntegrationRequestController = null;
     if (disabled) disabled.classList.remove('hidden');
     if (status) {
       status.replaceChildren();
       status.classList.add('hidden');
     }
+    document.getElementById('codeburn-usage-panel')?.classList.add('hidden');
+    document.getElementById('ccusage-report-panel')?.classList.add('hidden');
     return;
   }
   if (disabled) disabled.classList.add('hidden');
@@ -1184,6 +1419,15 @@ function initApp() {
   }
   ['magpie-usage-period', 'magpie-usage-agent'].forEach(id => {
     document.getElementById(id)?.addEventListener('change', loadMagpieUsage);
+  });
+  document.getElementById('codeburn-usage-period')?.addEventListener('change', loadCodeburnUsage);
+  document.querySelectorAll('[data-codeburn-usage-metric]').forEach(button => {
+    button.addEventListener('click', () => setCodeburnUsageMetric(button.dataset.codeburnUsageMetric));
+  });
+  document.getElementById('ccusage-report-file')?.addEventListener('change', event => {
+    const [file] = event.target.files || [];
+    void importCcusageReport(file);
+    event.target.value = '';
   });
   document.querySelectorAll('[data-magpie-usage-metric]').forEach(button => {
     button.addEventListener('click', () => setMagpieUsageMetric(button.dataset.magpieUsageMetric));
@@ -1884,6 +2128,8 @@ function switchTab(tab, options = {}) {
   if (tab !== 'integrations') {
     optionalIntegrationRequestController?.abort();
     magpieUsageRequestController?.abort();
+    codeburnUsageRequestController?.abort();
+    ccusageReportRequestController?.abort();
   }
   activeTab = tab;
   setCookie('active_tab', tab);

@@ -168,24 +168,28 @@
   gap: 16px;
 }
 
-.magpie-usage-panel {
+.magpie-usage-panel,
+.external-usage-panel {
   padding: 18px;
 }
 
-.magpie-usage-filters {
+.magpie-usage-filters,
+.external-usage-filters {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
 }
 
-.magpie-usage-filters label {
+.magpie-usage-filters label,
+.external-usage-filters label {
   display: grid;
   gap: 4px;
   color: var(--text-muted);
   font-size: 12px;
 }
 
-.magpie-usage-filters select {
+.magpie-usage-filters select,
+.external-usage-filters select {
   min-width: 130px;
   padding: 7px 28px 7px 9px;
   border: 1px solid var(--glass-border);
@@ -247,7 +251,17 @@
   background: var(--surface-2);
 }
 
-.magpie-usage-metric-toggle .chart-interval-button {
+.external-usage-metric-toggle {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-2);
+}
+
+.magpie-usage-metric-toggle .chart-interval-button,
+.external-usage-metric-toggle .chart-interval-button {
   min-height: 28px;
   font-family: var(--font-body);
 }
@@ -267,6 +281,32 @@
   margin: 14px 0 0;
   color: var(--text-muted);
   font-size: 12px;
+}
+
+.ccusage-report-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  background: var(--bg-select);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.ccusage-report-picker:focus-within {
+  outline: 2px solid var(--accent-cyan);
+  outline-offset: 2px;
+}
+
+.ccusage-report-picker input {
+  max-width: 190px;
+  color: var(--text-muted);
+  font: 12px var(--font-body);
 }
 
 .optional-integration-guide {

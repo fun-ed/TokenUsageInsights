@@ -1,0 +1,30 @@
+{
+  "daily": [
+    {
+      "date": "2026-10-01",
+      "inputTokens": 120,
+      "outputTokens": 40,
+      "cacheReadTokens": 60,
+      "cacheCreationTokens": 10,
+      "totalCost": 1.5,
+      "modelBreakdowns": [
+        {
+          "modelName": "sample-model",
+          "inputTokens": 120,
+          "outputTokens": 40,
+          "cacheReadTokens": 60,
+          "cacheCreationTokens": 10,
+          "cost": 1.5
+        }
+      ]
+    },
+    {
+      "date": "2026-10-02",
+      "inputTokens": 80,
+      "outputTokens": 20,
+      "cacheReadTokens": 30,
+      "cacheCreationTokens": 5,
+      "totalCost": 0.75
+    }
+  ]
+}

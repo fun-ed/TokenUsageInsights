@@ -428,6 +428,48 @@
         </div>
         <div id="optional-integrations-disabled" class="optional-integrations-notice" data-i18n="optional_integrations_disabled">目前已關閉，因此伺服器不會讀取任何選用整合檔案。</div>
         <div id="optional-integrations-status" class="optional-integrations-status hidden" aria-live="polite"></div>
+        <section id="codeburn-usage-panel" class="glass-card external-usage-panel hidden" aria-labelledby="codeburn-usage-title">
+          <div class="optional-integration-source-head">
+            <div>
+              <p class="section-kicker" data-i18n="codeburn_usage_kicker">本機快取彙總</p>
+              <h3 id="codeburn-usage-title" data-i18n="codeburn_usage_title">CodeBurn 每日彙總</h3>
+              <p data-i18n="codeburn_usage_intro">只讀已安裝 CodeBurn 宣告的 active daily cache。日期、模型與估值保持 CodeBurn 來源意義，不會加入其他報表。</p>
+            </div>
+            <div class="external-usage-filters">
+              <label><span data-i18n="codeburn_usage_period">期間</span><select id="codeburn-usage-period"><option value="7d">7 days</option><option value="30d" selected>30 days</option><option value="month">This GMT+8 month</option><option value="all">All available</option></select></label>
+            </div>
+          </div>
+          <div id="codeburn-usage-summary" class="magpie-usage-summary" aria-live="polite"></div>
+          <div class="magpie-usage-chart-head">
+            <h4 data-i18n="codeburn_usage_chart_title">每日彙總</h4>
+            <div class="external-usage-metric-toggle" role="group" data-i18n-aria-label="codeburn_usage_metric_label" aria-label="圖表指標">
+              <button type="button" class="chart-interval-button" data-codeburn-usage-metric="tokens" aria-pressed="true" data-i18n="codeburn_usage_metric_tokens">Token</button>
+              <button type="button" class="chart-interval-button" data-codeburn-usage-metric="cost" aria-pressed="false" data-i18n="codeburn_usage_metric_cost">估計 USD</button>
+            </div>
+          </div>
+          <div class="canvas-wrapper magpie-usage-chart"><canvas id="codeburnUsageChart"></canvas></div>
+          <p id="codeburn-usage-cost-coverage" class="magpie-usage-price-coverage hidden" role="status"></p>
+          <div class="table-wrapper magpie-model-table-wrapper"><table class="premium-table"><thead><tr><th data-i18n="codeburn_model">模型</th><th data-i18n="codeburn_calls">呼叫</th><th data-i18n="codeburn_tokens">Token 欄位</th><th data-i18n="codeburn_estimated_cost">CodeBurn 估計 USD</th></tr></thead><tbody id="codeburn-models-body"></tbody></table></div>
+          <p id="codeburn-usage-note" class="magpie-usage-note"></p>
+        </section>
+        <section id="ccusage-report-panel" class="glass-card external-usage-panel hidden" aria-labelledby="ccusage-report-title">
+          <div class="optional-integration-source-head">
+            <div>
+              <p class="section-kicker" data-i18n="ccusage_report_kicker">使用者選取的 JSON</p>
+              <h3 id="ccusage-report-title" data-i18n="ccusage_report_title">ccusage 每日報告</h3>
+              <p data-i18n="ccusage_report_intro">上傳 ccusage 的 daily JSON 報告後只在目前頁面解析；不寫檔、不執行指令，也不會加入既有 TokenUsage 或其他來源。</p>
+            </div>
+            <label class="ccusage-report-picker"><span data-i18n="ccusage_report_choose">選擇 daily JSON</span><input id="ccusage-report-file" type="file" accept="application/json,.json"></label>
+          </div>
+          <p data-i18n="ccusage_report_command">若已自行安裝 ccusage，請執行 <code>ccusage daily --json --breakdown &gt; ccusage-daily.json</code>，再選擇該 JSON 檔。</p>
+          <div id="ccusage-report-summary" class="magpie-usage-summary hidden" aria-live="polite"></div>
+          <div id="ccusage-report-chart-area" class="hidden">
+            <h4 data-i18n="ccusage_report_chart_title">報告中的每日彙總</h4>
+            <div class="canvas-wrapper magpie-usage-chart"><canvas id="ccusageUsageChart"></canvas></div>
+          </div>
+          <div id="ccusage-model-table-wrapper" class="table-wrapper magpie-model-table-wrapper hidden"><table class="premium-table"><thead><tr><th data-i18n="ccusage_model">模型</th><th data-i18n="ccusage_tokens">Token 欄位</th><th data-i18n="ccusage_reported_cost">報告的 USD 成本</th></tr></thead><tbody id="ccusage-models-body"></tbody></table></div>
+          <p id="ccusage-report-note" class="magpie-usage-note" data-i18n="ccusage_report_waiting">尚未選擇 ccusage daily JSON 報告。</p>
+        </section>
         <section id="magpie-usage-panel" class="glass-card magpie-usage-panel hidden" aria-labelledby="magpie-usage-title">
           <div class="optional-integration-source-head">
             <div>
@@ -456,8 +498,8 @@
         <div class="optional-integrations-guides">
           <article class="glass-card optional-integration-guide">
             <h3>ccusage</h3>
-            <p data-i18n="optional_ccusage_guide">不用全域安裝：先在終端執行下方命令產生 JSON 報告。ccusage 與既有 Agent session 可能重疊；此版本只驗證，不匯入或相加。</p>
-            <pre><code>npx ccusage@latest daily --json</code></pre>
+            <p data-i18n="optional_ccusage_guide">若已自行安裝 ccusage，可輸出 daily JSON 後選擇檔案。ccusage 與既有 Agent session 可能重疊；頁面只在目前瀏覽器解析，不匯入或相加。</p>
+            <pre><code>ccusage daily --json --breakdown &gt; ccusage-daily.json</code></pre>
             <a href="https://github.com/ccusage/ccusage" target="_blank" rel="noopener noreferrer" data-i18n="optional_open_official_docs">開啟官方文件</a>
           </article>
           <article class="glass-card optional-integration-guide">

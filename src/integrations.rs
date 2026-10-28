@@ -2,7 +2,7 @@ use chrono::{Datelike, Duration, FixedOffset, NaiveDate, Utc};
 use serde::Serialize;
 use serde_json::Value;
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashSet},
     fs,
     io::{BufRead, BufReader, Read, Take},
     path::{Path, PathBuf},
@@ -12,6 +12,8 @@ use std::{
 const MAX_PROBE_BYTES: u64 = 256 * 1024;
 const MAX_MAGPIE_SCAN_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_MAGPIE_LINE_BYTES: usize = 256 * 1024;
+const MAX_CODEBURN_CACHE_BYTES: u64 = 8 * 1024 * 1024;
+const CODEBURN_DAILY_CACHE_VERSION: u64 = 74;
 
 #[derive(Default)]
 pub struct OptionalIntegrationGate {
@@ -66,6 +68,10 @@ fn home_or_current() -> PathBuf {
 
 fn codeburn_cache_dir(home: &Path) -> PathBuf {
     crate::paths::env_path("CODEBURN_CACHE_DIR").unwrap_or_else(|| home.join(".cache/codeburn"))
+}
+
+fn codeburn_daily_cache_path(home: &Path) -> PathBuf {
+    codeburn_cache_dir(home).join(format!("daily-cache.v{CODEBURN_DAILY_CACHE_VERSION}.json"))
 }
 
 fn magpie_config_dir(home: &Path) -> PathBuf {
@@ -198,6 +204,101 @@ fn inspect_magpie_usage(path: &Path) -> ArtifactStatus {
     }
 }
 
+fn read_codeburn_daily_cache(path: &Path) -> Result<(Value, u64), String> {
+    let metadata = fs::metadata(path).map_err(|error| error.to_string())?;
+    if !metadata.is_file() {
+        return Err("not a regular file".to_string());
+    }
+    if metadata.len() > MAX_CODEBURN_CACHE_BYTES {
+        return Err(format!(
+            "file exceeds {} MiB; contents were not read",
+            MAX_CODEBURN_CACHE_BYTES / 1024 / 1024
+        ));
+    }
+    let mut bytes = Vec::with_capacity(metadata.len() as usize);
+    fs::File::open(path)
+        .map_err(|error| error.to_string())?
+        .take(MAX_CODEBURN_CACHE_BYTES)
+        .read_to_end(&mut bytes)
+        .map_err(|error| error.to_string())?;
+    let value = serde_json::from_slice(&bytes).map_err(|error| format!("invalid JSON: {error}"))?;
+    Ok((value, metadata.len()))
+}
+
+fn codeburn_cache_metadata(value: &Value) -> Result<(String, bool, bool, Option<String>), String> {
+    let object = value
+        .as_object()
+        .ok_or_else(|| "CodeBurn daily cache must be a JSON object".to_string())?;
+    let version = object
+        .get("version")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| "CodeBurn daily cache is missing its numeric version".to_string())?;
+    if version != CODEBURN_DAILY_CACHE_VERSION {
+        return Err(format!(
+            "unsupported CodeBurn daily cache version {version}; expected {CODEBURN_DAILY_CACHE_VERSION}"
+        ));
+    }
+    let timezone = object
+        .get("tzKey")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "CodeBurn daily cache is missing tzKey".to_string())?
+        .to_string();
+    if !object.get("days").is_some_and(Value::is_array) {
+        return Err("CodeBurn daily cache is missing its days array".to_string());
+    }
+    let last_computed_date = object
+        .get("lastComputedDate")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    Ok((
+        timezone,
+        object
+            .get("complete")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        object
+            .get("watermarkTrusted")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        last_computed_date,
+    ))
+}
+
+fn inspect_codeburn_daily_cache(path: &Path) -> ArtifactStatus {
+    const PATH_HINT: &str =
+        "$CODEBURN_CACHE_DIR/daily-cache.v74.json（預設 ~/.cache/codeburn/daily-cache.v74.json）";
+    if !path.exists() {
+        return missing_file("CodeBurn active daily cache", PATH_HINT);
+    }
+    match read_codeburn_daily_cache(path) {
+        Ok((value, bytes)) => match codeburn_cache_metadata(&value) {
+            Ok(_) => ArtifactStatus {
+                label: "CodeBurn active daily cache".to_string(),
+                path_hint: PATH_HINT.to_string(),
+                state: ArtifactState::Found,
+                detail: "recognized CodeBurn v74 cache; only aggregate daily and model fields are available to this page".to_string(),
+                bytes: Some(bytes),
+            },
+            Err(detail) => ArtifactStatus {
+                label: "CodeBurn active daily cache".to_string(),
+                path_hint: PATH_HINT.to_string(),
+                state: ArtifactState::Invalid,
+                detail,
+                bytes: Some(bytes),
+            },
+        },
+        Err(detail) => ArtifactStatus {
+            label: "CodeBurn active daily cache".to_string(),
+            path_hint: PATH_HINT.to_string(),
+            state: ArtifactState::Unverified,
+            detail,
+            bytes: None,
+        },
+    }
+}
+
 fn status_from_artifacts(artifacts: &[ArtifactStatus]) -> ArtifactState {
     if artifacts
         .iter()
@@ -224,11 +325,7 @@ pub fn inspect_optional_sources() -> OptionalIntegrationsStatusResponse {
     let codeburn_dir = codeburn_cache_dir(&home);
     let magpie_dir = magpie_config_dir(&home);
     let codeburn_artifacts = vec![
-        inspect_json(
-            &codeburn_dir.join("daily-cache.json"),
-            "CodeBurn daily cache",
-            "$CODEBURN_CACHE_DIR/daily-cache.json（預設 ~/.cache/codeburn/daily-cache.json）",
-        ),
+        inspect_codeburn_daily_cache(&codeburn_daily_cache_path(&home)),
         ArtifactStatus {
             label: "CodeBurn cache directory".to_string(),
             path_hint: "$CODEBURN_CACHE_DIR（預設 ~/.cache/codeburn）".to_string(),
@@ -238,7 +335,7 @@ pub fn inspect_optional_sources() -> OptionalIntegrationsStatusResponse {
                 ArtifactState::Missing
             },
             detail: if codeburn_dir.is_dir() {
-                "CodeBurn cache directory found; this page does not parse or import its history."
+                "CodeBurn cache directory found; reports stay source-specific and are never imported into existing TokenUsage reports."
                     .to_string()
             } else {
                 "CodeBurn cache directory was not found".to_string()
@@ -273,7 +370,7 @@ pub fn inspect_optional_sources() -> OptionalIntegrationsStatusResponse {
             OptionalIntegrationStatus {
                 id: "codeburn".to_string(),
                 state: codeburn_state,
-                detail: "only CodeBurn cache metadata is checked; it is not imported and cannot be added to existing monthly reports.".to_string(),
+                detail: "the active CodeBurn v74 daily cache can be shown as a source-specific aggregate; it is never imported or added to existing monthly reports.".to_string(),
                 import_status: "not_imported".to_string(),
                 artifacts: codeburn_artifacts,
             },
@@ -617,6 +714,437 @@ pub fn load_magpie_usage(
     Ok(usage)
 }
 
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct AggregateDailyUsage {
+    pub date: String,
+    pub calls: f64,
+    pub sessions: u64,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub cache_read_tokens: u64,
+    pub cache_write_tokens: u64,
+    pub estimated_cost_usd: Option<f64>,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct AggregateModelUsage {
+    pub model: String,
+    pub calls: f64,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub cache_read_tokens: u64,
+    pub cache_write_tokens: u64,
+    pub estimated_cost_usd: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CodeburnUsageResponse {
+    pub period: String,
+    pub cache_version: u64,
+    pub cache_timezone: String,
+    pub cache_complete: bool,
+    pub cache_watermark_trusted: bool,
+    pub last_computed_date: Option<String>,
+    pub coverage_start: Option<String>,
+    pub coverage_end: Option<String>,
+    pub calls: f64,
+    pub sessions: u64,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub cache_read_tokens: u64,
+    pub cache_write_tokens: u64,
+    pub estimated_cost_usd: Option<f64>,
+    pub days_without_estimated_cost: u64,
+    pub daily: Vec<AggregateDailyUsage>,
+    pub models: Vec<AggregateModelUsage>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CcusageUsageResponse {
+    pub source: &'static str,
+    pub reported_timezone: &'static str,
+    pub coverage_start: Option<String>,
+    pub coverage_end: Option<String>,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub cache_read_tokens: u64,
+    pub cache_write_tokens: u64,
+    pub reported_cost_usd: Option<f64>,
+    pub days_without_reported_cost: u64,
+    pub days_with_unpriced_models: u64,
+    pub unpriced_model_entries: u64,
+    pub daily: Vec<AggregateDailyUsage>,
+    pub models: Vec<AggregateModelUsage>,
+}
+
+#[derive(Debug, Default)]
+struct ModelAccumulator {
+    usage: AggregateModelUsage,
+    missing_cost: bool,
+}
+
+fn strict_date(value: &Value, field: &str) -> Result<NaiveDate, String> {
+    let text = value
+        .get(field)
+        .and_then(Value::as_str)
+        .ok_or_else(|| format!("missing {field}"))?;
+    let date = NaiveDate::parse_from_str(text, "%Y-%m-%d")
+        .map_err(|_| format!("{field} must be YYYY-MM-DD"))?;
+    if date.to_string() != text {
+        return Err(format!("{field} must be YYYY-MM-DD"));
+    }
+    Ok(date)
+}
+
+fn optional_finite_nonnegative(value: &Value, field: &str) -> Result<Option<f64>, String> {
+    let Some(raw) = value.get(field) else {
+        return Ok(None);
+    };
+    let number = raw
+        .as_f64()
+        .filter(|number| number.is_finite() && *number >= 0.0)
+        .ok_or_else(|| format!("{field} must be a finite non-negative number"))?;
+    Ok(Some(number))
+}
+
+fn finite_nonnegative_or_zero(value: &Value, field: &str) -> Result<f64, String> {
+    Ok(optional_finite_nonnegative(value, field)?.unwrap_or(0.0))
+}
+
+fn token_count(value: &Value, field: &str) -> Result<u64, String> {
+    let Some(raw) = value.get(field) else {
+        return Ok(0);
+    };
+    raw.as_u64()
+        .ok_or_else(|| format!("{field} must be a non-negative integer"))
+}
+
+fn token_count_any(value: &Value, fields: &[&str]) -> Result<u64, String> {
+    for field in fields {
+        if value.get(*field).is_some() {
+            return token_count(value, field);
+        }
+    }
+    Ok(0)
+}
+
+fn model_accumulator<'a>(
+    models: &'a mut BTreeMap<String, ModelAccumulator>,
+    name: &str,
+) -> &'a mut ModelAccumulator {
+    models
+        .entry(name.to_string())
+        .or_insert_with(|| ModelAccumulator {
+            usage: AggregateModelUsage {
+                model: name.to_string(),
+                ..Default::default()
+            },
+            ..Default::default()
+        })
+}
+
+fn add_model_usage(
+    models: &mut BTreeMap<String, ModelAccumulator>,
+    name: &str,
+    value: &Value,
+    cache_write_fields: &[&str],
+) -> Result<(), String> {
+    let name = name.trim();
+    if name.is_empty() || value.as_object().is_none() {
+        return Err("model breakdown entries need a non-empty name and object values".to_string());
+    }
+    let usage = model_accumulator(models, name);
+    usage.usage.calls += finite_nonnegative_or_zero(value, "calls")?;
+    usage.usage.input_tokens += token_count(value, "inputTokens")?;
+    usage.usage.output_tokens += token_count(value, "outputTokens")?;
+    usage.usage.cache_read_tokens += token_count(value, "cacheReadTokens")?;
+    usage.usage.cache_write_tokens += token_count_any(value, cache_write_fields)?;
+    match optional_finite_nonnegative(value, "cost")?
+        .or(optional_finite_nonnegative(value, "costUSD")?)
+        .or(optional_finite_nonnegative(value, "totalCost")?)
+    {
+        Some(cost) if !usage.missing_cost => {
+            usage.usage.estimated_cost_usd =
+                Some(usage.usage.estimated_cost_usd.unwrap_or(0.0) + cost)
+        }
+        Some(_) => {}
+        None => {
+            usage.missing_cost = true;
+            usage.usage.estimated_cost_usd = None;
+        }
+    }
+    Ok(())
+}
+
+fn finalized_models(models: BTreeMap<String, ModelAccumulator>) -> Vec<AggregateModelUsage> {
+    models
+        .into_values()
+        .map(|mut model| {
+            if model.missing_cost {
+                model.usage.estimated_cost_usd = None;
+            }
+            model.usage
+        })
+        .collect()
+}
+
+fn parse_codeburn_cache(
+    value: &Value,
+    period: MagpiePeriod,
+    today: NaiveDate,
+) -> Result<CodeburnUsageResponse, String> {
+    let (cache_timezone, cache_complete, cache_watermark_trusted, last_computed_date) =
+        codeburn_cache_metadata(value)?;
+    let days = value
+        .get("days")
+        .and_then(Value::as_array)
+        .expect("validated CodeBurn days array");
+    let mut seen_dates = BTreeSet::new();
+    let mut daily = Vec::new();
+    let mut models = BTreeMap::new();
+    let mut coverage_start = None;
+    let mut coverage_end = None;
+    let mut calls = 0.0;
+    let mut sessions = 0;
+    let mut input_tokens = 0;
+    let mut output_tokens = 0;
+    let mut cache_read_tokens = 0;
+    let mut cache_write_tokens = 0;
+    let mut estimated_cost = 0.0;
+    let mut cost_days = 0_u64;
+
+    for day in days {
+        let date = strict_date(day, "date")?;
+        if !seen_dates.insert(date) {
+            return Err(format!("duplicate CodeBurn daily cache date {date}"));
+        }
+        if !period.includes(date, today) {
+            continue;
+        }
+        let day_cost = optional_finite_nonnegative(day, "cost")?;
+        let day_usage = AggregateDailyUsage {
+            date: date.to_string(),
+            calls: finite_nonnegative_or_zero(day, "calls")?,
+            sessions: token_count(day, "sessions")?,
+            input_tokens: token_count(day, "inputTokens")?,
+            output_tokens: token_count(day, "outputTokens")?,
+            cache_read_tokens: token_count(day, "cacheReadTokens")?,
+            cache_write_tokens: token_count(day, "cacheWriteTokens")?,
+            estimated_cost_usd: day_cost,
+        };
+        if let Some(model_map) = day.get("models") {
+            let model_map = model_map
+                .as_object()
+                .ok_or_else(|| "CodeBurn day models must be an object".to_string())?;
+            for (name, model) in model_map {
+                add_model_usage(&mut models, name, model, &["cacheWriteTokens"])?;
+            }
+        }
+        calls += day_usage.calls;
+        sessions += day_usage.sessions;
+        input_tokens += day_usage.input_tokens;
+        output_tokens += day_usage.output_tokens;
+        cache_read_tokens += day_usage.cache_read_tokens;
+        cache_write_tokens += day_usage.cache_write_tokens;
+        if let Some(cost) = day_usage.estimated_cost_usd {
+            estimated_cost += cost;
+            cost_days += 1;
+        }
+        coverage_start = Some(coverage_start.map_or(date, |current: NaiveDate| current.min(date)));
+        coverage_end = Some(coverage_end.map_or(date, |current: NaiveDate| current.max(date)));
+        daily.push(day_usage);
+    }
+
+    let day_count = daily.len() as u64;
+    Ok(CodeburnUsageResponse {
+        period: period.label().to_string(),
+        cache_version: CODEBURN_DAILY_CACHE_VERSION,
+        cache_timezone,
+        cache_complete,
+        cache_watermark_trusted,
+        last_computed_date,
+        coverage_start: coverage_start.map(|date| date.to_string()),
+        coverage_end: coverage_end.map(|date| date.to_string()),
+        calls,
+        sessions,
+        input_tokens,
+        output_tokens,
+        cache_read_tokens,
+        cache_write_tokens,
+        estimated_cost_usd: (day_count > 0 && cost_days == day_count).then_some(estimated_cost),
+        days_without_estimated_cost: day_count - cost_days,
+        daily,
+        models: finalized_models(models),
+    })
+}
+
+pub fn load_codeburn_usage(period: MagpiePeriod) -> Result<CodeburnUsageResponse, String> {
+    let home = home_or_current();
+    let (value, _) = read_codeburn_daily_cache(&codeburn_daily_cache_path(&home))?;
+    let today = Utc::now()
+        .with_timezone(&FixedOffset::east_opt(8 * 60 * 60).expect("valid fixed offset"))
+        .date_naive();
+    parse_codeburn_cache(&value, period, today)
+}
+
+fn ccusage_daily_rows(value: &Value) -> Result<&Vec<Value>, String> {
+    let object = value
+        .as_object()
+        .ok_or_else(|| "ccusage report must be a JSON object".to_string())?;
+    if object.contains_key("projects") || object.contains_key("sessions") {
+        return Err(
+            "ccusage project or session reports are not accepted; export daily JSON only"
+                .to_string(),
+        );
+    }
+    if let Some(kind) = object.get("type") {
+        if kind.as_str() != Some("daily") {
+            return Err("ccusage report type must be daily".to_string());
+        }
+        return object
+            .get("data")
+            .and_then(Value::as_array)
+            .ok_or_else(|| "ccusage daily report is missing its data array".to_string());
+    }
+    object
+        .get("daily")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "ccusage report must contain daily or type=daily with data".to_string())
+}
+
+fn add_ccusage_breakdown(
+    models: &mut BTreeMap<String, ModelAccumulator>,
+    row: &Value,
+) -> Result<u64, String> {
+    if let Some(model_breakdowns) = row.get("modelBreakdowns") {
+        let model_breakdowns = model_breakdowns
+            .as_array()
+            .ok_or_else(|| "ccusage modelBreakdowns must be an array".to_string())?;
+        let mut unpriced = 0;
+        for usage in model_breakdowns {
+            let name = usage
+                .get("modelName")
+                .and_then(Value::as_str)
+                .ok_or_else(|| "ccusage modelBreakdowns entries need modelName".to_string())?;
+            add_model_usage(
+                models,
+                name,
+                usage,
+                &["cacheCreationTokens", "cacheWriteTokens"],
+            )?;
+            if usage.get("missingPricing").and_then(Value::as_bool) == Some(true) {
+                let model = model_accumulator(models, name);
+                model.missing_cost = true;
+                model.usage.estimated_cost_usd = None;
+                unpriced += 1;
+            }
+        }
+        return Ok(unpriced);
+    }
+    let Some(breakdown) = row.get("breakdown") else {
+        return Ok(0);
+    };
+    let breakdown = breakdown
+        .as_object()
+        .ok_or_else(|| "ccusage breakdown must be an object".to_string())?;
+    for (name, usage) in breakdown {
+        add_model_usage(
+            models,
+            name,
+            usage,
+            &["cacheCreationTokens", "cacheWriteTokens"],
+        )?;
+    }
+    Ok(0)
+}
+
+pub fn parse_ccusage_report(value: &Value) -> Result<CcusageUsageResponse, String> {
+    let rows = ccusage_daily_rows(value)?;
+    if rows.is_empty() {
+        return Err("ccusage daily report has no rows".to_string());
+    }
+    let mut seen_dates = BTreeSet::new();
+    let mut daily = Vec::new();
+    let mut models = BTreeMap::new();
+    let mut coverage_start = None;
+    let mut coverage_end = None;
+    let mut input_tokens = 0;
+    let mut output_tokens = 0;
+    let mut cache_read_tokens = 0;
+    let mut cache_write_tokens = 0;
+    let mut reported_cost = 0.0;
+    let mut cost_days = 0_u64;
+    let mut days_with_unpriced_models = 0_u64;
+    let mut unpriced_model_entries = 0_u64;
+
+    for row in rows {
+        if row.get("projects").is_some() || row.get("sessions").is_some() {
+            return Err("ccusage project or session rows are not accepted".to_string());
+        }
+        let date = strict_date(row, "date")?;
+        if !seen_dates.insert(date) {
+            return Err(format!("duplicate ccusage daily report date {date}"));
+        }
+        let row_input = token_count(row, "inputTokens")?;
+        let row_output = token_count(row, "outputTokens")?;
+        let row_cache_read = token_count(row, "cacheReadTokens")?;
+        let row_cache_write = token_count_any(row, &["cacheCreationTokens", "cacheWriteTokens"])?;
+        if row_input == 0 && row_output == 0 && row_cache_read == 0 && row_cache_write == 0 {
+            return Err(format!("ccusage row {date} has no token fields"));
+        }
+        let unpriced_models = add_ccusage_breakdown(&mut models, row)?;
+        let row_cost = if unpriced_models > 0 {
+            None
+        } else {
+            optional_finite_nonnegative(row, "costUSD")?
+                .or(optional_finite_nonnegative(row, "totalCost")?)
+        };
+        let day = AggregateDailyUsage {
+            date: date.to_string(),
+            calls: 0.0,
+            sessions: 0,
+            input_tokens: row_input,
+            output_tokens: row_output,
+            cache_read_tokens: row_cache_read,
+            cache_write_tokens: row_cache_write,
+            estimated_cost_usd: row_cost,
+        };
+        input_tokens += row_input;
+        output_tokens += row_output;
+        cache_read_tokens += row_cache_read;
+        cache_write_tokens += row_cache_write;
+        if let Some(cost) = row_cost {
+            reported_cost += cost;
+            cost_days += 1;
+        }
+        if unpriced_models > 0 {
+            days_with_unpriced_models += 1;
+            unpriced_model_entries += unpriced_models;
+        }
+        coverage_start = Some(coverage_start.map_or(date, |current: NaiveDate| current.min(date)));
+        coverage_end = Some(coverage_end.map_or(date, |current: NaiveDate| current.max(date)));
+        daily.push(day);
+    }
+
+    let day_count = daily.len() as u64;
+    Ok(CcusageUsageResponse {
+        source: "user-selected ccusage daily JSON; not imported or added to other sources",
+        reported_timezone: "not declared by this import",
+        coverage_start: coverage_start.map(|date| date.to_string()),
+        coverage_end: coverage_end.map(|date| date.to_string()),
+        input_tokens,
+        output_tokens,
+        cache_read_tokens,
+        cache_write_tokens,
+        reported_cost_usd: (cost_days == day_count).then_some(reported_cost),
+        days_without_reported_cost: day_count - cost_days,
+        days_with_unpriced_models,
+        unpriced_model_entries,
+        daily,
+        models: finalized_models(models),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -768,5 +1296,144 @@ mod tests {
             .unwrap();
         assert_eq!(zero_unknown.priced_events, 0);
         assert_eq!(zero_unknown.unpriced_events, 1);
+    }
+
+    #[test]
+    fn codeburn_v74_uses_source_dates_without_reading_projects() {
+        let cache = serde_json::json!({
+            "version": 74,
+            "tzKey": "Asia/Taipei",
+            "complete": true,
+            "watermarkTrusted": true,
+            "lastComputedDate": "2026-10-29",
+            "days": [
+                {
+                    "date": "2026-10-01",
+                    "calls": 1.5,
+                    "sessions": 2,
+                    "inputTokens": 10,
+                    "outputTokens": 20,
+                    "cacheReadTokens": 30,
+                    "cacheWriteTokens": 40,
+                    "cost": 1.25,
+                    "projects": {"private-path": {"cost": 999.0}},
+                    "models": {"model-a": {"calls": 1.5, "inputTokens": 10, "outputTokens": 20, "cacheReadTokens": 30, "cacheWriteTokens": 40, "cost": 1.25}}
+                },
+                {
+                    "date": "2026-10-02",
+                    "calls": 2,
+                    "sessions": 1,
+                    "inputTokens": 3,
+                    "outputTokens": 4,
+                    "cacheReadTokens": 5,
+                    "cacheWriteTokens": 6,
+                    "models": {"model-b": {"calls": 2, "inputTokens": 3, "outputTokens": 4, "cacheReadTokens": 5, "cacheWriteTokens": 6}}
+                }
+            ]
+        });
+        let usage = parse_codeburn_cache(
+            &cache,
+            MagpiePeriod::All,
+            NaiveDate::from_ymd_opt(2026, 10, 2).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(usage.cache_version, 74);
+        assert_eq!(usage.cache_timezone, "Asia/Taipei");
+        assert_eq!(usage.calls, 3.5);
+        assert_eq!(usage.input_tokens, 13);
+        assert_eq!(usage.estimated_cost_usd, None);
+        assert_eq!(usage.days_without_estimated_cost, 1);
+        assert_eq!(usage.daily[0].estimated_cost_usd, Some(1.25));
+        assert_eq!(usage.daily[1].estimated_cost_usd, None);
+        assert_eq!(usage.models.len(), 2);
+    }
+
+    #[test]
+    fn codeburn_rejects_unsupported_versions_and_duplicate_dates() {
+        let unsupported = serde_json::json!({"version": 75, "tzKey": "Asia/Taipei", "days": []});
+        assert!(parse_codeburn_cache(
+            &unsupported,
+            MagpiePeriod::All,
+            NaiveDate::from_ymd_opt(2026, 10, 1).unwrap(),
+        )
+        .unwrap_err()
+        .contains("unsupported"));
+
+        let duplicate = serde_json::json!({
+            "version": 74,
+            "tzKey": "Asia/Taipei",
+            "days": [
+                {"date": "2026-10-01"},
+                {"date": "2026-10-01"}
+            ]
+        });
+        assert!(parse_codeburn_cache(
+            &duplicate,
+            MagpiePeriod::All,
+            NaiveDate::from_ymd_opt(2026, 10, 1).unwrap(),
+        )
+        .unwrap_err()
+        .contains("duplicate"));
+    }
+
+    #[test]
+    fn ccusage_daily_json_is_source_local_and_rejects_duplicate_or_project_rows() {
+        let report = serde_json::json!({
+            "daily": [
+                {
+                    "date": "2026-10-01",
+                    "inputTokens": 10,
+                    "outputTokens": 20,
+                    "cacheReadTokens": 30,
+                    "cacheCreationTokens": 40,
+                    "totalCost": 1.5,
+                    "modelBreakdowns": [{"modelName": "model-a", "inputTokens": 10, "outputTokens": 20, "cacheReadTokens": 30, "cacheCreationTokens": 40, "cost": 1.5}]
+                },
+                {
+                    "date": "2026-10-02",
+                    "inputTokens": 3,
+                    "outputTokens": 4
+                }
+            ]
+        });
+        let usage = parse_ccusage_report(&report).unwrap();
+        assert_eq!(usage.input_tokens, 13);
+        assert_eq!(usage.cache_write_tokens, 40);
+        assert_eq!(usage.reported_cost_usd, None);
+        assert_eq!(usage.days_without_reported_cost, 1);
+        assert_eq!(usage.models[0].model, "model-a");
+
+        let legacy = serde_json::json!({"type": "daily", "data": [
+            {"date": "2026-10-03", "inputTokens": 1, "breakdown": {"legacy-model": {"inputTokens": 1, "costUSD": 0.1}}, "costUSD": 0.1}
+        ]});
+        assert_eq!(
+            parse_ccusage_report(&legacy).unwrap().models[0].model,
+            "legacy-model"
+        );
+
+        let unpriced = serde_json::json!({"daily": [
+            {"date": "2026-10-04", "inputTokens": 1, "totalCost": 0, "modelBreakdowns": [{"modelName": "unknown-model", "inputTokens": 1, "cost": 0, "missingPricing": true}]}
+        ]});
+        let usage = parse_ccusage_report(&unpriced).unwrap();
+        assert_eq!(usage.reported_cost_usd, None);
+        assert_eq!(usage.days_without_reported_cost, 1);
+        assert_eq!(usage.days_with_unpriced_models, 1);
+        assert_eq!(usage.unpriced_model_entries, 1);
+        assert_eq!(usage.models[0].estimated_cost_usd, None);
+
+        let duplicate = serde_json::json!({"daily": [
+            {"date": "2026-10-01", "inputTokens": 1},
+            {"date": "2026-10-01", "inputTokens": 1}
+        ]});
+        assert!(parse_ccusage_report(&duplicate)
+            .unwrap_err()
+            .contains("duplicate"));
+
+        let project_row = serde_json::json!({"daily": [
+            {"date": "2026-10-01", "inputTokens": 1, "projects": {"private": []}}
+        ]});
+        assert!(parse_ccusage_report(&project_row)
+            .unwrap_err()
+            .contains("project"));
     }
 }

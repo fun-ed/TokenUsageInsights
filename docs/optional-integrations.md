@@ -8,26 +8,27 @@
 
 ccusage 直接分析各 Coding Agent 的本機使用紀錄。因此它的報告可能與本專案已匯入的 Claude Code、Codex 或其他 Agent sessions 重疊。此頁不尋找或匯入 ccusage 報告，以避免將同一流量相加。
 
-不需全域安裝即可驗證：
+若已經自行安裝 ccusage，可匯出標準 daily JSON：
 
 ```sh
-npx ccusage@latest daily --json
+ccusage daily --json --breakdown > ccusage-daily.json
 ```
 
-成功時會輸出 JSON 報告。保留它做人工比較，不要把輸出的總額加到 TokenUsageInsights 的 API 等效值。請參閱 [ccusage 官方文件](https://github.com/ccusage/ccusage)。
+在選用整合頁啟用本機檢查後，可選擇這份 `.json` 檔並只在目前瀏覽器頁面解析。程式不執行 ccusage、不使用 `npx`、不寫入這份檔案，也不接受通用 `.txt`。只接受每日報告的 `daily`，或舊格式的 `type: "daily"` 加 `data`；日期必須唯一且為 `YYYY-MM-DD`，專案或 session 匯出會被拒絕以避免暴露路徑與把多層資料誤加總。
+
+ccusage 日期的時區不會由上傳檔案推論；畫面會明示為未宣告。它只用於來源內的每日／模型檢視，不要把輸出的總額加到 TokenUsageInsights、CodeBurn 或 Magpie 的數字。請參閱 [ccusage 官方文件](https://github.com/ccusage/ccusage)。
 
 ## CodeBurn
 
-CodeBurn 的官方 CLI 需要 Node.js 22.13 或更新版本。安裝與驗證：
+CodeBurn 的官方 CLI 需要 Node.js 22.13 或更新版本。此版本直接唯讀已安裝版本宣告的 `daily-cache.v74.json`：
 
 ```sh
-npm install -g codeburn
 codeburn report --format json
 ```
 
-檢查頁只會查看 `$CODEBURN_CACHE_DIR/daily-cache.json`（預設 `~/.cache/codeburn/daily-cache.json`）是否存在、可讀且為 JSON，以及 cache 目錄是否存在。它不解析歷史 session 或將結果加入月報。
+檢查頁只會查看 `$CODEBURN_CACHE_DIR/daily-cache.v74.json`（預設 `~/.cache/codeburn/daily-cache.v74.json`）是否存在、可讀且通過 v74 schema 檢查。保留的舊版本 cache 不會依檔名、修改時間或資料量猜測為 active。頁面只讀每日 aggregate、模型、Token、calls 和來源估計 USD；不讀 projects、session 或帳戶資料，也不將結果加入月報。
 
-若命令有輸出而檢查頁顯示找不到快取，先確認 CodeBurn 使用的 `CODEBURN_CACHE_DIR`，再重新開啟整合頁。請參閱 [CodeBurn 官方文件](https://codeburn.app/agent/docs)。
+畫面會顯示 CodeBurn cache 自己記錄的 `tzKey`、完整／watermark 宣告與最後計算日期；這些是 cache metadata，不代表即時資料或實際帳單。若命令有輸出而檢查頁顯示找不到 v74 cache，先確認 CodeBurn 使用的 `CODEBURN_CACHE_DIR`，再重新開啟整合頁。請參閱 [CodeBurn 官方文件](https://codeburn.app/agent/docs)。
 
 ## Magpie
 
