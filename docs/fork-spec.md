@@ -92,10 +92,16 @@
 - `/api/:assistant/usage/:date` 新增 `models`，模型 Session 查詢支援 `YYYY-MM-DD`，並保留既有年／月查詢。重用 `reporting::summarize_models_by_mode` 與來源隔離，不改變計價、thinking effort 或 transcript 安全邊界，彙總維持在 `spawn_blocking` 執行。
 - 不變更資料庫結構、環境變數或安裝方式。未移植 upstream `f13ef39` 的 CI/CD 與四平台發行流程，也不採用 upstream 版本號。
 
+### 2.12 GPT-6.1 Terra 定價（upstream v1.5.1）
+
+- v10.0.24 選擇性移植 upstream `8abd751` 的四筆定價。Global 的輸入加快取讀取不超過 272K 時，每百萬 Token 輸入／快取讀取／輸出為 US$1.00／0.05／5.00；超過時為 US$2.00／0.10／7.50。Cursor 使用 US$1.00／0.05／5.00。
+- 價格表保留 Batch 短上下文 US$0.50／0.025／2.50 與長上下文 US$1.00／0.05／3.75；報表仍使用既有標準費率與 models.dev 優先規則。費用為估算，不代表實際帳單。
+- 不變更資料庫、API、CLI 或環境變數，不採用 upstream 版本與發行設定。
+
 ## 3. 版本與發行
 
 - Cargo 與 npm 版本為 `10.x.y`；release tag 為對應的 `v10.x.y`。不可重用 upstream 的 `v1.x.y`。
-- 目前 fork 版本為 `v10.0.23`；選擇性同步基準為 upstream `v1.5.0`（見 §2.8、§2.10、§2.11）。Windows statusline 命令、verbatim 路徑、Windows workspace URI、PowerShell 測試及 workflow 均未移植；未新增直接 `base64` 相依。
+- 目前 fork 版本為 `v10.0.24`；選擇性同步基準為 upstream `v1.5.1`（見 §2.8、§2.10、§2.11、§2.12）。Windows statusline 命令、verbatim 路徑、Windows workspace URI、PowerShell 測試及 workflow 均未移植；未新增直接 `base64` 相依。
 - 發行資產：macOS `aarch64-apple-darwin` 與 `x86_64-apple-darwin` 的 `.tar.gz`、`.dmg`，以及 `SHA256SUMS`。Linux 只有在 release 列出對應 tarball 時才宣稱可用。
 - 發行包內容：執行檔、`static/`、`shell/`、`scripts/`、`pricing.csv`、`README.md`、`LICENSE`、`VERSION`。
 - `scripts/get.sh` 與 npm 安裝器從 `fun-ed/TokenUsageInsights` 下載。

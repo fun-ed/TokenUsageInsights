@@ -12,7 +12,7 @@ OMP 同时读取 `~/.omp/agent/sessions` 与 `~/.omp/profiles/<name>/agent/sessi
 
 Antigravity CLI 无需设置 Status Line 或收集脚本：看板直接读取 `~/.gemini/antigravity-cli/brain/` 的原生会话记录，并只读查询 `conversations/<session-id>.db` 获取每次回复的模型。旧版 `usage/` 收集文件仍可导入，同一会话不会重复计算。费用为依 `pricing.csv` 的预估；模型或价格不明时无法预估，不代表免费。
 
-当前版本为 [v10.0.23](https://github.com/fun-ed/TokenUsageInsights/releases/tag/v10.0.23)，选择性同步 upstream v1.5.0 的每日模型占比。日报显示模型排名、会话数、Token 与预估费用，点击模型可展开当日 Sessions，保留总览、来源与 profile badge 及 thinking effort。每日用量 API 新增 `models`，模型 Session 查询支持 `YYYY-MM-DD`；不变更数据库结构、环境变量或安装方式，不引入 CI/CD 或 Windows 内容。保留前版 Copilot 逐次修补与价格；优惠期限及预估限制见[官方价格核查](docs/research/2026-10-21-prompt-cache-pricing.md)。完整 macOS 安装命令见英文 README。
+当前版本为 [v10.0.24](https://github.com/fun-ed/TokenUsageInsights/releases/tag/v10.0.24)，选择性同步 upstream v1.5.1 的 GPT-6.1 Terra 定价。Global 每百万 Token 输入／缓存读取／输出在 272K 以下为 US$1.00／0.05／5.00，超过为 US$2.00／0.10／7.50；Cursor 使用 US$1.00／0.05／5.00。保留每日模型占比、多 profile 与总览，不变更数据库、API、CLI 或环境变量，不引入 CI/CD 或 Windows 内容。费用为预估，既有优惠期限及限制见[官方价格核查](docs/research/2026-10-21-prompt-cache-pricing.md)。完整 macOS 安装命令见英文 README。
 
 要集中分析多个 `CODEX_HOME` 或云盘同步的其他电脑记录，可在 `config.yaml` 加入 `additional_sources`（例如 `codex: ['~/Cloud Drive/laptop/.codex']`）。额外目录会追加到默认来源与 profile 之后，启动、后台同步与「立即同步」都会重新读取设置；额外的 Claude Code 与 OMP 目录各自成为独立来源。完整说明见英文 [README](README.md#additional-sources-multiple-homes-and-computers)。
 

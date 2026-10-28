@@ -4,6 +4,27 @@
 
 ## [未發行]
 
+## [10.0.24] - 2026-10-28
+
+### 新增與改善
+
+- 選擇性移植 upstream `8abd751`（v1.5.1）的 GPT-6.1 Terra Global／Cursor 定價。
+- Global 每百萬 Token 輸入／快取讀取／輸出費率在 272K 以下為 US$1.00／0.05／5.00，超過為 US$2.00／0.10／7.50；門檻包含輸入與快取讀取，不含輸出。Cursor 使用 US$1.00／0.05／5.00。
+- 價格表新增 Batch 短上下文 US$0.50／0.025／2.50 與長上下文 US$1.00／0.05／3.75。報表維持既有標準費率與 models.dev 優先規則，費用為估算。
+
+### 相容性與發行範圍
+
+- 保留多 profile、總覽與每日模型佔比，不變更資料庫、API、CLI 或環境變數；不引入 Windows、CI/CD 或 upstream 發行設定。
+- Cargo／npm、lockfiles、README 與 fork 規格同步至 `10.0.24`。發行 Apple Silicon／Intel macOS 的 `.tar.gz`、DMG 與 `SHA256SUMS`，不發布 Linux 二進位或 npm Registry 套件。
+- 擴充既有 GPT-6.1 測試，涵蓋 Terra 名稱變體、272K 邊界、快取跨界與 Global／Cursor／Batch 費率。
+
+### 驗證與交付
+
+- 475 個 Rust 單元測試、3 個整合測試、38 個 Node 測試、`cargo fmt --check`、Clippy `-D warnings`、`git diff --check` 及 fork 排除項目檢查通過；雙架構 release 建置零警告零錯誤。
+- Apple Silicon／Intel 壓縮檔解壓後通過隔離安裝、CLI／API 版本、四筆 Terra 定價及空白 SQLite 驗證，DMG 完整性與 SHA-256 校驗通過。Intel 執行檔以 ad-hoc 簽章並透過 Rosetta 執行，未在實體 Intel Mac 驗證。
+- 執行 `make install-local` 至暫存安裝目錄後，原子替換本機執行檔並同步資源，保留原 symlink。安裝檔案與 launchd 設定備份逐檔核對，SQLite 線上備份通過完整性檢查。
+- 以 SIGTERM 平順重啟 `com.tokenusageinsights`；本機 CLI 與 `localhost:3003/api/version` 均確認 `10.0.24`，初始同步完成，pricing API 回傳四筆 Terra 隨附定價。
+
 ## [10.0.23] - 2026-10-23
 
 ### 新增與改善
