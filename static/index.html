@@ -428,6 +428,22 @@
         </div>
         <div id="optional-integrations-disabled" class="optional-integrations-notice" data-i18n="optional_integrations_disabled">目前已關閉，因此伺服器不會讀取任何選用整合檔案。</div>
         <div id="optional-integrations-status" class="optional-integrations-status hidden" aria-live="polite"></div>
+        <section id="magpie-usage-panel" class="glass-card magpie-usage-panel hidden" aria-labelledby="magpie-usage-title">
+          <div class="optional-integration-source-head">
+            <div>
+              <p class="section-kicker" data-i18n="magpie_usage_kicker">已啟用時才讀取</p>
+              <h3 id="magpie-usage-title" data-i18n="magpie_usage_title">Magpie Gateway 使用量</h3>
+              <p data-i18n="magpie_usage_intro">依 usage.jsonl 的 UTC 時間與 initiating agent 彙總。Provider、route 與帳戶不會被當成 Agent，也不會推論付款來源。</p>
+            </div>
+            <div class="magpie-usage-filters">
+              <label><span data-i18n="magpie_usage_period">期間</span><select id="magpie-usage-period"><option value="7d">7 days</option><option value="30d" selected>30 days</option><option value="month">This UTC month</option><option value="all">All available</option></select></label>
+              <label><span data-i18n="magpie_usage_agent">發起 Agent</span><select id="magpie-usage-agent"><option value="">All agents</option></select></label>
+            </div>
+          </div>
+          <div id="magpie-usage-summary" class="magpie-usage-summary" aria-live="polite"></div>
+          <div class="canvas-wrapper magpie-usage-chart"><canvas id="magpieUsageChart"></canvas></div>
+          <p id="magpie-usage-note" class="magpie-usage-note"></p>
+        </section>
         <div class="optional-integrations-guides">
           <article class="glass-card optional-integration-guide">
             <h3>ccusage</h3>

@@ -36,6 +36,8 @@ let importHistoryAssistant = null;
 let setupModalAssistant = null;
 let latestAllAgentSetupInfo = null;
 let optionalIntegrationRequestController = null;
+let magpieUsageRequestController = null;
+let magpieUsageChartInstance = null;
 const pendingSessionPricingKeys = new Set();
 
 const chartPalette = {
@@ -394,6 +396,74 @@ function renderOptionalIntegrationStatus(data) {
     container.append(card);
   }
   container.classList.remove('hidden');
+  const magpie = (data.sources || []).find(source => source.id === 'magpie');
+  if (magpie?.artifacts?.some(artifact => artifact.label === 'Magpie usage.jsonl' && artifact.state === 'found')) {
+    document.getElementById('magpie-usage-panel')?.classList.remove('hidden');
+    loadMagpieUsage();
+  } else {
+    document.getElementById('magpie-usage-panel')?.classList.add('hidden');
+  }
+}
+
+function renderMagpieUsage(data) {
+  const summary = document.getElementById('magpie-usage-summary');
+  const note = document.getElementById('magpie-usage-note');
+  if (!summary || !note) return;
+  const reportedTokens = (data.input_tokens || 0) + (data.output_tokens || 0)
+    + (data.cache_read_tokens || 0) + (data.cache_write_tokens || 0);
+  summary.replaceChildren();
+  [[t('magpie_usage_events'), formatNumber(data.events || 0)], [t('magpie_usage_tokens'), formatToken(reportedTokens)], [t('magpie_usage_cost'), data.reported_cost_usd == null ? t('magpie_usage_not_reported') : formatCost(data.reported_cost_usd)]].forEach(([label, value]) => {
+    const card = document.createElement('div');
+    const labelEl = document.createElement('span');
+    labelEl.textContent = label;
+    const valueEl = document.createElement('strong');
+    valueEl.textContent = value;
+    card.append(labelEl, valueEl);
+    summary.append(card);
+  });
+  const coverage = data.coverage_start && data.coverage_end ? ` · coverage ${data.coverage_start}–${data.coverage_end}` : '';
+  note.textContent = `${data.agent_dimension} · ${data.timezone}${coverage} · ${t('magpie_usage_not_imported')}${data.malformed_rows || data.skipped_rows || data.duplicate_rows || data.truncated ? ` · ${t('magpie_usage_partial')} ${t('magpie_usage_unaggregated')} ${data.malformed_rows || 0}, skipped ${data.skipped_rows || 0}, duplicate ${data.duplicate_rows || 0}${data.truncated ? ` · ${t('magpie_usage_truncated')}` : ''}` : ''}`;
+
+  const canvas = document.getElementById('magpieUsageChart');
+  if (!canvas || typeof Chart === 'undefined') return;
+  magpieUsageChartInstance?.destroy();
+  magpieUsageChartInstance = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels: (data.daily || []).map(row => row.date),
+      datasets: [
+        { label: 'Input', data: (data.daily || []).map(row => row.input_tokens), backgroundColor: chartPalette.tokenFill },
+        { label: 'Output', data: (data.daily || []).map(row => row.output_tokens), backgroundColor: chartPalette.candleOutputFill },
+        { label: 'Cache read/write', data: (data.daily || []).map(row => (row.cache_read_tokens || 0) + (row.cache_write_tokens || 0)), backgroundColor: chartPalette.candleCacheFill },
+      ],
+    },
+    options: { responsive: true, maintainAspectRatio: false, scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } } },
+  });
+}
+
+async function loadMagpieUsage() {
+  if (!shouldFetchOptionalIntegrationStatus(optionalIntegrationsEnabled(), activeTab)) return;
+  const period = document.getElementById('magpie-usage-period')?.value || '30d';
+  const agentSelect = document.getElementById('magpie-usage-agent');
+  const agent = agentSelect?.value || '';
+  magpieUsageRequestController?.abort();
+  magpieUsageRequestController = new AbortController();
+  try {
+    const params = new URLSearchParams({ period });
+    if (agent) params.set('agent', agent);
+    const response = await fetch(`/api/integrations/magpie-usage?${params}`, { signal: magpieUsageRequestController.signal });
+    if (!response.ok) throw new Error(response.statusText);
+    const data = await response.json();
+    if (agentSelect) {
+      const selected = agentSelect.value;
+      agentSelect.replaceChildren(new Option(t('magpie_usage_all_agents'), ''));
+      (data.available_agents || []).forEach(item => agentSelect.add(new Option(`${item.agent} (${formatNumber(item.events)})`, item.agent)));
+      agentSelect.value = [...agentSelect.options].some(option => option.value === selected) ? selected : '';
+    }
+    renderMagpieUsage(data);
+  } catch (error) {
+    if (error.name !== 'AbortError') document.getElementById('magpie-usage-note').textContent = `${t('magpie_usage_load_failed')} ${error.message}`;
+  }
 }
 
 async function loadOptionalIntegrations() {
@@ -401,6 +471,7 @@ async function loadOptionalIntegrations() {
   const status = document.getElementById('optional-integrations-status');
   if (!shouldFetchOptionalIntegrationStatus(optionalIntegrationsEnabled(), activeTab)) {
     optionalIntegrationRequestController?.abort();
+    magpieUsageRequestController?.abort();
     optionalIntegrationRequestController = null;
     if (disabled) disabled.classList.remove('hidden');
     if (status) {
@@ -1043,6 +1114,9 @@ function initApp() {
   if (optionalIntegrationsButton) {
     optionalIntegrationsButton.addEventListener('click', () => switchTab('integrations'));
   }
+  ['magpie-usage-period', 'magpie-usage-agent'].forEach(id => {
+    document.getElementById(id)?.addEventListener('change', loadMagpieUsage);
+  });
 
   if (activeTab === 'daily') {
     tabBtnDaily.classList.add('active');
@@ -1736,6 +1810,10 @@ function initApp() {
 // =========================================================================
 function switchTab(tab, options = {}) {
   if (activeTab === tab) return;
+  if (tab !== 'integrations') {
+    optionalIntegrationRequestController?.abort();
+    magpieUsageRequestController?.abort();
+  }
   activeTab = tab;
   setCookie('active_tab', tab);
 

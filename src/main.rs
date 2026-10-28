@@ -354,6 +354,7 @@ async fn main() {
             "/api/integrations/enable",
             post(set_optional_integrations_enabled),
         )
+        .route("/api/integrations/magpie-usage", get(get_magpie_usage))
         // 帶 :assistant 變數的路由
         .route("/api/:assistant/dates", get(get_available_dates))
         .route("/api/:assistant/setup-info", get(get_setup_info))

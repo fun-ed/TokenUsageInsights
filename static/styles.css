@@ -168,6 +168,70 @@
   gap: 16px;
 }
 
+.magpie-usage-panel {
+  padding: 18px;
+}
+
+.magpie-usage-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.magpie-usage-filters label {
+  display: grid;
+  gap: 4px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.magpie-usage-filters select {
+  min-width: 130px;
+  padding: 7px 28px 7px 9px;
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  background: var(--bg-select);
+  color: var(--text-primary);
+  font: 500 13px var(--font-body);
+}
+
+.magpie-usage-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 18px 0;
+}
+
+.magpie-usage-summary div {
+  padding: 11px;
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  background: var(--bg-select);
+}
+
+.magpie-usage-summary span {
+  display: block;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.magpie-usage-summary strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-primary);
+  font-size: 18px;
+}
+
+.magpie-usage-chart {
+  min-height: 260px;
+}
+
+.magpie-usage-note {
+  margin: 14px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
 .optional-integration-guide {
   display: flex;
   flex-direction: column;
@@ -197,6 +261,10 @@
   }
 
   .optional-integrations-guides {
+    grid-template-columns: 1fr;
+  }
+
+  .magpie-usage-summary {
     grid-template-columns: 1fr;
   }
 
