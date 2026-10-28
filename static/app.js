@@ -448,11 +448,7 @@ function renderMagpieUsage(data) {
   const daily = data.daily || [];
   const totalPricedEvents = daily.reduce((total, row) => total + (row.priced_events || 0), 0);
   const totalUnpricedEvents = daily.reduce((total, row) => total + (row.unpriced_events || 0), 0);
-  document.querySelectorAll('[data-magpie-usage-metric]').forEach(button => {
-    const isActive = button.dataset.magpieUsageMetric === magpieUsageMetric;
-    button.classList.toggle('is-active', isActive);
-    button.setAttribute('aria-pressed', String(isActive));
-  });
+  updateMagpieUsageMetricButtons();
   const coverageNotice = document.getElementById('magpie-usage-price-coverage');
   if (coverageNotice) {
     const isPartial = isCostMetric && totalUnpricedEvents > 0;
@@ -498,9 +494,18 @@ function renderMagpieUsage(data) {
   });
 }
 
+function updateMagpieUsageMetricButtons() {
+  document.querySelectorAll('[data-magpie-usage-metric]').forEach(button => {
+    const isActive = button.dataset.magpieUsageMetric === magpieUsageMetric;
+    button.classList.toggle('is-active', isActive);
+    button.setAttribute('aria-pressed', String(isActive));
+  });
+}
+
 function setMagpieUsageMetric(metric) {
   if (!['tokens', 'cost'].includes(metric) || metric === magpieUsageMetric) return;
   magpieUsageMetric = metric;
+  updateMagpieUsageMetricButtons();
   if (currentMagpieUsageData) renderMagpieUsage(currentMagpieUsageData);
 }
 
