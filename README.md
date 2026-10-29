@@ -20,7 +20,7 @@ Single-agent monthly reports for OMP and Claude Code:
 
 ## Install a precompiled CLI on macOS
 
-The [v10.0.24 release](https://github.com/fun-ed/TokenUsageInsights/releases/tag/v10.0.24) provides CLI packages for Apple Silicon (`aarch64-apple-darwin`) and Intel (`x86_64-apple-darwin`) Macs. No Rust toolchain is needed.
+The [v10.0.25 release](https://github.com/fun-ed/TokenUsageInsights/releases/tag/v10.0.25) provides CLI packages for Apple Silicon (`aarch64-apple-darwin`) and Intel (`x86_64-apple-darwin`) Macs. No Rust toolchain is needed.
 
 For a quick local install from this fork's latest release (not the upstream repository), run:
 
@@ -33,7 +33,7 @@ The installer selects the matching macOS CLI, copies the dashboard into `~/.loca
 To verify the checksum before installing, download the release package manually (set `target=x86_64-apple-darwin` on an Intel Mac):
 
 ```bash
-version=v10.0.24
+version=v10.0.25
 target=aarch64-apple-darwin
 archive="token-usage-insights-${version}-${target}.tar.gz"
 mkdir -p "$HOME/Downloads/token-usage-insights"
@@ -47,7 +47,7 @@ bash "token-usage-insights-${version}-${target}/scripts/install.sh"
 "$HOME/.local/bin/token-usage-insights"
 ```
 
-To invoke the CLI by name from zsh, add `export PATH="$HOME/.local/bin:$PATH"` to `~/.zshrc` and start a new terminal. Run the quick installer again to upgrade. Both architectures are also available as [Apple Silicon DMG](https://github.com/fun-ed/TokenUsageInsights/releases/download/v10.0.24/token-usage-insights-v10.0.24-aarch64-apple-darwin.dmg) and [Intel DMG](https://github.com/fun-ed/TokenUsageInsights/releases/download/v10.0.24/token-usage-insights-v10.0.24-x86_64-apple-darwin.dmg). For Linux, build from source unless a matching Linux asset is listed in the release.
+To invoke the CLI by name from zsh, add `export PATH="$HOME/.local/bin:$PATH"` to `~/.zshrc` and start a new terminal. Run the quick installer again to upgrade. Both architectures are also available as [Apple Silicon DMG](https://github.com/fun-ed/TokenUsageInsights/releases/download/v10.0.25/token-usage-insights-v10.0.25-aarch64-apple-darwin.dmg) and [Intel DMG](https://github.com/fun-ed/TokenUsageInsights/releases/download/v10.0.25/token-usage-insights-v10.0.25-x86_64-apple-darwin.dmg). For Linux, build from source unless a matching Linux asset is listed in the release.
 
 ## Import automatically in the background
 
@@ -111,6 +111,8 @@ additional_sources:
 ### Privacy and pricing
 
 It does not send usage logs to AI providers. Prices are estimates. When a source does not report a cost, the dashboard uses a matching local pricing rule. The server refreshes its models.dev price cache when available.
+
+v10.0.25 adds opt-in, source-local views for Magpie Gateway, CodeBurn, and user-selected ccusage daily JSON. Magpie distinguishes unpriced usage from US$0. CodeBurn reads only the supported `daily-cache.v74.json` and labels its cache timezone and freshness metadata. ccusage is never run automatically; it is parsed only after the user selects a JSON export. These sources are not imported, deduplicated, or added to TokenUsageInsights or each other. See [optional integrations](docs/optional-integrations.md).
 
 v10.0.24 selectively ports upstream v1.5.1's GPT-6.1 Terra pricing. Global input/cache-read/output rates per million tokens are USD 1.00/0.05/5.00 for prompts up to 272K tokens and USD 2.00/0.10/7.50 above that threshold. Cursor uses USD 1.00/0.05/5.00. Existing models.dev precedence, daily model breakdowns, profiles, and all-agent reports are preserved. No database, API, CLI, or environment changes are required.
 

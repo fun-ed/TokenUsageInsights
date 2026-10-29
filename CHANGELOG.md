@@ -4,6 +4,24 @@
 
 ## [未發行]
 
+## [10.0.25] - 2026-10-29
+
+### 新增與改善
+
+- 選用整合頁新增 Magpie Gateway 唯讀用量檢視：依 `event.agent` 及 GMT+8 日期彙總，可在 Token 與 API 等效 USD 間切換。未知模型、cache write 或未定價請求明確列為未定價，不以 US$0 代替；所有顯示都不匯入既有報表。
+- 選用整合頁新增 CodeBurn 的來源專屬 daily/model 視圖。只讀已安裝 CodeBurn 的 `daily-cache.v74.json`，顯示來源記錄的 `tzKey`、涵蓋日期、最後計算日、完整與 watermark 宣告、Token、calls 及 CodeBurn 估計 USD。
+- ccusage 不會自動執行、安裝或呼叫 `npx`。使用者可自行選擇 `ccusage daily --json --breakdown` 輸出的 JSON，在目前瀏覽器頁面做唯讀解析；支援現行 `daily[].modelBreakdowns[]` 與舊版 `type=daily/data` 格式。
+
+### 資料邊界與相容性
+
+- CodeBurn 的 v74 是目前支援的 cache schema；其他版本會顯示為未支援，程式不會用檔名排序、修改時間或資料量猜測 active cache。CodeBurn 的 aggregate 時區與 cache metadata 只代表來源快取，不表示即時資料或帳單。
+- ccusage 拒絕專案／session 報告、重複日期、無效欄位與非 JSON 匯入。`missingPricing` 會讓受影響日期與模型的 USD 顯示為未知，不將未知價格顯示為 US$0。
+- Magpie、CodeBurn、ccusage 與既有 TokenUsageInsights 資料保持獨立；本版本不建立跨來源合計、去重、資料庫匯入或付款歸因。
+
+### 發行範圍
+
+- Cargo／npm、lockfiles、三份 README 與 fork 規格同步為 `10.0.25`。發行 Apple Silicon／Intel macOS 的 `.tar.gz`、DMG 與 `SHA256SUMS`；不發布 Linux 二進位或 npm Registry 套件。
+
 ## [10.0.24] - 2026-10-28
 
 ### 新增與改善

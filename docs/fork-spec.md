@@ -98,10 +98,17 @@
 - 價格表保留 Batch 短上下文 US$0.50／0.025／2.50 與長上下文 US$1.00／0.05／3.75；報表仍使用既有標準費率與 models.dev 優先規則。費用為估算，不代表實際帳單。
 - 不變更資料庫、API、CLI 或環境變數，不採用 upstream 版本與發行設定。
 
+### 2.13 選用外部用量來源（v10.0.25）
+
+- 選用整合預設關閉，僅限 loopback 瀏覽器明確啟用後讀取；離開整合頁或停用時會取消未完成請求。所有來源維持唯讀，不匯入 SQLite、不寫入原始檔、不與既有報表或彼此合計。
+- Magpie `usage.jsonl` 依 `event.agent` 與 GMT+8 日期顯示 Token、模型與 API 等效 USD。未知模型、cache write、缺少 Token 或未定價事件必須顯示為未定價，不能假設為 US$0。
+- CodeBurn 只接受 `$CODEBURN_CACHE_DIR/daily-cache.v74.json`（預設 `~/.cache/codeburn/daily-cache.v74.json`）。v74 是本 release 支援的 schema；不依檔名排序、mtime 或資料量猜測其他保留 cache 是否 active。只讀 daily aggregate、模型、Token、calls、來源估計 USD 與 cache metadata；不讀 projects、session、帳戶或憑證。`tzKey`、完整／watermark 與最後計算日是 cache 宣告，不等同即時資料或帳單。
+- ccusage 不自動執行、不安裝、不使用 `npx` 或快取的可執行檔。使用者可選擇 `ccusage daily --json --breakdown` 的 JSON，僅在當前頁面解析現行 `daily[].modelBreakdowns[]` 或舊版 `type=daily/data`。拒絕專案／session 資料、重複日期與無效欄位；`missingPricing` 的日期與模型 USD 一律未知。上傳報告未宣告時區時不得推論其日期時區。
+
 ## 3. 版本與發行
 
 - Cargo 與 npm 版本為 `10.x.y`；release tag 為對應的 `v10.x.y`。不可重用 upstream 的 `v1.x.y`。
-- 目前 fork 版本為 `v10.0.24`；選擇性同步基準為 upstream `v1.5.1`（見 §2.8、§2.10、§2.11、§2.12）。Windows statusline 命令、verbatim 路徑、Windows workspace URI、PowerShell 測試及 workflow 均未移植；未新增直接 `base64` 相依。
+- 目前 fork 版本為 `v10.0.25`；選擇性同步基準為 upstream `v1.5.1`（見 §2.8、§2.10、§2.11、§2.12）。Windows statusline 命令、verbatim 路徑、Windows workspace URI、PowerShell 測試及 workflow 均未移植；未新增直接 `base64` 相依。
 - 發行資產：macOS `aarch64-apple-darwin` 與 `x86_64-apple-darwin` 的 `.tar.gz`、`.dmg`，以及 `SHA256SUMS`。Linux 只有在 release 列出對應 tarball 時才宣稱可用。
 - 發行包內容：執行檔、`static/`、`shell/`、`scripts/`、`pricing.csv`、`README.md`、`LICENSE`、`VERSION`。
 - `scripts/get.sh` 與 npm 安裝器從 `fun-ed/TokenUsageInsights` 下載。
