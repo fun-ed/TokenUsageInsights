@@ -69,6 +69,21 @@ cargo run --release
 
 Open <http://localhost:3003>.
 
+### Unreleased source changes
+
+The source tree selectively includes upstream v1.6.2: ISO-week and custom-range reports, Antigravity subagent hierarchies, corrected packaged prices, and opt-in remote transfers. These changes are not included in the v10.0.25 download above.
+
+Remote transfers run only when explicitly requested:
+
+```bash
+token-usage-insights export-all --out "$AZURE_BLOB_SAS_URL"
+token-usage-insights import --url "$USAGE_JSON_HTTPS_URL"
+```
+
+Exports contain usage records, including session names and paths. Share them only with trusted recipients. Use a short-lived, least-privilege SAS token; URLs passed as arguments can be visible in the process list even though the CLI does not print their signatures.
+
+For separate imported-data dashboards, see [optional Docker support](docker/README.md). To compare packaged prices with official documents manually, run `mise exec -- node scripts/pricing-check.mjs`. The check only reports differences; it does not modify prices or create issues.
+
 ## What it reads
 
 The dashboard reads local data from Antigravity, Copilot, Codex, Claude Code, Cursor, Grok Build, Pi, OMP, Muse Code, and MiniMax Code. It supports macOS and Linux.

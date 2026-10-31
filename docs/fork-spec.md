@@ -105,10 +105,19 @@
 - CodeBurn 只接受 `$CODEBURN_CACHE_DIR/daily-cache.v74.json`（預設 `~/.cache/codeburn/daily-cache.v74.json`）。v74 是本 release 支援的 schema；不依檔名排序、mtime 或資料量猜測其他保留 cache 是否 active。只讀 daily aggregate、模型、Token、calls、來源估計 USD 與 cache metadata；不讀 projects、session、帳戶或憑證。`tzKey`、完整／watermark 與最後計算日是 cache 宣告，不等同即時資料或帳單。
 - ccusage 不自動執行、不安裝、不使用 `npx` 或快取的可執行檔。使用者可選擇 `ccusage daily --json --breakdown` 的 JSON，僅在當前頁面解析現行 `daily[].modelBreakdowns[]` 或舊版 `type=daily/data`。拒絕專案／session 資料、重複日期與無效欄位；`missingPricing` 的日期與模型 USD 一律未知。上傳報告未宣告時區時不得推論其日期時區。
 
+### 2.14 選擇性同步 upstream v1.6.2（未發行）
+
+- 同步範圍為 upstream `v1.5.1...v1.6.2`。保留 fork 版本 `10.x.y`，不直接 merge，不引入 Windows、CI/CD、PR 管理技能或 upstream 發行設定。
+- 週／自訂區間報表接受含起訖日、最長 366 天的區間。新增 `/api/:assistant/range/:start/:end`，模型 Session 查詢支援 `start~end`；維持總覽、Claude／OMP 多來源、thinking effort 與估算計價規則。日／月／年與區間切換時，遲到的回應不得覆蓋目前看板。
+- Antigravity 原生來源支援巢狀子代理、名稱與角色，以及跨代理訊息時間軸。同步指紋包含子代理描述檔；解析器更新後重新解析仍存在的原生會話，不清除資料庫。
+- CLI `export-all --out` 可明確指定 Azure Blob HTTPS SAS URL；`import --url` 可明確下載 HTTPS JSON。這是使用者主動要求的網路操作，預設仍使用本機資料；不新增背景上傳，不在成功或錯誤訊息回顯 SAS 簽章。
+- 選用 `docker/tui-docker.sh` 以名稱隔離容器與資料磁碟區，預設只公開 loopback 埠號。容器不掛載使用者的 AI 工具目錄，資料來自明確匯入，不自動更新執行檔。
+- 隨附牌價依 upstream `bb56169` 修正 GPT-5.6 Sol／Terra／Luna、Daybreak／Reserve 別名、GPT-5.4-mini 與 Gemini 3 Flash Preview；保留 models.dev 優先規則。`scripts/pricing-check.mjs` 只在手動執行時讀取官方定價並輸出報告，不自動修改 CSV、建立 issue 或安裝排程。
+
 ## 3. 版本與發行
 
 - Cargo 與 npm 版本為 `10.x.y`；release tag 為對應的 `v10.x.y`。不可重用 upstream 的 `v1.x.y`。
-- 目前 fork 版本為 `v10.0.25`；選擇性同步基準為 upstream `v1.5.1`（見 §2.8、§2.10、§2.11、§2.12）。Windows statusline 命令、verbatim 路徑、Windows workspace URI、PowerShell 測試及 workflow 均未移植；未新增直接 `base64` 相依。
+- 目前 fork 版本為 `v10.0.25`；原始碼選擇性同步基準為 upstream `v1.6.2`，§2.14 的變更尚未發行。Windows statusline 命令、verbatim 路徑、Windows workspace URI、PowerShell 測試及 workflow 均未移植；未新增直接 `base64` 相依。
 - 發行資產：macOS `aarch64-apple-darwin` 與 `x86_64-apple-darwin` 的 `.tar.gz`、`.dmg`，以及 `SHA256SUMS`。Linux 只有在 release 列出對應 tarball 時才宣稱可用。
 - 發行包內容：執行檔、`static/`、`shell/`、`scripts/`、`pricing.csv`、`README.md`、`LICENSE`、`VERSION`。
 - `scripts/get.sh` 與 npm 安裝器從 `fun-ed/TokenUsageInsights` 下載。
