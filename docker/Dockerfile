@@ -8,10 +8,7 @@ RUN apk add --no-cache musl-dev
 
 WORKDIR /src
 
-ARG APP_BUILD_DATE=""
-ENV APP_BUILD_DATE=${APP_BUILD_DATE}
-
-COPY Cargo.toml Cargo.lock build.rs ./
+COPY Cargo.toml Cargo.lock ./
 COPY src ./src
 
 RUN --mount=type=cache,target=/usr/local/cargo/registry \

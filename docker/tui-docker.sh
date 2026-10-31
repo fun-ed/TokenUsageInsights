@@ -139,8 +139,6 @@ dashboard_url() {
 }
 
 build_image() {
-    local build_date
-    build_date="$(git -C "$PROJECT_DIR" log -1 --format=%cs 2>/dev/null || true)"
     local build_args=()
     while (($# > 0)); do
         case "$1" in
@@ -151,7 +149,6 @@ build_image() {
     info "建置映像檔 ${IMAGE}。首次建置需要在容器建置階段編譯 Rust。"
     docker build \
         -f "$SCRIPT_DIR/Dockerfile" \
-        --build-arg "APP_BUILD_DATE=${build_date}" \
         "${build_args[@]+"${build_args[@]}"}" \
         -t "$IMAGE" \
         "$PROJECT_DIR"

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { chmodSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmdirSync, unlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -184,4 +184,15 @@ test('Docker image disables updates and uses a non-root user', () => {
   assert.match(dockerfile, /ENTRYPOINT .*--no-auto-update/);
   assert.match(dockerfile, /^USER app$/m);
   assert.doesNotMatch(dockerfile, /^COPY.*VERSION/m);
+});
+
+test('Docker build context contains every local COPY source', () => {
+  const dockerfile = readFileSync(dockerfilePath, 'utf8');
+  for (const [, sources] of dockerfile.matchAll(/^COPY (?!--from=)(.+) \S+$/gm)) {
+    for (const source of sources.split(/\s+/)) {
+      assert.ok(existsSync(new URL(`../${source}`, import.meta.url)), `missing COPY source: ${source}`);
+    }
+  }
+  assert.doesNotMatch(dockerfile, /APP_BUILD_DATE|build\.rs/);
+  assert.doesNotMatch(readFileSync(scriptPath, 'utf8'), /APP_BUILD_DATE/);
 });
