@@ -54,6 +54,59 @@ fn help_and_invalid_commands_exit_without_initializing_the_server() {
 }
 
 #[test]
+fn remote_cli_urls_require_safe_https_before_network_or_database_access() {
+    let missing_dir = std::env::temp_dir().join(format!(
+        "insights-import-url-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    for url in [
+        "http://example.invalid/usage.json?sig=private-token",
+        "https://user:private-token@example.invalid/usage.json?sig=private-token",
+        "https://example.invalid/usage.json?sig=private-token#fragment",
+    ] {
+        let result = Command::new(env!("CARGO_BIN_EXE_token-usage-insights"))
+            .env("INSIGHTS_DIR", &missing_dir)
+            .args(["import", "--url", url])
+            .output()
+            .unwrap();
+        assert_eq!(result.status.code(), Some(2));
+        let stderr = String::from_utf8_lossy(&result.stderr);
+        assert!(!stderr.contains("private-token"));
+        assert!(!missing_dir.exists());
+    }
+    let result = Command::new(env!("CARGO_BIN_EXE_token-usage-insights"))
+        .env("INSIGHTS_DIR", &missing_dir)
+        .args([
+            "export-all",
+            "--out",
+            "http://example.invalid/container?sig=private-token",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(result.status.code(), Some(2));
+    assert!(!String::from_utf8_lossy(&result.stderr).contains("private-token"));
+    assert!(!missing_dir.exists());
+    let result = Command::new(env!("CARGO_BIN_EXE_token-usage-insights"))
+        .env("INSIGHTS_DIR", &missing_dir)
+        .args([
+            "import",
+            "--file",
+            "usage.json",
+            "--url",
+            "https://example.invalid/usage.json?sig=private-token",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(result.status.code(), Some(2));
+    assert!(!String::from_utf8_lossy(&result.stderr).contains("private-token"));
+    assert!(!missing_dir.exists());
+}
+
+#[test]
 fn update_safety_rejection_in_source_checkout_creates_isolated_log() {
     let missing_dir = std::env::temp_dir().join(format!(
         "insights-update-safety-{}-{}",
