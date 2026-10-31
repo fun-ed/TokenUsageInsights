@@ -440,7 +440,7 @@ impl InitialUserPromptSelector {
         };
     }
 
-    fn is_complete(&self) -> bool {
+    pub(crate) fn is_complete(&self) -> bool {
         matches!(self.state, InitialUserPromptState::Complete)
     }
 
@@ -1646,46 +1646,70 @@ fn get_antigravity_session_name(base_dir: &Path, session_id: &str) -> Option<Str
         .join("brain")
         .join(session_id)
         .join(".system_generated/logs/transcript_full.jsonl");
-    if !path.exists() {
-        return None;
-    }
-    let file = File::open(path).ok()?;
-    let reader = BufReader::new(file);
-    let mut selector = InitialUserPromptSelector::default();
-    for line_res in reader.lines() {
-        let Ok(line) = line_res else {
-            continue;
-        };
-        let Ok(event) = serde_json::from_str::<serde_json::Value>(&line) else {
-            continue;
-        };
-        match event.get("type").and_then(|event_type| event_type.as_str()) {
-            Some("USER_INPUT") => {
-                if let Some(content) = event.get("content").and_then(|content| content.as_str()) {
-                    let request_text = if let Some(start_idx) = content.find("<USER_REQUEST>") {
-                        let actual_start = start_idx + "<USER_REQUEST>".len();
-                        if let Some(end_idx) = content[actual_start..].find("</USER_REQUEST>") {
-                            &content[actual_start..(actual_start + end_idx)]
-                        } else {
-                            content
+    if path.exists() {
+        if let Ok(file) = File::open(path) {
+            let reader = BufReader::new(file);
+            let mut selector = InitialUserPromptSelector::default();
+            for line_res in reader.lines() {
+                let Ok(line) = line_res else {
+                    continue;
+                };
+                let Ok(event) = serde_json::from_str::<serde_json::Value>(&line) else {
+                    continue;
+                };
+                match event.get("type").and_then(|event_type| event_type.as_str()) {
+                    Some("USER_INPUT") => {
+                        if let Some(content) =
+                            event.get("content").and_then(|content| content.as_str())
+                        {
+                            selector.observe_user_prompt(
+                                crate::antigravity::extract_user_request_text(content),
+                            );
                         }
-                    } else {
-                        content
-                    };
-                    selector.observe_user_prompt(request_text);
+                    }
+                    Some("SYSTEM_MESSAGE") => {
+                        if let Some(content) =
+                            event.get("content").and_then(|content| content.as_str())
+                        {
+                            if let Some(
+                                crate::antigravity::AntigravitySystemMessage::AgentMessage {
+                                    content: body,
+                                    ..
+                                },
+                            ) = crate::antigravity::parse_system_message(content)
+                            {
+                                selector.observe_user_prompt(
+                                    crate::antigravity::extract_user_request_text(&body),
+                                );
+                            }
+                        }
+                    }
+                    Some("PLANNER_RESPONSE" | "RUN_COMMAND" | "GREP_SEARCH" | "LIST_DIRECTORY")
+                    | Some(
+                        "VIEW_FILE" | "CODE_ACTION" | "GENERIC" | "ERROR_MESSAGE" | "TOOL_CALL",
+                    ) => {
+                        selector.observe_non_user_message();
+                    }
+                    _ => {}
+                }
+                if selector.is_complete() {
+                    break;
                 }
             }
-            Some("PLANNER_RESPONSE" | "RUN_COMMAND" | "GREP_SEARCH" | "LIST_DIRECTORY")
-            | Some("VIEW_FILE" | "CODE_ACTION" | "GENERIC" | "ERROR_MESSAGE" | "TOOL_CALL") => {
-                selector.observe_non_user_message();
+            if let Some(name) = selector.into_name() {
+                return Some(name);
             }
-            _ => {}
-        }
-        if selector.is_complete() {
-            break;
         }
     }
-    selector.into_name()
+    let metadata = crate::antigravity_metadata::read_session_metadata(base_dir, session_id).ok()?;
+    if let Some(prompt) = metadata.initial_prompt.as_deref() {
+        let mut selector = InitialUserPromptSelector::default();
+        selector.observe_user_prompt(crate::antigravity::extract_user_request_text(prompt));
+        if let Some(name) = selector.into_name() {
+            return Some(name);
+        }
+    }
+    metadata.agent_role.or(metadata.agent_type)
 }
 
 /// Native records supersede hook snapshots only for the same source/session.
@@ -1699,6 +1723,7 @@ fn sync_antigravity_usage_logs_with_cancel(
     let source_key = encode_hex(root.as_os_str().as_encoded_bytes());
     let source_kind = crate::antigravity::SOURCE_KIND;
     let sync_states = load_sync_state_for_prefix(conn, "antigravity");
+    let subagent_descriptors = crate::antigravity_metadata::index_subagent_descriptor_paths(&root);
     for path in crate::antigravity::find_session_files(&root)? {
         if should_cancel() {
             return Ok(());
@@ -1707,18 +1732,24 @@ fn sync_antigravity_usage_logs_with_cancel(
             crate::antigravity::session_id(&path).ok_or("無效的 Antigravity session 路徑")?;
         let transcript = path.to_string_lossy().into_owned();
         let metadata = fs::metadata(&path).map_err(|e| e.to_string())?;
-        // Metadata may arrive after the transcript (including in SQLite WAL).
-        // Include all source revisions so a later model resolution is imported.
+        // Metadata may arrive after the transcript (including in SQLite WAL or
+        // a parent subagents/<session_id>.json descriptor).
         let modified = {
             use std::hash::{Hash, Hasher};
             let mut fingerprint = std::collections::hash_map::DefaultHasher::new();
             crate::antigravity::PARSER_VERSION.hash(&mut fingerprint);
             for file in [
-                path.clone(),
-                root.join("conversations").join(format!("{session_id}.db")),
-                root.join("conversations")
-                    .join(format!("{session_id}.db-wal")),
-            ] {
+                Some(path.clone()),
+                Some(root.join("conversations").join(format!("{session_id}.db"))),
+                Some(
+                    root.join("conversations")
+                        .join(format!("{session_id}.db-wal")),
+                ),
+                subagent_descriptors.get(session_id).cloned(),
+            ]
+            .into_iter()
+            .flatten()
+            {
                 if let Ok(meta) = fs::metadata(file) {
                     meta.len().hash(&mut fingerprint);
                     meta.modified().ok().hash(&mut fingerprint);
@@ -1763,7 +1794,9 @@ fn sync_antigravity_usage_logs_with_cancel(
         let name = get_antigravity_session_name(&root, session_id);
         for entry in &mut entries {
             entry.source_dir_key = Some(source_key.clone());
-            entry.session_name = name.clone();
+            if entry.session_name.is_none() {
+                entry.session_name = name.clone();
+            }
             if entry.model.is_none() {
                 entry.model = Some("Unknown Model".to_owned());
             }
@@ -7186,6 +7219,7 @@ pub struct SessionLookup {
     pub source_dir_key: Option<String>,
     pub parent_session_id: Option<String>,
     pub agent_nickname: Option<String>,
+    pub agent_role: Option<String>,
 }
 
 /// Database-backed details scoped to the same concrete session source as a
@@ -7378,7 +7412,7 @@ pub fn get_session_assistant_and_transcript(
 
     let mut sql = String::from(
         "SELECT assistant_type, transcript_path, source_kind, source_dir_key,
-                parent_session_id, agent_nickname
+                parent_session_id, agent_nickname, agent_role
          FROM usage_entries
          WHERE session_id = ? AND assistant_type = ? AND source_kind = ?",
     );
@@ -7428,6 +7462,11 @@ pub fn get_session_assistant_and_transcript(
             .ok()
             .flatten()
             .filter(|s| !s.is_empty());
+        let agent_role = row
+            .get::<_, Option<String>>(6)
+            .ok()
+            .flatten()
+            .filter(|value| !value.is_empty());
         Ok(SessionLookup {
             assistant_type: ast,
             transcript_path: path,
@@ -7435,6 +7474,7 @@ pub fn get_session_assistant_and_transcript(
             source_dir_key,
             parent_session_id,
             agent_nickname,
+            agent_role,
         })
     } else {
         Err("Session not found".to_string())
@@ -8469,6 +8509,188 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM usage_entries", [], |r| r.get(0))
             .unwrap();
         assert_eq!(count, 2);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn antigravity_native_syncs_nested_subagent_labels_and_late_descriptors() {
+        fn field(number: u32, value: &[u8]) -> Vec<u8> {
+            assert!(value.len() < 128);
+            let mut bytes = vec![((number << 3) | 2) as u8, value.len() as u8];
+            bytes.extend_from_slice(value);
+            bytes
+        }
+
+        let mut conn = Connection::open_in_memory().unwrap();
+        init_db(&conn).unwrap();
+        let root = temp_jsonl_path("antigravity-subagent-hierarchy").with_extension("");
+        let parent_id = "11111111-1111-4111-8111-111111111111";
+        let child_id = "22222222-2222-4222-8222-222222222222";
+        let grandchild_id = "33333333-3333-4333-8333-333333333333";
+        let transcript_path = |id: &str| {
+            root.join("brain")
+                .join(id)
+                .join(".system_generated/logs/transcript_full.jsonl")
+        };
+
+        let parent_transcript = transcript_path(parent_id);
+        fs::create_dir_all(parent_transcript.parent().unwrap()).unwrap();
+        fs::write(
+            &parent_transcript,
+            concat!(
+                "{\"type\":\"USER_INPUT\",\"content\":\"<USER_REQUEST>\\nImplement subagent support\\n</USER_REQUEST>\"}\n",
+                "{\"type\":\"PLANNER_RESPONSE\",\"step_index\":1,\"created_at\":\"2026-10-10T01:00:05Z\",\"input_tokens\":100,\"output_tokens\":20}\n"
+            ),
+        )
+        .unwrap();
+
+        let child_transcript = transcript_path(child_id);
+        fs::create_dir_all(child_transcript.parent().unwrap()).unwrap();
+        let child_message = serde_json::json!({
+            "type": "SYSTEM_MESSAGE",
+            "content": format!(
+                "<SYSTEM_MESSAGE>\n[Message] timestamp=2026-10-10T01:00:10Z sender={parent_id} priority=IMMEDIATE content=Investigate nested subagent metadata.\n</SYSTEM_MESSAGE>"
+            )
+        });
+        fs::write(
+            &child_transcript,
+            format!(
+                "{child_message}\n{{\"type\":\"PLANNER_RESPONSE\",\"step_index\":1,\"created_at\":\"2026-10-10T01:00:15Z\",\"input_tokens\":50,\"output_tokens\":10}}\n"
+            ),
+        )
+        .unwrap();
+        fs::create_dir_all(root.join("conversations")).unwrap();
+        let child_db = root.join("conversations").join(format!("{child_id}.db"));
+        {
+            let metadata = Connection::open(&child_db).unwrap();
+            metadata
+                .execute_batch(
+                    "CREATE TABLE trajectory_metadata_blob (id TEXT PRIMARY KEY, data BLOB);",
+                )
+                .unwrap();
+            let mut spec = field(1, b"self");
+            spec.extend(field(2, b"Subagent Researcher"));
+            spec.extend(field(3, b"Investigate nested subagent metadata."));
+            let mut blob = field(5, parent_id.as_bytes());
+            blob.extend(field(7, b"file:///example/project"));
+            blob.extend(field(8, &spec));
+            metadata
+                .execute(
+                    "INSERT INTO trajectory_metadata_blob VALUES ('main', ?)",
+                    params![blob],
+                )
+                .unwrap();
+        }
+
+        let grandchild_transcript = transcript_path(grandchild_id);
+        fs::create_dir_all(grandchild_transcript.parent().unwrap()).unwrap();
+        let grandchild_message = serde_json::json!({
+            "type": "SYSTEM_MESSAGE",
+            "content": format!(
+                "<SYSTEM_MESSAGE>\n[Message] timestamp=2026-10-10T01:00:20Z sender={child_id} priority=IMMEDIATE content=Verify nested subagent lineage.\n</SYSTEM_MESSAGE>"
+            )
+        });
+        fs::write(
+            &grandchild_transcript,
+            format!(
+                "{grandchild_message}\n{{\"type\":\"PLANNER_RESPONSE\",\"step_index\":1,\"created_at\":\"2026-10-10T01:00:25Z\",\"input_tokens\":30,\"output_tokens\":5}}\n"
+            ),
+        )
+        .unwrap();
+
+        sync_antigravity_usage_logs_with_cancel(&mut conn, &root, &|| false).unwrap();
+
+        type SessionRow = (
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            String,
+            Option<String>,
+        );
+        let query_session = |conn: &Connection, session_id: &str| -> SessionRow {
+            conn.query_row(
+                "SELECT session_name, parent_session_id, agent_nickname, agent_role, cwd,
+                        source_kind, source_dir_key
+                 FROM usage_entries WHERE session_id = ?",
+                params![session_id],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                        row.get(6)?,
+                    ))
+                },
+            )
+            .unwrap()
+        };
+
+        let parent = query_session(&conn, parent_id);
+        let child = query_session(&conn, child_id);
+        let grandchild = query_session(&conn, grandchild_id);
+        assert_eq!(parent.0.as_deref(), Some("Implement subagent support"));
+        assert!(parent.1.is_none() && parent.2.is_none() && parent.3.is_none());
+        for row in [&parent, &child, &grandchild] {
+            assert_eq!(row.5, crate::antigravity::SOURCE_KIND);
+            assert!(row.6.as_deref().is_some_and(|key| !key.is_empty()));
+        }
+        assert_eq!(
+            child.0.as_deref(),
+            Some("Investigate nested subagent metadata.")
+        );
+        assert_eq!(child.1.as_deref(), Some(parent_id));
+        assert_eq!(child.2.as_deref(), Some("self"));
+        assert_eq!(child.3.as_deref(), Some("Subagent Researcher"));
+        assert_eq!(child.4.as_deref(), Some("/example/project"));
+
+        assert_eq!(
+            grandchild.0.as_deref(),
+            Some("Verify nested subagent lineage.")
+        );
+        assert_eq!(grandchild.1.as_deref(), Some(child_id));
+        assert_eq!(grandchild.2, None);
+        assert_eq!(grandchild.3, None);
+        assert_eq!(grandchild.4, None);
+
+        let subagents_dir = root
+            .join("brain")
+            .join(child_id)
+            .join(".system_generated/subagents");
+        fs::create_dir_all(&subagents_dir).unwrap();
+        fs::write(
+            subagents_dir.join(format!("{grandchild_id}.json")),
+            serde_json::json!({
+                "conversationId": grandchild_id,
+                "subagentDescriptor": {
+                    "typeName": "research",
+                    "role": "Lineage Reviewer"
+                },
+                "workspaceUris": ["file:///example/project"]
+            })
+            .to_string(),
+        )
+        .unwrap();
+        sync_antigravity_usage_logs_with_cancel(&mut conn, &root, &|| false).unwrap();
+
+        let grandchild = query_session(&conn, grandchild_id);
+        assert_eq!(grandchild.1.as_deref(), Some(child_id));
+        assert_eq!(grandchild.2.as_deref(), Some("research"));
+        assert_eq!(grandchild.3.as_deref(), Some("Lineage Reviewer"));
+        assert_eq!(grandchild.4.as_deref(), Some("/example/project"));
+        let lookup = get_session_assistant_and_transcript(
+            &conn,
+            "antigravity",
+            grandchild_id,
+            Some(crate::antigravity::SOURCE_KIND),
+            grandchild.6.as_deref(),
+        )
+        .unwrap();
+        assert_eq!(lookup.agent_role.as_deref(), Some("Lineage Reviewer"));
         fs::remove_dir_all(root).unwrap();
     }
 

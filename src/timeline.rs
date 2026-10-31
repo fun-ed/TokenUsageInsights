@@ -94,6 +94,34 @@ pub fn parse_antigravity_timeline(
                     turn_no,
                 });
             }
+            "SYSTEM_MESSAGE" => {
+                if let Some(content) = step.get("content").and_then(|content| content.as_str()) {
+                    match crate::antigravity::parse_system_message(content) {
+                        Some(crate::antigravity::AntigravitySystemMessage::AgentMessage {
+                            content: prompt,
+                            ..
+                        }) => {
+                            timeline.push(TimelineItem::UserPrompt {
+                                timestamp,
+                                prompt,
+                                context: None,
+                                turn_no,
+                            });
+                        }
+                        Some(crate::antigravity::AntigravitySystemMessage::SystemLifecycle {
+                            status_type,
+                            message,
+                        }) => {
+                            timeline.push(TimelineItem::SystemStatus {
+                                timestamp,
+                                status_type: status_type.to_string(),
+                                message,
+                            });
+                        }
+                        None => {}
+                    }
+                }
+            }
             "PLANNER_RESPONSE" => {
                 let content = step
                     .get("content")
@@ -141,10 +169,12 @@ pub fn parse_antigravity_timeline(
                             .and_then(|n| n.as_str())
                             .unwrap_or("")
                             .to_string();
-                        let args = tool_call
-                            .get("args")
-                            .cloned()
-                            .unwrap_or(serde_json::Value::Null);
+                        let args = match tool_call.get("args") {
+                            Some(Value::String(raw)) => serde_json::from_str(raw)
+                                .unwrap_or_else(|_| Value::String(raw.clone())),
+                            Some(value) => value.clone(),
+                            None => Value::Null,
+                        };
 
                         let idx = timeline.len();
                         pending_tool_indices.push(idx);
@@ -3650,6 +3680,81 @@ mod antigravity_tests {
             matches!(replies[0], TimelineItem::AgentReply { turn_no: 1, model, tokens: Some(tokens), .. }
             if model == "legacy-model" && tokens.input == 10)
         );
+    }
+
+    #[test]
+    fn antigravity_system_messages_reconstruct_agent_prompts_and_lifecycle() {
+        let parent_id = "11111111-1111-4111-8111-111111111111";
+        let child_id = "22222222-2222-4222-8222-222222222222";
+        let steps = [
+            serde_json::json!({
+                "type": "SYSTEM_MESSAGE",
+                "created_at": "2026-04-20T09:00:00Z",
+                "content": format!(
+                    "The following is a <SYSTEM_MESSAGE> not actually sent by the USER.\n\n<SYSTEM_MESSAGE>\n[Message] timestamp=2026-04-20T09:00:00Z sender={parent_id} priority=IMMEDIATE content=Audit the Antigravity hierarchy.\n</SYSTEM_MESSAGE>"
+                )
+            }),
+            serde_json::json!({
+                "type": "PLANNER_RESPONSE",
+                "created_at": "2026-04-20T09:00:02Z",
+                "thinking": "Running command",
+                "tool_calls": [{
+                    "name": "run_command",
+                    "args": "{\"CommandLine\":\"cargo test\"}"
+                }]
+            }),
+            serde_json::json!({
+                "type": "SYSTEM_MESSAGE",
+                "created_at": "2026-04-20T09:00:05Z",
+                "content": format!(
+                    "<SYSTEM_MESSAGE>\n[Message] timestamp=2026-04-20T09:00:05Z sender={child_id}/task-1 priority=DEFERRED content=Background task finished\n</SYSTEM_MESSAGE>"
+                )
+            }),
+            serde_json::json!({
+                "type": "SYSTEM_MESSAGE",
+                "created_at": "2026-04-20T09:00:08Z",
+                "content": format!(
+                    "<SYSTEM_MESSAGE>\n[Message] timestamp=2026-04-20T09:00:08Z sender=system priority=NORMAL content=Subagent \"Research Agent\" ({child_id}) terminated without sending a message.\n</SYSTEM_MESSAGE>"
+                )
+            }),
+        ];
+        let transcript = steps
+            .iter()
+            .map(|step| step.to_string())
+            .collect::<Vec<_>>()
+            .join("\n");
+        let entries = HashMap::from([(1, (stats(42), "gemini-3.1-pro-high".to_owned()))]);
+        let mut timeline = Vec::new();
+        parse_antigravity_timeline(
+            transcript.as_bytes(),
+            &entries,
+            &mut timeline,
+            &mut HashMap::new(),
+            true,
+        );
+
+        assert!(matches!(
+            &timeline[0],
+            TimelineItem::UserPrompt { prompt, turn_no: 1, .. }
+                if prompt == "Audit the Antigravity hierarchy."
+        ));
+        assert!(matches!(
+            &timeline[1],
+            TimelineItem::AgentReply { turn_no: 1, model, .. }
+                if model == "gemini-3.1-pro-high"
+        ));
+        assert!(matches!(
+            &timeline[2],
+            TimelineItem::ToolStep { tool_name, arguments, .. }
+                if tool_name == "run_command"
+                    && arguments.get("CommandLine").and_then(Value::as_str) == Some("cargo test")
+        ));
+        assert!(matches!(
+            &timeline[3],
+            TimelineItem::SystemStatus { status_type, message, .. }
+                if status_type == "subagent_completed" && message.contains("Research Agent")
+        ));
+        assert_eq!(timeline.len(), 4);
     }
 }
 
