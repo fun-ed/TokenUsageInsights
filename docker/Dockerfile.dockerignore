@@ -1,0 +1,8 @@
+# This allowlist excludes local databases, exports, build output, and unrelated source.
+*
+!Cargo.toml
+!Cargo.lock
+!build.rs
+!src/
+!static/
+!pricing.csv
