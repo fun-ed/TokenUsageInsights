@@ -312,6 +312,8 @@ function updateUrlParams() {
   url.searchParams.set('agent', currentAssistant);
   url.searchParams.set('tab', activeTab);
   url.searchParams.delete('date');
+  url.searchParams.delete('start');
+  url.searchParams.delete('end');
   url.searchParams.delete('dir');
   url.searchParams.delete('chart');
 
@@ -338,6 +340,10 @@ function updateUrlParams() {
     if (yearSelect && yearSelect.value) {
       url.searchParams.set('date', yearSelect.value);
     }
+  } else if (activeTab === 'range') {
+    const { start, end } = getRangeInputs();
+    if (start) url.searchParams.set('start', start);
+    if (end) url.searchParams.set('end', end);
   }
 
   window.history.replaceState(null, '', url.toString());
@@ -808,8 +814,8 @@ const savedAgent = isSelectableAssistant(urlAgent) ? urlAgent : getCookie('selec
 let currentAssistant = isSelectableAssistant(savedAgent) ? normalizeAssistant(savedAgent) : 'antigravity';
 
 const urlTab = urlParams.get('tab');
-const savedTab = ['daily', 'monthly', 'yearly', 'integrations'].includes(urlTab) ? urlTab : getCookie('active_tab');
-let activeTab = ['daily', 'monthly', 'yearly', 'integrations'].includes(savedTab) ? savedTab : 'daily';
+const savedTab = ['daily', 'monthly', 'yearly', 'range', 'integrations'].includes(urlTab) ? urlTab : getCookie('active_tab');
+let activeTab = ['daily', 'monthly', 'yearly', 'range', 'integrations'].includes(savedTab) ? savedTab : 'daily';
 let isEmptyState = false;
 let currentChartSessions = [];
 let currentMonthlyBreakdown = [];
@@ -1001,7 +1007,7 @@ function clearTitleSpinner() {
 // =========================================================================
 function getActiveViewContainer() {
   if (activeTab === 'integrations') return document.getElementById('optional-integrations-view-container');
-  if (activeTab === 'monthly') return document.getElementById('monthly-view-container');
+  if (activeTab === 'monthly' || activeTab === 'range') return document.getElementById('monthly-view-container');
   if (activeTab === 'yearly') return document.getElementById('yearly-view-container');
   return document.getElementById('daily-view-container');
 }
@@ -1239,6 +1245,9 @@ function updateLanguageUI() {
     } else if (activeTab === 'yearly') {
       const yearSelect = document.getElementById('year-select');
       if (yearSelect && yearSelect.value) showNoDataForYear(yearSelect.value);
+    } else if (activeTab === 'range') {
+      const { start, end } = getRangeInputs();
+      if (isValidRange(start, end)) showNoDataForMonth(`${start}~${end}`);
     }
   }
 
@@ -1357,6 +1366,7 @@ function initApp() {
   const tabBtnDaily = document.getElementById('tab-btn-daily');
   const tabBtnMonthly = document.getElementById('tab-btn-monthly');
   const tabBtnYearly = document.getElementById('tab-btn-yearly');
+  const tabBtnRange = document.getElementById('tab-btn-range');
 
   // Live Controls
   const liveToggle = document.getElementById('live-toggle');
@@ -1388,6 +1398,7 @@ function initApp() {
   const dailySelector = document.getElementById('daily-selector-section');
   const monthlySelector = document.getElementById('monthly-selector-section');
   const yearlySelector = document.getElementById('yearly-selector-section');
+  const rangeSelector = document.getElementById('range-selector-section');
   const quickStats = document.getElementById('quick-stats-section');
   const dailyView = document.getElementById('daily-view-container');
   const monthlyView = document.getElementById('monthly-view-container');
@@ -1437,6 +1448,7 @@ function initApp() {
     tabBtnDaily.classList.add('active');
     tabBtnMonthly.classList.remove('active');
     if (tabBtnYearly) tabBtnYearly.classList.remove('active');
+    if (tabBtnRange) tabBtnRange.classList.remove('active');
     dailySelector.classList.remove('hidden');
     monthlySelector.classList.add('hidden');
     if (yearlySelector) yearlySelector.classList.add('hidden');
@@ -1449,6 +1461,7 @@ function initApp() {
     tabBtnDaily.classList.remove('active');
     tabBtnMonthly.classList.add('active');
     if (tabBtnYearly) tabBtnYearly.classList.remove('active');
+    if (tabBtnRange) tabBtnRange.classList.remove('active');
     dailySelector.classList.add('hidden');
     monthlySelector.classList.remove('hidden');
     if (yearlySelector) yearlySelector.classList.add('hidden');
@@ -1461,6 +1474,7 @@ function initApp() {
     tabBtnDaily.classList.remove('active');
     tabBtnMonthly.classList.remove('active');
     if (tabBtnYearly) tabBtnYearly.classList.add('active');
+    if (tabBtnRange) tabBtnRange.classList.remove('active');
     dailySelector.classList.add('hidden');
     monthlySelector.classList.add('hidden');
     if (yearlySelector) yearlySelector.classList.remove('hidden');
@@ -1469,6 +1483,20 @@ function initApp() {
     if (dailyView) dailyView.classList.add('hidden');
     if (monthlyView) monthlyView.classList.add('hidden');
     if (yearlyView) yearlyView.classList.remove('hidden');
+  } else if (activeTab === 'range') {
+    tabBtnDaily.classList.remove('active');
+    tabBtnMonthly.classList.remove('active');
+    if (tabBtnYearly) tabBtnYearly.classList.remove('active');
+    if (tabBtnRange) tabBtnRange.classList.add('active');
+    dailySelector.classList.add('hidden');
+    monthlySelector.classList.add('hidden');
+    if (yearlySelector) yearlySelector.classList.add('hidden');
+    if (rangeSelector) rangeSelector.classList.remove('hidden');
+    if (quickStats) quickStats.classList.add('hidden');
+    if (dailyView) dailyView.classList.add('hidden');
+    if (monthlyView) monthlyView.classList.remove('hidden');
+    if (yearlyView) yearlyView.classList.add('hidden');
+    applyMonthlyViewMode('range');
   } else if (activeTab === 'integrations') {
     tabBtnDaily.classList.remove('active');
     tabBtnMonthly.classList.remove('active');
@@ -1484,6 +1512,7 @@ function initApp() {
     document.getElementById('empty-state-container')?.classList.add('hidden');
     loadOptionalIntegrations();
   }
+  updateExportButtonForTab();
 
   // Set initial live refresh toggle checkbox state based on cookie
   const savedLiveRefresh = getCookie('live_refresh') === 'true';
@@ -1551,6 +1580,7 @@ function initApp() {
         await fetchDates(null, true, currentAssistant);
         await fetchMonths(null, currentAssistant, true);
         await fetchYears(null, currentAssistant, true);
+        if (activeTab === 'range') await loadRangeData(currentAssistant);
       });
     });
   }
@@ -1572,7 +1602,8 @@ function initApp() {
       // Re-render currently active view
       if (activeTab === 'daily' && currentUsageData) {
         renderDashboard(currentUsageData);
-      } else if (activeTab === 'monthly' && currentMonthlyData) {
+      } else if ((activeTab === 'monthly' || activeTab === 'range') && currentMonthlyData) {
+        applyMonthlyViewMode(activeTab);
         renderMonthlyDashboard(currentMonthlyData);
       } else if (activeTab === 'yearly' && currentYearlyData) {
         renderYearlyDashboard(currentYearlyData);
@@ -1623,6 +1654,8 @@ function initApp() {
   tabBtnDaily.addEventListener('click', () => switchTab('daily'));
   tabBtnMonthly.addEventListener('click', () => switchTab('monthly'));
   tabBtnYearly.addEventListener('click', () => switchTab('yearly'));
+  if (tabBtnRange) tabBtnRange.addEventListener('click', () => switchTab('range'));
+  initRangeControls();
 
   // 監聽日期切換
   dateSelect.addEventListener('change', (e) => {
@@ -2133,6 +2166,8 @@ function switchTab(tab, options = {}) {
   }
   activeTab = tab;
   setCookie('active_tab', tab);
+  hideViewLoading();
+  clearTitleSpinner();
 
   if (tab === 'daily') {
     const dateSelect = document.getElementById('date-select');
@@ -2162,13 +2197,17 @@ function switchTab(tab, options = {}) {
       updateLanguageUI();
     }
   }
+  applyMonthlyViewMode(tab);
+  updateExportButtonForTab();
 
   const tabBtnDaily = document.getElementById('tab-btn-daily');
   const tabBtnMonthly = document.getElementById('tab-btn-monthly');
   const tabBtnYearly = document.getElementById('tab-btn-yearly');
+  const tabBtnRange = document.getElementById('tab-btn-range');
   const dailySelector = document.getElementById('daily-selector-section');
   const monthlySelector = document.getElementById('monthly-selector-section');
   const yearlySelector = document.getElementById('yearly-selector-section');
+  const rangeSelector = document.getElementById('range-selector-section');
   const quickStats = document.getElementById('quick-stats-section');
   const dailyView = document.getElementById('daily-view-container');
   const monthlyView = document.getElementById('monthly-view-container');
@@ -2200,9 +2239,11 @@ function switchTab(tab, options = {}) {
     tabBtnDaily.classList.add('active');
     tabBtnMonthly.classList.remove('active');
     if (tabBtnYearly) tabBtnYearly.classList.remove('active');
+    if (tabBtnRange) tabBtnRange.classList.remove('active');
     dailySelector.classList.remove('hidden');
     monthlySelector.classList.add('hidden');
     if (yearlySelector) yearlySelector.classList.add('hidden');
+    if (rangeSelector) rangeSelector.classList.add('hidden');
     quickStats.classList.remove('hidden');
     
     updateVisibility(dailyView);
@@ -2229,9 +2270,11 @@ function switchTab(tab, options = {}) {
     tabBtnDaily.classList.remove('active');
     tabBtnMonthly.classList.add('active');
     if (tabBtnYearly) tabBtnYearly.classList.remove('active');
+    if (tabBtnRange) tabBtnRange.classList.remove('active');
     dailySelector.classList.add('hidden');
     monthlySelector.classList.remove('hidden');
     if (yearlySelector) yearlySelector.classList.add('hidden');
+    if (rangeSelector) rangeSelector.classList.add('hidden');
     quickStats.classList.add('hidden');
     
     updateVisibility(monthlyView);
@@ -2255,9 +2298,11 @@ function switchTab(tab, options = {}) {
     tabBtnDaily.classList.remove('active');
     tabBtnMonthly.classList.remove('active');
     if (tabBtnYearly) tabBtnYearly.classList.add('active');
+    if (tabBtnRange) tabBtnRange.classList.remove('active');
     dailySelector.classList.add('hidden');
     monthlySelector.classList.add('hidden');
     if (yearlySelector) yearlySelector.classList.remove('hidden');
+    if (rangeSelector) rangeSelector.classList.add('hidden');
     quickStats.classList.add('hidden');
     
     updateVisibility(yearlyView);
@@ -2269,6 +2314,24 @@ function switchTab(tab, options = {}) {
     } else {
       fetchYears();
     }
+  } else if (tab === 'range') {
+    const liveToggle = document.getElementById('live-toggle');
+    if (liveToggle && liveToggle.checked) {
+      liveToggle.checked = false;
+      toggleLiveRefresh(false);
+      setCookie('live_refresh', 'false');
+    }
+    tabBtnDaily.classList.remove('active');
+    tabBtnMonthly.classList.remove('active');
+    if (tabBtnYearly) tabBtnYearly.classList.remove('active');
+    if (tabBtnRange) tabBtnRange.classList.add('active');
+    dailySelector.classList.add('hidden');
+    monthlySelector.classList.add('hidden');
+    if (yearlySelector) yearlySelector.classList.add('hidden');
+    if (rangeSelector) rangeSelector.classList.remove('hidden');
+    quickStats.classList.add('hidden');
+    updateVisibility(monthlyView);
+    loadRangeData();
   } else if (tab === 'integrations') {
     const liveToggle = document.getElementById('live-toggle');
     if (liveToggle && liveToggle.checked) {
@@ -2282,6 +2345,8 @@ function switchTab(tab, options = {}) {
     dailySelector.classList.add('hidden');
     monthlySelector.classList.add('hidden');
     if (yearlySelector) yearlySelector.classList.add('hidden');
+    if (tabBtnRange) tabBtnRange.classList.remove('active');
+    if (rangeSelector) rangeSelector.classList.add('hidden');
     quickStats.classList.add('hidden');
     updateVisibility(integrationsView);
     loadOptionalIntegrations();
@@ -2501,6 +2566,8 @@ async function fetchDates(selectedDate = null, keepDate = false, assistant = cur
             await fetchYears();
           }
         }
+      } else if (activeTab === 'range') {
+        await loadRangeData(resolvedAssistant);
       }
     }
 
@@ -2538,6 +2605,7 @@ async function loadUsageData(date, assistant = currentAssistant) {
     const res = await fetch(`/api/${resolvedAssistant}/usage/${date}`);
     if (mySeq !== dailyRequestSeq) return;
     if (currentAssistant !== resolvedAssistant) return;
+    if (activeTab !== 'daily') return;
     if (res.status === 404) {
       // 顯示「此 Agent 當日無資料」提示畫面，不改變日期
       showNoDataForDate(date, resolvedAssistant);
@@ -2548,17 +2616,24 @@ async function loadUsageData(date, assistant = currentAssistant) {
     const data = await res.json();
     if (mySeq !== dailyRequestSeq) return;
     if (currentAssistant !== resolvedAssistant) return;
+    if (activeTab !== 'daily') return;
     toggleEmptyState(false, resolvedAssistant);
     renderDashboard(data);
     await updateCodexRateLimit();
 
   } catch (err) {
     console.error('載入使用量失敗:', err);
-    if (mySeq === dailyRequestSeq) showNotification(t('load_failed'), 'error');
+    if (mySeq === dailyRequestSeq && activeTab === 'daily' && currentAssistant === resolvedAssistant) {
+      showNotification(t('load_failed'), 'error');
+    }
   } finally {
     if (mySeq === dailyRequestSeq) {
-      hideViewLoading();
-      clearTitleSpinner();
+      if (activeTab === 'daily' && currentAssistant === resolvedAssistant) {
+        hideViewLoading();
+        clearTitleSpinner();
+      } else {
+        document.getElementById('daily-view-container')?.classList.remove('is-loading');
+      }
     }
   }
 }
@@ -2586,8 +2661,13 @@ function getUsageExportFilename(payload) {
   return `token-usage-${safeAssistant}-${value}-${period.scope}-v${payload?.version || 1}.json`;
 }
 
+function updateExportButtonForTab() {
+  document.getElementById('btn-export-usage-day')
+    ?.classList.toggle('hidden', isAllAssistantsScope() || activeTab === 'range');
+}
+
 async function exportCurrentUsageDay() {
-  if (isAllAssistantsScope()) return;
+  if (isAllAssistantsScope() || activeTab === 'range') return;
   const period = getCurrentUsagePeriod();
   const btnExport = document.getElementById('btn-export-usage-day');
   if (btnExport) btnExport.classList.add('loading');
@@ -2841,6 +2921,7 @@ async function executePendingUsageImport() {
     await fetchDates(null, true);
     await fetchMonths();
     await fetchYears();
+    if (activeTab === 'range') await loadRangeData();
   } catch (err) {
     console.error('Import failed:', err);
     showNotification(t('import_failed').replace('{msg}', err.message || String(err)), 'error');
@@ -2971,6 +3052,7 @@ async function handleImportHistoryAction(event) {
       if (activeTab === 'daily') await reloadDailyData();
       if (activeTab === 'monthly') await reloadMonthlyData();
       if (activeTab === 'yearly') await reloadYearlyData();
+      if (activeTab === 'range') await loadRangeData();
     }
   } catch (error) {
     showNotification(
@@ -3066,8 +3148,8 @@ function showNoDataForMonth(month, assistant = currentAssistant) {
   const resolvedAssistant = normalizeAssistant(assistant);
   const meta = getAssistantMeta(resolvedAssistant);
   const title = t('no_data_for_month', resolvedAssistant)
-    .replace('{agent}', meta.label)
-    .replace('{month}', month);
+    .replace('{agent}', escapeHtml(meta.label))
+    .replace('{month}', escapeHtml(month));
   const desc = t('no_data_for_month_desc', resolvedAssistant);
   const logoMarkup = `<div class="card-icon"><img src="${meta.logo}" alt="${meta.alt}" style="width: 56px; height: 56px; object-fit: contain;" /></div>`;
 
@@ -3104,11 +3186,13 @@ function showNoDataForMonth(month, assistant = currentAssistant) {
       noDataRefreshBtn.addEventListener('click', async () => {
         noDataRefreshBtn.classList.add('loading');
         try {
-          const monthSelect = document.getElementById('month-select');
-          if (monthSelect) {
-            monthSelect.value = month;
+          if (activeTab === 'range') {
+            await loadRangeData(resolvedAssistant);
+          } else {
+            const monthSelect = document.getElementById('month-select');
+            if (monthSelect) monthSelect.value = month;
+            await fetchMonths(month, resolvedAssistant, true);
           }
-          await fetchMonths(month, resolvedAssistant, true);
         } finally {
           noDataRefreshBtn.classList.remove('loading');
         }
@@ -3122,7 +3206,7 @@ function showNoDataForMonth(month, assistant = currentAssistant) {
   if (yearlyView) yearlyView.classList.add('hidden');
 
   // 更新標題
-  setTitleMarkup('calendar', month);
+  setTitleMarkup('calendar', escapeHtml(month));
 }
 
 // 顯示「此 Agent 於當年無資料」的提示畫面
@@ -3281,6 +3365,7 @@ function updateAssistantScopeUI() {
   ['btn-export-usage-day', 'btn-import-usage-day', 'btn-import-history'].forEach(id => {
     document.getElementById(id)?.classList.toggle('hidden', isAll);
   });
+  updateExportButtonForTab();
   AGENT_SHARE_VIEWS.forEach(view => {
     document.getElementById(`${view}-agent-share-section`)?.classList.toggle('hidden', !isAll);
   });
@@ -6434,6 +6519,7 @@ async function loadYearlyData(year, assistant = currentAssistant) {
     const res = await fetch(`/api/${resolvedAssistant}/yearly/${year}`);
     if (mySeq !== yearlyRequestSeq) return;
     if (currentAssistant !== resolvedAssistant) return;
+    if (activeTab !== 'yearly') return;
     if (res.status === 404) {
       showNoDataForYear(year, resolvedAssistant);
       return;
@@ -6442,18 +6528,25 @@ async function loadYearlyData(year, assistant = currentAssistant) {
     const data = await res.json();
     if (mySeq !== yearlyRequestSeq) return;
     if (currentAssistant !== resolvedAssistant) return;
+    if (activeTab !== 'yearly') return;
     modelSessionDetailsCache.clear();
     toggleEmptyState(false, resolvedAssistant);
     renderYearlyDashboard(data);
 
   } catch (err) {
     console.error('載入年份彙整失敗:', err);
-    if (mySeq === yearlyRequestSeq) showNotification(t('yearly_load_failed'), 'error');
+    if (mySeq === yearlyRequestSeq && activeTab === 'yearly' && currentAssistant === resolvedAssistant) {
+      showNotification(t('yearly_load_failed'), 'error');
+    }
   } finally {
     if (mySeq === yearlyRequestSeq) {
       yearlyInFlightTarget = null;
-      hideViewLoading();
-      clearTitleSpinner();
+      if (activeTab === 'yearly' && currentAssistant === resolvedAssistant) {
+        hideViewLoading();
+        clearTitleSpinner();
+      } else {
+        document.getElementById('yearly-view-container')?.classList.remove('is-loading');
+      }
     }
   }
 }
@@ -7224,6 +7317,165 @@ function updateYearlySortHeadersUI() {
   });
 }
 
+const RANGE_MAX_DAYS = 366;
+const RANGE_MONTHLY_LABELS = {
+  monthly_tokens_label: 'range_tokens_label',
+  monthly_input_label: 'range_input_label',
+  monthly_cache_input_label: 'range_cache_input_label',
+  monthly_output_label: 'range_output_label',
+  monthly_sessions_label: 'range_sessions_label',
+  chart_monthly_title: 'chart_range_title',
+  monthly_daily_summary_title: 'range_daily_summary_title',
+};
+let rangeRequestSeq = 0;
+
+function applyMonthlyViewMode(mode = activeTab) {
+  const rangeMode = mode === 'range';
+  Object.entries(RANGE_MONTHLY_LABELS).forEach(([monthlyKey, rangeKey]) => {
+    document.querySelectorAll(`[data-i18n="${monthlyKey}"], [data-i18n="${rangeKey}"]`).forEach(el => {
+      const key = rangeMode ? rangeKey : monthlyKey;
+      el.setAttribute('data-i18n', key);
+      el.textContent = t(key);
+    });
+  });
+}
+
+function parseUtcDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return null;
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(0);
+  date.setUTCHours(0, 0, 0, 0);
+  date.setUTCFullYear(year, month - 1, day);
+  return getUtcDateString(date) === value ? date : null;
+}
+
+function addUtcDays(date, days) {
+  return new Date(date.getTime() + days * 86400000);
+}
+
+function getIsoWeekRange(offsetWeeks = 0, today = new Date()) {
+  const utcToday = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+  const mondayOffset = (utcToday.getUTCDay() + 6) % 7;
+  const start = addUtcDays(utcToday, -mondayOffset + offsetWeeks * 7);
+  return { start: getUtcDateString(start), end: getUtcDateString(addUtcDays(start, 6)) };
+}
+
+function getRecentWeeksRange(weeks, today = new Date()) {
+  const end = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+  return { start: getUtcDateString(addUtcDays(end, -(weeks * 7 - 1))), end: getUtcDateString(end) };
+}
+
+function getRangeInputs() {
+  return {
+    start: document.getElementById('range-start')?.value || '',
+    end: document.getElementById('range-end')?.value || '',
+  };
+}
+
+function setRangeInputs({ start, end }) {
+  const startInput = document.getElementById('range-start');
+  const endInput = document.getElementById('range-end');
+  if (startInput) startInput.value = start;
+  if (endInput) endInput.value = end;
+}
+
+function isValidRange(start, end) {
+  const startDate = parseUtcDate(start);
+  const endDate = parseUtcDate(end);
+  return Boolean(startDate && endDate && startDate <= endDate
+    && (endDate - startDate) / 86400000 < RANGE_MAX_DAYS);
+}
+
+async function shiftRange(direction) {
+  const { start, end } = getRangeInputs();
+  if (!isValidRange(start, end)) return loadRangeData();
+  const span = (parseUtcDate(end) - parseUtcDate(start)) / 86400000 + 1;
+  setRangeInputs({
+    start: getUtcDateString(addUtcDays(parseUtcDate(start), span * direction)),
+    end: getUtcDateString(addUtcDays(parseUtcDate(end), span * direction)),
+  });
+  return loadRangeData();
+}
+
+function initRangeControls() {
+  const params = new URLSearchParams(window.location.search);
+  const start = params.get('start');
+  const end = params.get('end');
+  setRangeInputs(isValidRange(start, end) ? { start, end } : getIsoWeekRange());
+
+  const apply = () => loadRangeData();
+  document.getElementById('btn-range-apply')?.addEventListener('click', apply);
+  document.getElementById('btn-range-prev')?.addEventListener('click', () => shiftRange(-1));
+  document.getElementById('btn-range-next')?.addEventListener('click', () => shiftRange(1));
+  document.getElementById('btn-range-this-week')?.addEventListener('click', () => {
+    setRangeInputs(getIsoWeekRange());
+    loadRangeData();
+  });
+  document.getElementById('btn-range-last-week')?.addEventListener('click', () => {
+    setRangeInputs(getIsoWeekRange(-1));
+    loadRangeData();
+  });
+  document.getElementById('btn-range-last-2w')?.addEventListener('click', () => {
+    setRangeInputs(getRecentWeeksRange(2));
+    loadRangeData();
+  });
+  document.getElementById('btn-range-last-4w')?.addEventListener('click', () => {
+    setRangeInputs(getRecentWeeksRange(4));
+    loadRangeData();
+  });
+  document.getElementById('btn-reload-range')?.addEventListener('click', async () => {
+    if (await loadRangeData()) showNotification(t('range_reload_success'), 'success');
+  });
+}
+
+async function loadRangeData(assistant = currentAssistant) {
+  const mySeq = ++rangeRequestSeq;
+  const { start, end } = getRangeInputs();
+  if (!isValidRange(start, end)) {
+    if (activeTab === 'range') {
+      hideViewLoading();
+      clearTitleSpinner();
+    }
+    showNotification(t('range_invalid'), 'error');
+    return false;
+  }
+
+  const resolvedAssistant = normalizeAssistant(assistant);
+  const range = `${start}~${end}`;
+  updateUrlParams();
+  const dimView = !currentMonthlyData || currentMonthlyData.year_month !== range;
+  showViewLoading(dimView);
+  try {
+    setTitleMarkup('sync', escapeHtml(range));
+    const res = await fetch(`/api/${resolvedAssistant}/range/${start}/${end}`);
+    if (mySeq !== rangeRequestSeq || activeTab !== 'range' || currentAssistant !== resolvedAssistant) return false;
+    if (res.status === 404) {
+      showNoDataForMonth(range, resolvedAssistant);
+      return false;
+    }
+    if (!res.ok) throw new Error(`Range request failed: ${res.status}`);
+
+    const data = await res.json();
+    if (mySeq !== rangeRequestSeq || activeTab !== 'range' || currentAssistant !== resolvedAssistant) return false;
+    modelSessionDetailsCache.clear();
+    toggleEmptyState(false, resolvedAssistant);
+    applyMonthlyViewMode('range');
+    renderMonthlyDashboard(data);
+    return true;
+  } catch (err) {
+    console.error('載入區間彙整失敗:', err);
+    if (mySeq === rangeRequestSeq && activeTab === 'range' && currentAssistant === resolvedAssistant) {
+      showNotification(t('range_load_failed'), 'error');
+    }
+    return false;
+  } finally {
+    if (mySeq === rangeRequestSeq && activeTab === 'range' && currentAssistant === resolvedAssistant) {
+      hideViewLoading();
+      clearTitleSpinner();
+    }
+  }
+}
+
 // =========================================================================
 // API 呼叫: 載入單月彙整數據
 // =========================================================================
@@ -7243,6 +7495,7 @@ async function loadMonthlyData(month, assistant = currentAssistant) {
     const res = await fetch(`/api/${resolvedAssistant}/monthly/${month}`);
     if (mySeq !== monthlyRequestSeq) return;
     if (currentAssistant !== resolvedAssistant) return;
+    if (activeTab !== 'monthly') return;
     if (res.status === 404) {
       showNoDataForMonth(month, resolvedAssistant);
       return;
@@ -7251,18 +7504,25 @@ async function loadMonthlyData(month, assistant = currentAssistant) {
     const data = await res.json();
     if (mySeq !== monthlyRequestSeq) return;
     if (currentAssistant !== resolvedAssistant) return;
+    if (activeTab !== 'monthly') return;
     modelSessionDetailsCache.clear();
     toggleEmptyState(false, resolvedAssistant);
     renderMonthlyDashboard(data);
 
   } catch (err) {
     console.error('載入月份彙整失敗:', err);
-    if (mySeq === monthlyRequestSeq) showNotification(t('monthly_load_failed'), 'error');
+    if (mySeq === monthlyRequestSeq && activeTab === 'monthly' && currentAssistant === resolvedAssistant) {
+      showNotification(t('monthly_load_failed'), 'error');
+    }
   } finally {
     if (mySeq === monthlyRequestSeq) {
       monthlyInFlightTarget = null;
-      hideViewLoading();
-      clearTitleSpinner();
+      if (activeTab === 'monthly' && currentAssistant === resolvedAssistant) {
+        hideViewLoading();
+        clearTitleSpinner();
+      } else {
+        document.getElementById('monthly-view-container')?.classList.remove('is-loading');
+      }
     }
   }
 }
@@ -7275,7 +7535,7 @@ function renderMonthlyDashboard(data) {
   const { year_month, summary, daily_breakdown, models, projects, agent_breakdown } = data;
 
   // 1. 更新標題
-  setTitleMarkup('calendar', year_month);
+  setTitleMarkup('calendar', escapeHtml(year_month));
 
   // 2. 更新指標卡片
   const activeAgents = getActiveAgents();
@@ -8210,7 +8470,7 @@ function toggleEmptyState(showEmpty, assistant = currentAssistant) {
 
     if (activeTab === 'daily') {
       if (dailyView) dailyView.classList.remove('hidden');
-    } else if (activeTab === 'monthly') {
+    } else if (activeTab === 'monthly' || activeTab === 'range') {
       if (monthlyView) monthlyView.classList.remove('hidden');
     } else if (activeTab === 'yearly') {
       if (yearlyView) yearlyView.classList.remove('hidden');

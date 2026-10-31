@@ -1562,6 +1562,60 @@ input:checked + .slider-round:before {
   border-radius: 10px !important;
 }
 
+.app-sidebar .range-tab-dropdown {
+  display: flex;
+  flex: 0 0 auto !important;
+  width: 100%;
+  min-width: 0 !important;
+}
+
+.app-sidebar .range-date-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+
+.app-sidebar .range-field-label {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.app-sidebar .range-presets,
+.app-sidebar .range-actions {
+  display: flex;
+  gap: 6px;
+  width: 100%;
+}
+
+.app-sidebar .range-presets {
+  flex-wrap: wrap;
+}
+
+.app-sidebar .range-presets .today-btn {
+  flex: 1 1 45%;
+  min-width: 0;
+}
+
+.app-sidebar .range-actions .today-btn {
+  min-width: 0;
+}
+
+.app-sidebar #btn-range-prev,
+.app-sidebar #btn-range-next {
+  flex: 1;
+}
+
+.app-sidebar #btn-range-apply {
+  flex: 2;
+}
+
+.app-sidebar #btn-reload-range {
+  flex: 0 0 38px;
+  width: 38px !important;
+  min-width: 38px;
+}
+
 .app-sidebar .today-btn {
   min-height: 36px;
   padding: 8px 7px !important;

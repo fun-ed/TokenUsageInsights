@@ -481,6 +481,40 @@ mod tests {
                 .len(),
             2
         );
+        let range = |assistant: &str, start: &str, end: &str| {
+            super::get_range_details(Path((
+                assistant.to_string(),
+                start.to_string(),
+                end.to_string(),
+            )))
+        };
+        let (status, ranged) = response_json(
+            range("all", "2026-07-01", "2026-07-31")
+                .await
+                .into_response(),
+        )
+        .await;
+        assert_eq!(status, 200);
+        assert_eq!(ranged["year_month"], "2026-07-01~2026-07-31");
+        assert_eq!(ranged["summary"], monthly["summary"]);
+        assert_eq!(ranged["daily_breakdown"], monthly["daily_breakdown"]);
+        assert_eq!(ranged["agent_breakdown"], monthly["agent_breakdown"]);
+        let (status, codex_range) = response_json(
+            range("codex", "2026-07-01", "2026-07-31")
+                .await
+                .into_response(),
+        )
+        .await;
+        assert_eq!(status, 200);
+        assert_eq!(codex_range["summary"]["total_tokens"], 1_100);
+        for (start, end, expected_status) in [
+            ("2026-07-31", "2026-07-01", 400),
+            ("2026-01-01", "2027-01-02", 400),
+            ("2030-01-01", "2030-01-07", 404),
+        ] {
+            let (status, _) = response_json(range("all", start, end).await.into_response()).await;
+            assert_eq!(status, expected_status);
+        }
 
         let (status, dates) = response_json(
             super::get_available_dates(Path("all".to_string()))
@@ -539,6 +573,32 @@ mod tests {
             .all(|session| session["date"] == "2026-07-01"));
         assert_eq!(
             sessions
+                .iter()
+                .map(|session| session["total_tokens"].as_u64().unwrap())
+                .sum::<u64>(),
+            3_850,
+        );
+        let (status, range_sessions) = response_json(
+            super::get_model_sessions(
+                Path("all".to_string()),
+                Query(
+                    serde_json::from_value(serde_json::json!({
+                        "period": "2026-07-01~2026-07-31",
+                        "model": "gpt-5.5",
+                    }))
+                    .unwrap(),
+                ),
+            )
+            .await
+            .into_response(),
+        )
+        .await;
+        assert_eq!(status, 200);
+        assert_eq!(range_sessions["sessions"].as_array().unwrap().len(), 2);
+        assert_eq!(
+            range_sessions["sessions"]
+                .as_array()
+                .unwrap()
                 .iter()
                 .map(|session| session["total_tokens"].as_u64().unwrap())
                 .sum::<u64>(),

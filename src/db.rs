@@ -6494,11 +6494,16 @@ pub fn get_available_dates(
     Ok(dates)
 }
 
+enum DateMatch<'a> {
+    Exact(&'a str),
+    Prefix(&'a str),
+    Range(&'a str, &'a str),
+}
+
 fn query_usage_entries(
     conn: &rusqlite::Connection,
-    date_filter: &str,
+    date_match: DateMatch<'_>,
     assistant: &str,
-    exact_date: bool,
 ) -> Result<Vec<UsageDayRecordWithAssistant>, String> {
     let mut query = "SELECT
             timestamp, session_id, session_name, transcript_path, cwd, version, turn_no, model, model_id,
@@ -6522,9 +6527,22 @@ fn query_usage_entries(
                   AND lower(trim(COALESCE(eligible.model, ''))) = 'manifest/auto'
             ) AS has_manifest_auto
          FROM usage_entries WHERE date ".to_string();
-    query.push_str(if exact_date { "= ?" } else { "LIKE ?" });
     let mut params_vec = Vec::new();
-    params_vec.push(rusqlite::types::Value::Text(date_filter.to_string()));
+    match date_match {
+        DateMatch::Exact(date) => {
+            query.push_str("= ?");
+            params_vec.push(rusqlite::types::Value::Text(date.to_string()));
+        }
+        DateMatch::Prefix(prefix) => {
+            query.push_str("LIKE ?");
+            params_vec.push(rusqlite::types::Value::Text(prefix.to_string()));
+        }
+        DateMatch::Range(start, end) => {
+            query.push_str("BETWEEN ? AND ?");
+            params_vec.push(rusqlite::types::Value::Text(start.to_string()));
+            params_vec.push(rusqlite::types::Value::Text(end.to_string()));
+        }
+    }
 
     if assistant != "all" {
         let assistants: Vec<&str> = assistant.split(',').collect();
@@ -6745,7 +6763,7 @@ pub fn get_usage_entries_by_date(
     date: &str,
     assistant: &str,
 ) -> Result<Vec<UsageDayRecordWithAssistant>, String> {
-    query_usage_entries(conn, date, assistant, true)
+    query_usage_entries(conn, DateMatch::Exact(date), assistant)
 }
 
 fn entry_date_from_timestamp(timestamp: &str) -> Option<&str> {
@@ -7844,7 +7862,11 @@ pub fn get_usage_entries_by_month(
     year_month: &str,
     assistant: &str,
 ) -> Result<Vec<DatedUsageEntry>, String> {
-    let rows = query_usage_entries(conn, &format!("{year_month}-%"), assistant, false)?;
+    let rows = query_usage_entries(
+        conn,
+        DateMatch::Prefix(&format!("{year_month}-%")),
+        assistant,
+    )?;
     Ok(rows
         .into_iter()
         .map(|row| DatedUsageEntry {
@@ -7899,7 +7921,25 @@ pub fn get_usage_entries_by_year(
     year: &str,
     assistant: &str,
 ) -> Result<Vec<DatedUsageEntry>, String> {
-    let rows = query_usage_entries(conn, &format!("{year}-%"), assistant, false)?;
+    let rows = query_usage_entries(conn, DateMatch::Prefix(&format!("{year}-%")), assistant)?;
+    Ok(rows
+        .into_iter()
+        .map(|row| DatedUsageEntry {
+            entry: row.record.entry,
+            assistant_type: row.assistant_type,
+            date: row.date,
+        })
+        .collect())
+}
+
+/// Returns entries for the inclusive `YYYY-MM-DD` date range.
+pub fn get_usage_entries_by_range(
+    conn: &rusqlite::Connection,
+    start: &str,
+    end: &str,
+    assistant: &str,
+) -> Result<Vec<DatedUsageEntry>, String> {
+    let rows = query_usage_entries(conn, DateMatch::Range(start, end), assistant)?;
     Ok(rows
         .into_iter()
         .map(|row| DatedUsageEntry {
@@ -7920,6 +7960,78 @@ mod tests {
 
     static TEMP_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
     static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn usage_entries_by_range_is_inclusive_and_preserves_all_source_identities() {
+        let conn = Connection::open_in_memory().unwrap();
+        init_db(&conn).unwrap();
+        for (assistant, source_kind, source_dir_key, date, turn_no) in [
+            (
+                "antigravity",
+                "antigravity-session",
+                Some("root-a"),
+                "2026-10-10",
+                1,
+            ),
+            (
+                "antigravity",
+                "antigravity-session",
+                Some("root-b"),
+                "2026-10-11",
+                1,
+            ),
+            ("codex", "codex-sessions", None, "2026-10-11", 1),
+            ("codex", "codex-sessions", None, "2026-10-12", 2),
+        ] {
+            conn.execute(
+                "INSERT INTO usage_entries
+                    (assistant_type, source_kind, source_dir_key, timestamp, date, session_id, turn_no)
+                 VALUES (?1, ?2, ?3, ?4, ?5, 'shared-session', ?6)",
+                params![
+                    assistant,
+                    source_kind,
+                    source_dir_key,
+                    format!("{date}T12:00:00Z"),
+                    date,
+                    turn_no
+                ],
+            )
+            .unwrap();
+        }
+
+        let all = get_usage_entries_by_range(&conn, "2026-10-10", "2026-10-11", "all").unwrap();
+        assert_eq!(all.len(), 3);
+        assert_eq!(
+            all.iter()
+                .map(|entry| entry.date.as_str())
+                .collect::<std::collections::HashSet<_>>(),
+            std::collections::HashSet::from(["2026-10-10", "2026-10-11"])
+        );
+        assert_eq!(
+            all.iter()
+                .map(|entry| entry.assistant_type.as_str())
+                .collect::<std::collections::HashSet<_>>(),
+            std::collections::HashSet::from(["antigravity", "codex"])
+        );
+        let antigravity =
+            get_usage_entries_by_range(&conn, "2026-10-10", "2026-10-11", "antigravity").unwrap();
+        let source_keys: std::collections::HashSet<_> = antigravity
+            .iter()
+            .map(|entry| entry.entry.source_dir_key.as_deref())
+            .collect();
+        assert_eq!(antigravity.len(), 2);
+        assert_eq!(
+            antigravity
+                .iter()
+                .map(|entry| entry.assistant_type.as_str())
+                .collect::<std::collections::HashSet<_>>(),
+            std::collections::HashSet::from(["antigravity"])
+        );
+        assert_eq!(
+            source_keys,
+            std::collections::HashSet::from([Some("root-a"), Some("root-b")])
+        );
+    }
 
     #[test]
     fn vscode_sync_signature_includes_debug_log_size_and_mtime() {
