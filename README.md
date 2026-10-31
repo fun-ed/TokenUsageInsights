@@ -20,7 +20,7 @@ Single-agent monthly reports for OMP and Claude Code:
 
 ## Install a precompiled CLI on macOS
 
-The [v10.0.25 release](https://github.com/fun-ed/TokenUsageInsights/releases/tag/v10.0.25) provides CLI packages for Apple Silicon (`aarch64-apple-darwin`) and Intel (`x86_64-apple-darwin`) Macs. No Rust toolchain is needed.
+The [v10.0.26 release](https://github.com/fun-ed/TokenUsageInsights/releases/tag/v10.0.26) provides CLI packages for Apple Silicon (`aarch64-apple-darwin`) and Intel (`x86_64-apple-darwin`) Macs. No Rust toolchain is needed.
 
 For a quick local install from this fork's latest release (not the upstream repository), run:
 
@@ -33,7 +33,7 @@ The installer selects the matching macOS CLI, copies the dashboard into `~/.loca
 To verify the checksum before installing, download the release package manually (set `target=x86_64-apple-darwin` on an Intel Mac):
 
 ```bash
-version=v10.0.25
+version=v10.0.26
 target=aarch64-apple-darwin
 archive="token-usage-insights-${version}-${target}.tar.gz"
 mkdir -p "$HOME/Downloads/token-usage-insights"
@@ -47,7 +47,7 @@ bash "token-usage-insights-${version}-${target}/scripts/install.sh"
 "$HOME/.local/bin/token-usage-insights"
 ```
 
-To invoke the CLI by name from zsh, add `export PATH="$HOME/.local/bin:$PATH"` to `~/.zshrc` and start a new terminal. Run the quick installer again to upgrade. Both architectures are also available as [Apple Silicon DMG](https://github.com/fun-ed/TokenUsageInsights/releases/download/v10.0.25/token-usage-insights-v10.0.25-aarch64-apple-darwin.dmg) and [Intel DMG](https://github.com/fun-ed/TokenUsageInsights/releases/download/v10.0.25/token-usage-insights-v10.0.25-x86_64-apple-darwin.dmg). For Linux, build from source unless a matching Linux asset is listed in the release.
+To invoke the CLI by name from zsh, add `export PATH="$HOME/.local/bin:$PATH"` to `~/.zshrc` and start a new terminal. Run the quick installer again to upgrade. Both architectures are also available as [Apple Silicon DMG](https://github.com/fun-ed/TokenUsageInsights/releases/download/v10.0.26/token-usage-insights-v10.0.26-aarch64-apple-darwin.dmg) and [Intel DMG](https://github.com/fun-ed/TokenUsageInsights/releases/download/v10.0.26/token-usage-insights-v10.0.26-x86_64-apple-darwin.dmg). For Linux, build from source unless a matching Linux asset is listed in the release.
 
 ## Import automatically in the background
 
@@ -69,9 +69,9 @@ cargo run --release
 
 Open <http://localhost:3003>.
 
-### Unreleased source changes
+### v10.0.26 changes
 
-The source tree selectively includes upstream v1.6.2: ISO-week and custom-range reports, Antigravity subagent hierarchies, corrected packaged prices, and opt-in remote transfers. These changes are not included in the v10.0.25 download above.
+This release selectively includes upstream v1.6.2: ISO-week and custom-range reports, Antigravity subagent hierarchies, corrected packaged prices, and opt-in remote transfers. Profiles and all-agent reports are preserved; the overview does not open session details.
 
 Remote transfers run only when explicitly requested:
 
@@ -82,7 +82,7 @@ token-usage-insights import --url "$USAGE_JSON_HTTPS_URL"
 
 Exports contain usage records, including session names and paths. Share them only with trusted recipients. Use a short-lived, least-privilege SAS token; URLs passed as arguments can be visible in the process list even though the CLI does not print their signatures.
 
-For separate imported-data dashboards, see [optional Docker support](docker/README.md). To compare packaged prices with official documents manually, run `mise exec -- node scripts/pricing-check.mjs`. The check only reports differences; it does not modify prices or create issues.
+For separate imported-data dashboards from a source checkout, see [optional Docker support](https://github.com/fun-ed/TokenUsageInsights/blob/v10.0.26/docker/README.md). To compare packaged prices with official documents manually, run `mise exec -- node scripts/pricing-check.mjs`. The check only reports differences; it does not modify prices or create issues.
 
 ## What it reads
 

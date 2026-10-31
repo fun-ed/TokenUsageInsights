@@ -12,7 +12,9 @@ OMP 同時讀取 `~/.omp/agent/sessions` 與 `~/.omp/profiles/<name>/agent/sessi
 
 Antigravity CLI 不需設定 Status Line 或收集腳本：看板直接讀取 `~/.gemini/antigravity-cli/brain/` 的原生會話記錄，並唯讀查詢 `conversations/<session-id>.db` 取得每次回應的模型。舊版 `usage/` 收集檔仍可匯入，同一會話不會重複計算。費用為依 `pricing.csv` 的估算；模型或價格不明時無法估算，不代表免費。
 
-目前版本為 [v10.0.25](https://github.com/fun-ed/TokenUsageInsights/releases/tag/v10.0.25)。選用整合頁可唯讀顯示 Magpie、CodeBurn 與使用者選取的 ccusage daily JSON；三者都不匯入、不去重，也不與既有報表或彼此相加。Magpie 未定價用量不會顯示為 US$0；CodeBurn 只支援 `daily-cache.v74.json`，並標示來源時區與 cache metadata；ccusage 不會自動執行，只有使用者選擇 JSON 匯出後才在目前頁面解析。完整限制見[選用整合說明](docs/optional-integrations.md)。
+目前版本為 [v10.0.26](https://github.com/fun-ed/TokenUsageInsights/releases/tag/v10.0.26)，選擇性移植 upstream v1.6.2：新增 ISO 週／自訂區間報表、Antigravity 子代理階層、明確啟用的 HTTPS 匯入匯出、選用 Docker 與手動定價檢查，並校正隨附牌價。保留多 profile 與總覽來源隔離，總覽不開啟會話詳情。完整功能與安裝方式見英文 README。
+
+v10.0.25 新增的選用整合頁可唯讀顯示 Magpie、CodeBurn 與使用者選取的 ccusage daily JSON；三者都不匯入、不去重，也不與既有報表或彼此相加。Magpie 未定價用量不會顯示為 US$0；CodeBurn 只支援 `daily-cache.v74.json`，並標示來源時區與 cache metadata；ccusage 不會自動執行，只有使用者選擇 JSON 匯出後才在目前頁面解析。完整限制見[選用整合說明](docs/optional-integrations.md)。
 
 v10.0.24 選擇性同步 upstream v1.5.1 的 GPT-6.1 Terra 定價。Global 每百萬 Token 輸入／快取讀取／輸出在 272K 以下為 US$1.00／0.05／5.00，超過為 US$2.00／0.10／7.50；Cursor 使用 US$1.00／0.05／5.00。費用為估算，既有優惠期限及限制見[官方費率查核](docs/research/2026-10-21-prompt-cache-pricing.md)。完整 macOS 安裝指令見英文 README。
 

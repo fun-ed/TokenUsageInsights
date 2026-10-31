@@ -4,6 +4,8 @@
 
 ## [未發行]
 
+## [10.0.26] - 2026-10-31
+
 ### 新增與改善
 
 - 選擇性移植 upstream `v1.5.1...v1.6.2` 的週／自訂區間報表與後續修正，支援 ISO 週、最長 366 天的日期區間、模型 Session 下鑽與網址還原。保留總覽及多 profile 來源隔離。
@@ -16,7 +18,12 @@
 
 - 修正報表切換的遲到回應覆蓋、區間重新整理通知、匯入後重載、匯出行為與文字轉義。
 - 依 upstream `bb56169` 修正 GPT-5.6 Sol／Terra／Luna、Daybreak／Reserve 別名、GPT-5.4-mini 與 Gemini 3 Flash Preview 牌價，保留 fork 的 models.dev 規則；更新 `rustls` 至 `0.23.46`。
-- 不採用 upstream 版本號、Windows 程式碼、CI/CD、PR 管理技能或發行來源；未執行發行或更新本機常駐服務。
+- 不採用 upstream 版本號、Windows 程式碼、CI/CD、PR 管理技能或發行來源。總覽停用單一會話詳情入口；歷史 Daybreak 研究補註 Global／Cursor 費率差異。
+
+### 發行範圍與限制
+
+- Cargo／npm、lockfiles、三份 README 與 fork 規格同步為 `10.0.26`。發行 Apple Silicon／Intel macOS 的 `.tar.gz`、DMG 與 `SHA256SUMS`；不發布 Linux 二進位或 npm Registry 套件。
+- Docker 腳本通過離線 mock 與建置輸入檢查，但尚未實際建置映像或啟動容器；Azure 未執行真實傳輸。CLI URL 參數可能出現在 shell history 或 process arguments，請使用短效、最小權限 SAS。
 
 ## [10.0.25] - 2026-10-29
 
@@ -1149,7 +1156,8 @@
 - 修正行動版側邊欄遮擋、黑畫面、標題擠壓、圖表導覽索引與年度版面問題。
 - 修正並補齊多個 Gemini、Claude、GPT 與 GPT-OSS 模型的定價規則。
 
-[未發行]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.21...HEAD
+[未發行]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.26...HEAD
+[10.0.26]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.25...v10.0.26
 [10.0.21]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.20...v10.0.21
 [10.0.20]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.19...v10.0.20
 [10.0.19]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.18...v10.0.19
