@@ -5676,6 +5676,7 @@ function renderSessionTable(sessions) {
 // API 呼叫: 載入並渲染特定 Session 對話時間軸 (Timeline)
 // =========================================================================
 async function openSessionTimeline(session) {
+  if (isAllAssistantsScope()) return;
   const {
     session_id: sessionId,
     session_name: sessionName,
@@ -6993,7 +6994,7 @@ function renderModelSessionDrilldown(sessions) {
                       </span>`
                     : '';
                   return `
-                    <button type="button" class="model-session-link" data-session-id="${escapeHtml(session.session_id)}" data-assistant-type="${escapeHtml(session.assistant_type || '')}" data-source-kind="${escapeHtml(session.source_kind || '')}" data-source-dir-key="${escapeHtml(session.source_dir_key || '')}" aria-label="${escapeHtml(sessionAriaLabel)}">
+                    <button type="button" ${isAllAssistantsScope() ? 'disabled aria-disabled="true"' : ''} class="model-session-link" data-session-id="${escapeHtml(session.session_id)}" data-assistant-type="${escapeHtml(session.assistant_type || '')}" data-source-kind="${escapeHtml(session.source_kind || '')}" data-source-dir-key="${escapeHtml(session.source_dir_key || '')}" aria-label="${escapeHtml(sessionAriaLabel)}">
                       <span class="model-session-primary">
                         <span class="model-session-name-row">
                           <span class="model-session-name">${escapeHtml(name)}</span>

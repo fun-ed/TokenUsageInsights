@@ -8,7 +8,7 @@ const indexSource = readFileSync(new URL('../static/index.html', import.meta.url
 const cssSource = readFileSync(new URL('../static/css/components.css', import.meta.url), 'utf8');
 
 function appFunction(name, globals = {}) {
-  const source = appSource.match(new RegExp(`^function ${name}\\([^]*?^}`, 'm'))?.[0];
+  const source = appSource.match(new RegExp(`^(?:async )?function ${name}\\([^]*?^}`, 'm'))?.[0];
   assert.ok(source, `missing ${name}`);
   return runInNewContext(`${source}\n${name}`, globals);
 }
@@ -72,4 +72,14 @@ test('date ranges reject malformed dates and reversed endpoints', () => {
 test('recent-week presets include exactly the requested UTC days through today', () => {
   const range = getRecentWeeksRange(2, new Date('2026-04-09T20:00:00Z'));
   assert.deepEqual({ ...range }, { start: '2026-03-27', end: '2026-04-09' });
+});
+
+test('overview never opens a session drawer, while a single agent retains the entrypoint', async () => {
+  const document = { getElementById() { throw new Error('single-agent drawer reached'); } };
+  await appFunction('openSessionTimeline', { isAllAssistantsScope: () => true, document })({});
+  await assert.rejects(
+    appFunction('openSessionTimeline', { isAllAssistantsScope: () => false, document })({}),
+    /single-agent drawer reached/,
+  );
+  assert.match(appSource, /isAllAssistantsScope\(\) \? 'disabled aria-disabled="true"' : ''/);
 });
