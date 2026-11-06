@@ -12,7 +12,7 @@ OMP 同时读取 `~/.omp/agent/sessions` 与 `~/.omp/profiles/<name>/agent/sessi
 
 Antigravity CLI 无需设置 Status Line 或收集脚本：看板直接读取 `~/.gemini/antigravity-cli/brain/` 的原生会话记录，并只读查询 `conversations/<session-id>.db` 获取每次回复的模型。旧版 `usage/` 收集文件仍可导入，同一会话不会重复计算。费用为依 `pricing.csv` 的预估；模型或价格不明时无法预估，不代表免费。
 
-当前版本为 [v10.0.26](https://github.com/fun-ed/TokenUsageInsights/releases/tag/v10.0.26)，选择性移植 upstream v1.6.2：新增 ISO 周／自定义区间报告、Antigravity 子代理层级、明确启用的 HTTPS 导入导出、可选 Docker 与手动定价检查，并校正随附价格。保留多 profile 与总览来源隔离，总览不打开会话详情。完整功能与安装方式见英文 README。
+当前版本为 [v10.0.27](https://github.com/fun-ed/TokenUsageInsights/releases/tag/v10.0.27)，选择性移植 upstream v1.6.5：新增 MiMo-V2.6-Pro／Flash 与 Kimi K3.1 Pro 随附价格，并略过内部 Copilot 搜索模型与 Unknown Model 缺少价格的警告。保留 Token 统计、费用处理、models.dev 优先规则、多 profile 与总览来源隔离。完整功能与安装方式见英文 README。
 
 v10.0.25 新增的可选整合页可只读显示 Magpie、CodeBurn 和用户选择的 ccusage daily JSON；三者都不导入、不去重，也不会与既有报告或彼此相加。Magpie 未定价用量不会显示为 US$0；CodeBurn 只支持 `daily-cache.v74.json`，并标示来源时区与 cache metadata；ccusage 不会自动执行，只有用户选择 JSON 导出后才在当前页面解析。完整限制见[可选整合说明](docs/optional-integrations.md)。
 

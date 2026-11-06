@@ -4,6 +4,19 @@
 
 ## [未發行]
 
+## [10.0.27] - 2026-11-06
+
+### 修正與改善
+
+- 選擇性移植 upstream `v1.6.2...v1.6.5` 的 `dac0cb4`、`45592af` 與 `12c0133`。新增 MiMo-V2.6-Pro／Flash 與 Kimi K3.1 Pro 隨附定價，修正 Kimi K3.1 Pro 缺少專屬規則時的成本高估；保留 models.dev 優先與模型別名比對。
+- `copilot-search-a`、`copilot-search-b` 與 `Unknown Model` 缺少定價時略過警告，保留 Token 統計、已有定價與來源回報的費用；其他未知模型仍提示一次。
+- 新增模型大小寫、provider 前綴、`:cloud` 別名與各 Token 費率測試，擴充逐筆及累計用量的警告回歸測試。
+
+### 相容性與發行範圍
+
+- 不變更 SQLite schema、API、環境變數或安裝方式；保留多 profile、總覽與本機資料邊界。不移植 upstream CI/CD、版本號或發行設定。
+- 發行 Apple Silicon／Intel macOS 的 `.tar.gz`、DMG 與 `SHA256SUMS`；不發布 Linux 二進位或 npm Registry 套件。費用為估算，不代表實際帳單。
+
 ## [10.0.26] - 2026-10-31
 
 ### 新增與改善

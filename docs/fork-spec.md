@@ -114,10 +114,16 @@
 - 選用 `docker/tui-docker.sh` 以名稱隔離容器與資料磁碟區，預設只公開 loopback 埠號。容器不掛載使用者的 AI 工具目錄，資料來自明確匯入，不自動更新執行檔。
 - 隨附牌價依 upstream `bb56169` 修正 GPT-5.6 Sol／Terra／Luna、Daybreak／Reserve 別名、GPT-5.4-mini 與 Gemini 3 Flash Preview；保留 models.dev 優先規則。`scripts/pricing-check.mjs` 只在手動執行時讀取官方定價並輸出報告，不自動修改 CSV、建立 issue 或安裝排程。
 
+### 2.15 選擇性同步 upstream v1.6.5（v10.0.27）
+
+- 同步 upstream `v1.6.2...v1.6.5` 的 `dac0cb4`、`45592af` 與 `12c0133`，僅移植定價及報表警告修正。
+- MiMo-V2.6-Pro 每百萬 Token 輸入／快取讀取／輸出為 US$0.435／0.0036／0.87；Flash 為 US$0.14／0.0028／0.28。Kimi K3.1 Pro 為 US$2／0.20／10，支援顯示名稱與 `:cloud` 別名。保留 models.dev 優先規則，費用仍為估算。
+- `copilot-search-a`、`copilot-search-b` 與 `Unknown Model` 缺少定價時略過警告，保留 Token 統計與原有費用處理；其他缺少定價的模型仍提示一次。不變更資料庫、API 或環境變數，不引入 upstream CI/CD 或版本設定。
+
 ## 3. 版本與發行
 
 - Cargo 與 npm 版本為 `10.x.y`；release tag 為對應的 `v10.x.y`。不可重用 upstream 的 `v1.x.y`。
-- 目前 fork 版本為 `v10.0.26`；原始碼選擇性同步基準為 upstream `v1.6.2`，變更見 §2.14。Windows statusline 命令、verbatim 路徑、Windows workspace URI、PowerShell 測試及 workflow 均未移植；未新增直接 `base64` 相依。
+- 目前 fork 版本為 `v10.0.27`；原始碼選擇性同步基準為 upstream `v1.6.5`，最新變更見 §2.15。Windows statusline 命令、verbatim 路徑、Windows workspace URI、PowerShell 測試及 workflow 均未移植；未新增直接 `base64` 相依。
 - 發行資產：macOS `aarch64-apple-darwin` 與 `x86_64-apple-darwin` 的 `.tar.gz`、`.dmg`，以及 `SHA256SUMS`。Linux 只有在 release 列出對應 tarball 時才宣稱可用。
 - 發行包內容：執行檔、`static/`、`shell/`、`scripts/`、`pricing.csv`、`README.md`、`LICENSE`、`VERSION`。
 - `scripts/get.sh` 與 npm 安裝器從 `fun-ed/TokenUsageInsights` 下載。
