@@ -789,6 +789,43 @@ mod tests {
     use super::*;
 
     #[test]
+    fn upstream_v1_6_5_models_use_packaged_pricing() {
+        let rules: Vec<_> = load_pricing_rules()
+            .into_iter()
+            .filter(|rule| !rule.model_name.starts_with(MODELS_DEV_RULE_PREFIX))
+            .collect();
+        for (model, input_price, cache_price, output_price) in [
+            ("mimo-v2.6-pro", 0.435, 0.0036, 0.87),
+            ("MiMo-V2.6-Pro", 0.435, 0.0036, 0.87),
+            ("xiaomi/mimo-v2.6-pro", 0.435, 0.0036, 0.87),
+            ("mimo-v2.6-flash", 0.14, 0.0028, 0.28),
+            ("MiMo-V2.6-Flash", 0.14, 0.0028, 0.28),
+            ("xiaomi/mimo-v2.6-flash", 0.14, 0.0028, 0.28),
+            ("kimi-k3.1-pro", 2.0, 0.2, 10.0),
+            ("kimi-k3.1-pro:cloud", 2.0, 0.2, 10.0),
+            ("Kimi K3.1 Pro", 2.0, 0.2, 10.0),
+        ] {
+            for (input, output, cache, expected) in [
+                (1_000_000, 0, 0, input_price),
+                (0, 1_000_000, 0, output_price),
+                (0, 0, 1_000_000, cache_price),
+                (
+                    1_000_000,
+                    1_000_000,
+                    1_000_000,
+                    input_price + output_price + cache_price,
+                ),
+            ] {
+                let cost = calculate_cost(&rules, model, input, output, cache, 0, 0).unwrap();
+                assert!(
+                    (cost - expected).abs() < 1e-12,
+                    "{model}: {cost}, expected {expected}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn gemini_4_argon_thinking_levels_use_packaged_pricing() {
         let rules: Vec<_> = load_pricing_rules()
             .into_iter()
