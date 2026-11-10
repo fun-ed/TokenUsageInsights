@@ -10,6 +10,7 @@ use std::time::SystemTime;
 mod claude;
 mod codex;
 mod cursor;
+mod devin;
 mod session_pricing;
 
 pub use session_pricing::{
@@ -846,6 +847,14 @@ pub(crate) fn get_omp_source_dir(
 ) -> Option<PathBuf> {
     let sources = get_omp_sources();
     omp_source_dir_for_identity(&sources, source_kind, source_dir_key)
+}
+
+pub fn get_devin_dir() -> PathBuf {
+    crate::paths::env_path("DEVIN_DIR").unwrap_or_else(|| {
+        let data_home = crate::paths::env_path("XDG_DATA_HOME")
+            .unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join(".local/share"));
+        data_home.join("devin/cli")
+    })
 }
 
 pub fn get_muse_dir() -> PathBuf {
@@ -6085,6 +6094,7 @@ fn sync_configured_sources_with_cancel(
         Harness::Omp,
         Harness::Muse,
         Harness::Mcode,
+        Harness::Devin,
     ] {
         if should_cancel() {
             return Ok(());
@@ -6158,6 +6168,7 @@ fn sync_configured_sources_with_cancel(
                 Harness::Grok => sync_grok_usage_logs_with_cancel(conn, root, should_cancel),
                 Harness::Pi => sync_pi_usage_logs_with_cancel(conn, root, should_cancel),
                 Harness::Muse => sync_muse_usage_logs_with_cancel(conn, root, should_cancel),
+                Harness::Devin => devin::sync_usage_logs(conn, root, should_cancel),
                 Harness::Mcode if index == 0 => {
                     sync_mcode_usage_logs_with_cancel(conn, root, should_cancel)
                 }

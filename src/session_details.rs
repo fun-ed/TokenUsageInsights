@@ -410,16 +410,22 @@ pub(crate) fn load_session_details(
         && matches!(lookup.source_kind.as_str(), "copilot-app" | "copilot-cli"))
     .then_some(lookup.agent_nickname.as_deref())
     .flatten();
-    let (timeline, mut metadata) = parse_session_timeline_file(
-        &lookup.assistant_type,
-        &lookup.source_kind,
-        &filepath,
-        &db_entries,
-        &turn_reasoning_efforts,
-        agent_filter,
-        session_model.as_deref(),
-    )
-    .map_err(|(status, error)| SessionDetailsError::new(status, error))?;
+    let (timeline, mut metadata) = if lookup.assistant_type == "devin" {
+        let session = crate::devin::read_session(&filepath, &session_id)
+            .map_err(|error| SessionDetailsError::new(StatusCode::BAD_REQUEST, error))?;
+        (session.timeline, session.metadata)
+    } else {
+        parse_session_timeline_file(
+            &lookup.assistant_type,
+            &lookup.source_kind,
+            &filepath,
+            &db_entries,
+            &turn_reasoning_efforts,
+            agent_filter,
+            session_model.as_deref(),
+        )
+        .map_err(|(status, error)| SessionDetailsError::new(status, error))?
+    };
 
     if agent_filter.is_some()
         && !timeline.iter().any(|item| match item {

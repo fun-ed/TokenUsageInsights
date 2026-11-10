@@ -33,6 +33,7 @@ pub fn normalize_assistant_name(assistant: &str) -> String {
         }
         "mcode" | "minimax-code" | "minimax_code" | "minimaxcode" | "mini-max-code"
         | "mini_max_code" => "mcode".to_string(),
+        "devin-cli" | "devin_cli" => "devin".to_string(),
         _ => normalized,
     }
 }
@@ -50,6 +51,7 @@ pub fn is_supported_assistant(assistant: &str) -> bool {
             | "omp"
             | "muse"
             | "mcode"
+            | "devin"
     )
 }
 
@@ -85,6 +87,7 @@ pub struct SetupInfoResponse {
     pub omp: AssistantSetupStatus,
     pub muse: AssistantSetupStatus,
     pub mcode: AssistantSetupStatus,
+    pub devin: AssistantSetupStatus,
     pub claude_sources: Vec<ClaudeSourceSetupStatus>,
     pub omp_sources: Vec<OmpSourceSetupStatus>,
 }

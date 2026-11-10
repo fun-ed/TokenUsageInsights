@@ -5,7 +5,7 @@
 ## 1. 產品範圍
 
 - 本機優先：只讀取本機 AI 助理資料，匯入 `~/.token-usage-insights/token_usage_insights.db`（可用 `INSIGHTS_DIR` 覆寫）。不上傳使用紀錄。
-- 支援來源：Antigravity、Copilot（CLI、App、VS Code）、Codex、Claude Code、Cursor、Grok Build、Pi、OMP、Muse Code、MiniMax Code。
+- 支援來源：Antigravity、Copilot（CLI、App、VS Code）、Codex、Claude Code、Cursor、Grok Build、Pi、OMP、Muse Code、MiniMax Code、Devin CLI。
 - 支援平台：**只有 macOS 與 Linux**。Windows 不在支援範圍。
 - 發行：只有手動發行。沒有 CI/CD。
 
@@ -120,11 +120,20 @@
 - MiMo-V2.6-Pro 每百萬 Token 輸入／快取讀取／輸出為 US$0.435／0.0036／0.87；Flash 為 US$0.14／0.0028／0.28。Kimi K3.1 Pro 為 US$2／0.20／10，支援顯示名稱與 `:cloud` 別名。保留 models.dev 優先規則，費用仍為估算。
 - `copilot-search-a`、`copilot-search-b` 與 `Unknown Model` 缺少定價時略過警告，保留 Token 統計與原有費用處理；其他缺少定價的模型仍提示一次。不變更資料庫、API 或環境變數，不引入 upstream CI/CD 或版本設定。
 
+### 2.16 Devin CLI 本機來源與定價（v10.0.28）
+
+- 預設唯讀 `~/.local/share/devin/cli/sessions.db`；使用 `XDG_DATA_HOME` 時，資料庫位於該目錄下的 `devin/cli/sessions.db`。`DEVIN_DIR` 可覆寫來源 root。只讀取 `sessions` 與 `message_nodes`，不修改 Devin 資料庫。
+- 只採用本機逐次呼叫用量，模型與 effort 取自每次呼叫的 metadata。以 Devin 來源 identity 隔離資料，依 request/message 去重；不呼叫雲端 API，也不把 ATIF 記錄重複計入。
+- 模型名稱中的 Fast、Lightning、Priority 速度後綴必須保留；effort 後綴則正規化供既有報表與定價使用。不得依來源回報的 USD 或 ACU 推算費用；未知模型維持未定價。
+- `devin models list --format json` 公布的每百萬 Token 輸入／快取讀取／輸出費率：SWE 1.6 與 1.7 為 US$0.50／0.20／2.50；SWE 2 Lightning 為 US$1／0.10／5；Muse Wonder 1.0 為 US$4／0.20／20。SWE 2 與 SWE 2 Flash 僅列為 Free tier，未公布數值 USD 費率，不建立推測價格列。
+- Claude Fable 5.2 依 [Anthropic 官方定價](https://platform.claude.com/docs/en/about-claude/pricing) 使用每百萬 Token 輸入／快取讀取／輸出標準 US$8／0.20／40、Fast US$16／0.40／80、Batch US$4／0.10／20；依既有模型比對與快取寫入規則計價。
+- 不新增 SQLite schema migration 或直接相依；新增 Devin 助理類型、來源設定與設定 API 欄位。更新現有版本範圍內的 Rust 相依鎖定版本。
+
 ## 3. 版本與發行
 
 - Cargo 與 npm 版本為 `10.x.y`；release tag 為對應的 `v10.x.y`。不可重用 upstream 的 `v1.x.y`。
-- 目前 fork 版本為 `v10.0.27`；原始碼選擇性同步基準為 upstream `v1.6.5`，最新變更見 §2.15。Windows statusline 命令、verbatim 路徑、Windows workspace URI、PowerShell 測試及 workflow 均未移植；未新增直接 `base64` 相依。
-- 發行資產：macOS `aarch64-apple-darwin` 與 `x86_64-apple-darwin` 的 `.tar.gz`、`.dmg`，以及 `SHA256SUMS`。Linux 只有在 release 列出對應 tarball 時才宣稱可用。
+- 目前 fork 版本為 `v10.0.28`；原始碼選擇性同步基準仍為 upstream `v1.6.5`，最新變更見 §2.16。Windows statusline 命令、verbatim 路徑、Windows workspace URI、PowerShell 測試及 workflow 均未移植；本次未新增直接相依。
+- 本次發行資產為 macOS `aarch64-apple-darwin` 與 `x86_64-apple-darwin` 的 `.tar.gz`、`.dmg` 及 `SHA256SUMS`；不建置或發布 Linux 二進位，也不發布 npm Registry 套件。
 - 發行包內容：執行檔、`static/`、`shell/`、`scripts/`、`pricing.csv`、`README.md`、`LICENSE`、`VERSION`。
 - `scripts/get.sh` 與 npm 安裝器從 `fun-ed/TokenUsageInsights` 下載。
 - 流程細節見 `.agents/skills/token-usage-insights/SKILL.md`。

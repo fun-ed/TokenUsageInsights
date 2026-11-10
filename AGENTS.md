@@ -1,24 +1,25 @@
 # Repository Guidelines
 
 ## Project Overview
-TokenUsageInsights is a local-first Rust application for macOS and Linux that imports token-usage data from Antigravity, Copilot, Codex, Claude Code (default root plus `~/.claude-profiles/*` profiles), Cursor, Grok, Pi, OMP, Muse, and MiniMax Code. It provides a CLI plus an Axum-served dashboard/API, normalizing source data into SQLite and calculating costs from `pricing.csv`.
+TokenUsageInsights is a local-first Rust application for macOS and Linux that imports token-usage data from Antigravity, Copilot, Codex, Claude Code (default root plus `~/.claude-profiles/*` profiles), Cursor, Grok, Pi, OMP, Muse, MiniMax Code, and Devin CLI. It provides a CLI plus an Axum-served dashboard/API, normalizing source data into SQLite and calculating costs from `pricing.csv`.
 
 
 ## Canonical Spec and Project Skill
 - `docs/fork-spec.md` is the canonical product and maintenance spec for this fork. It overrides upstream behavior, upstream docs, and older notes. Read it before any feature, release, or upstream-sync work.
 - For any repository change, read and apply `.agents/skills/token-usage-insights/SKILL.md`. It is the shared operational reference for local-data boundaries, Claude profile sources, all-harness reporting, fork versioning, and controlled upstream integration.
+- Before changing Devin CLI import, API, dashboard, or pricing behavior, read `.agents/skills/devin-cli/SKILL.md` for its implementation plan, architecture, data contracts, model rules, and verification/release details.
 
 ## Architecture & Data Flow
 - **Entry path:** `src/main.rs` runs `cli::run` first. A recognized subcommand (`export`, `export-all`, `import`, `update`, help/version) exits through `src/cli.rs`; otherwise it initializes SQLite, serves Axum routes/static assets, and starts periodic sync.
 - **Read path:** browser (`static/index.html` → `static/app.js`) calls `/api/...` → thin `src/handlers/` endpoint → `spawn_blocking` for synchronous work → `db`, `reporting`, and `pricing` → JSON DTO.
-- **Write/sync path:** provider adapters parse local JSON/JSONL/SQLite data into `db::UsageEntry`; `db::sync_usage_logs` persists entries and incremental state transactionally. Keep collector-specific parsing outside handlers.
+- **Write/sync path:** provider adapters parse local JSON/JSONL/SQLite data into `db::UsageEntry`; Devin uses `src/db/devin.rs` to read `sessions.db` through `src/devin.rs`. `db::sync_usage_logs` persists entries and incremental state transactionally. Keep collector-specific parsing outside handlers.
 - **Session details:** handler → `session_details` → `session_files` (ID/path containment validation) → `timeline` parser. Do not bypass these safety boundaries for transcript access.
 - **Reporting:** use `reporting.rs` for session grouping and delta-versus-cumulative aggregation, and `pricing.rs` for costs; do not duplicate aggregation/cost rules in endpoints.
 
 ## Key Directories
 - `src/` — Rust application. `main.rs` owns lifecycle/routes; `db.rs` owns schema, migrations, imports, sync, and source discovery.
   - `src/handlers/` — daily/monthly/yearly/misc HTTP handlers and shared assistant DTOs/normalization.
-  - `src/db/`, `grok.rs`, `pi.rs`, `muse.rs`, `vscode.rs` — provider-specific adapters.
+  - `src/db/devin.rs` syncs Devin's local source; `src/devin.rs` reads its `sessions` and `message_nodes` tables. Other provider-specific adapters include `grok.rs`, `pi.rs`, `muse.rs`, and `vscode.rs`.
   - `session_files.rs`, `session_details.rs`, `timeline.rs` — session reconstruction and path-safe transcript parsing.
 - `static/` — dashboard: plain ES modules, HTML, CSS, i18n, and assistant assets. `app.js` is the main frontend entry.
 - `tests/` — Node built-in-test suites for package installer and frontend utilities; Rust tests are colocated under `#[cfg(test)]` in `src/`.
@@ -69,7 +70,7 @@ make all                         # fmt, check, test, release build
 - SQLite is bundled through `rusqlite`; do not introduce a separate database service.
 - The dashboard requires no frontend build framework. Do not add Node dependencies merely for UI changes.
 - Releases package the binary together with `static/`, `shell/`, `scripts/`, and `pricing.csv`; preserve this layout when modifying installation/release behavior.
-- The project reads local data by default. Use environment overrides (`INSIGHTS_DIR`, `ANTIGRAVITY_DIR`, `COPILOT_DIR`, `CODEX_DIR`, `CLAUDE_DIR`, `CURSOR_DIR`, `GROK_DIR`, `PI_DIR`, `OMP_DIR`, `MUSE_DIR`, `MCODE_DIR`, `MCODE_STATE_DB`) for isolated development and tests. Never commit local databases, logs, sessions, or personal paths.
+- The project reads local data by default. Use environment overrides (`INSIGHTS_DIR`, `ANTIGRAVITY_DIR`, `COPILOT_DIR`, `CODEX_DIR`, `CLAUDE_DIR`, `CURSOR_DIR`, `GROK_DIR`, `PI_DIR`, `OMP_DIR`, `MUSE_DIR`, `MCODE_DIR`, `DEVIN_DIR`, `MCODE_STATE_DB`); Devin defaults to `~/.local/share/devin/cli` and respects `XDG_DATA_HOME`. Never commit local databases, logs, sessions, or personal paths.
 
 ## Testing & QA
 - Add Rust tests beside the affected module under `#[cfg(test)]`; use `#[tokio::test]` only for async behavior. Use `cargo test <name-filter>` for a focused check.

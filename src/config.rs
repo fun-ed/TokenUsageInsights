@@ -19,6 +19,7 @@ pub(crate) enum Harness {
     Omp,
     Muse,
     Mcode,
+    Devin,
 }
 
 impl Harness {
@@ -37,6 +38,7 @@ impl Harness {
             Self::Omp => db::get_omp_dir(),
             Self::Muse => db::get_muse_dir(),
             Self::Mcode => db::get_mcode_dir(),
+            Self::Devin => db::get_devin_dir(),
         })
     }
 }
@@ -201,6 +203,7 @@ mod tests {
             "omp",
             "muse",
             "mcode",
+            "devin",
         ];
         let yaml = format!(
             "additional_sources:\n{}",

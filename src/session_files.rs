@@ -122,6 +122,32 @@ fn resolve_transcript_path(
     Ok(canonical_path)
 }
 
+fn resolve_devin_database_path(
+    root: &StdPath,
+    path: &str,
+    source_dir_key: Option<&str>,
+) -> Result<PathBuf, String> {
+    let root = root
+        .canonicalize()
+        .map_err(|_| "無法解析 Devin 根目錄。".to_string())?;
+    let key = hex::encode(root.as_os_str().as_encoded_bytes());
+    if source_dir_key != Some(key.as_str()) {
+        return Err("Devin 來源識別與根目錄不一致。".to_string());
+    }
+    let resolved = resolve_transcript_path(
+        &root,
+        path,
+        TranscriptPathPolicy {
+            assistant_label: "Devin CLI",
+            validation: TranscriptValidation::Any,
+        },
+    )?;
+    if resolved != root.join("sessions.db") {
+        return Err("Devin session 必須使用來源根目錄的 sessions.db。".to_string());
+    }
+    Ok(resolved)
+}
+
 fn resolve_claude_transcript_path(
     claude_dir: &StdPath,
     session_id: &str,
@@ -731,6 +757,21 @@ pub(crate) fn resolve_session_file_path(
             })
             .map_err(|error| SessionFileError::new(StatusCode::BAD_REQUEST, error))
         }
+        "devin" => {
+            if source_kind != crate::devin::SOURCE_KIND {
+                return Err(SessionFileError::new(
+                    StatusCode::BAD_REQUEST,
+                    "不支援的 Devin 資料來源。",
+                ));
+            }
+            let path = transcript_path_db.ok_or_else(|| {
+                SessionFileError::new(StatusCode::NOT_FOUND, "找不到 Devin session 資料庫路徑。")
+            })?;
+            resolve_configured_transcript(Harness::Devin, |root| {
+                resolve_devin_database_path(root, path, context.source_dir_key)
+            })
+            .map_err(|error| SessionFileError::new(StatusCode::BAD_REQUEST, error))
+        }
         _ => Err(SessionFileError::new(
             StatusCode::BAD_REQUEST,
             "不支援的助理類型",
@@ -742,6 +783,33 @@ pub(crate) fn resolve_session_file_path(
 mod tests {
     use super::*;
     use std::{fs, time::SystemTime};
+
+    #[test]
+    fn devin_database_requires_exact_file_and_source_identity() {
+        let root = copilot_app_fixture_dir("devin-boundary");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("sessions.db"), "synthetic").unwrap();
+        fs::write(root.join("credentials.toml"), "synthetic").unwrap();
+        let canonical = root.canonicalize().unwrap();
+        let key = hex::encode(canonical.as_os_str().as_encoded_bytes());
+        assert_eq!(
+            resolve_devin_database_path(&root, "sessions.db", Some(&key)).unwrap(),
+            canonical.join("sessions.db")
+        );
+        assert!(resolve_devin_database_path(&root, "credentials.toml", Some(&key)).is_err());
+        assert!(resolve_devin_database_path(&root, "sessions.db", Some("wrong-source")).is_err());
+        assert!(resolve_devin_database_path(&root, "sessions.db", None).is_err());
+        #[cfg(unix)]
+        {
+            let outside = root.with_extension("outside");
+            fs::write(&outside, "synthetic").unwrap();
+            fs::remove_file(root.join("sessions.db")).unwrap();
+            std::os::unix::fs::symlink(&outside, root.join("sessions.db")).unwrap();
+            assert!(resolve_devin_database_path(&root, "sessions.db", Some(&key)).is_err());
+            fs::remove_file(outside).unwrap();
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn multiple_roots_accept_only_transcripts_within_an_allowed_directory() {

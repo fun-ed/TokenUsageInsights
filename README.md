@@ -20,7 +20,7 @@ Single-agent monthly reports for OMP and Claude Code:
 
 ## Install a precompiled CLI on macOS
 
-The [v10.0.27 release](https://github.com/fun-ed/TokenUsageInsights/releases/tag/v10.0.27) provides CLI packages for Apple Silicon (`aarch64-apple-darwin`) and Intel (`x86_64-apple-darwin`) Macs. No Rust toolchain is needed.
+The [v10.0.28 release](https://github.com/fun-ed/TokenUsageInsights/releases/tag/v10.0.28) provides CLI packages for Apple Silicon (`aarch64-apple-darwin`) and Intel (`x86_64-apple-darwin`) Macs. No Rust toolchain is needed.
 
 For a quick local install from this fork's latest release (not the upstream repository), run:
 
@@ -33,7 +33,7 @@ The installer selects the matching macOS CLI, copies the dashboard into `~/.loca
 To verify the checksum before installing, download the release package manually (set `target=x86_64-apple-darwin` on an Intel Mac):
 
 ```bash
-version=v10.0.27
+version=v10.0.28
 target=aarch64-apple-darwin
 archive="token-usage-insights-${version}-${target}.tar.gz"
 mkdir -p "$HOME/Downloads/token-usage-insights"
@@ -47,7 +47,7 @@ bash "token-usage-insights-${version}-${target}/scripts/install.sh"
 "$HOME/.local/bin/token-usage-insights"
 ```
 
-To invoke the CLI by name from zsh, add `export PATH="$HOME/.local/bin:$PATH"` to `~/.zshrc` and start a new terminal. Run the quick installer again to upgrade. Both architectures are also available as [Apple Silicon DMG](https://github.com/fun-ed/TokenUsageInsights/releases/download/v10.0.27/token-usage-insights-v10.0.27-aarch64-apple-darwin.dmg) and [Intel DMG](https://github.com/fun-ed/TokenUsageInsights/releases/download/v10.0.27/token-usage-insights-v10.0.27-x86_64-apple-darwin.dmg). For Linux, build from source unless a matching Linux asset is listed in the release.
+To invoke the CLI by name from zsh, add `export PATH="$HOME/.local/bin:$PATH"` to `~/.zshrc` and start a new terminal. Run the quick installer again to upgrade. Both architectures are also available as [Apple Silicon DMG](https://github.com/fun-ed/TokenUsageInsights/releases/download/v10.0.28/token-usage-insights-v10.0.28-aarch64-apple-darwin.dmg) and [Intel DMG](https://github.com/fun-ed/TokenUsageInsights/releases/download/v10.0.28/token-usage-insights-v10.0.28-x86_64-apple-darwin.dmg). For Linux, build from source unless a matching Linux asset is listed in the release.
 
 ## Import automatically in the background
 
@@ -69,9 +69,13 @@ cargo run --release
 
 Open <http://localhost:3003>.
 
-### v10.0.27 changes
+### v10.0.28 changes
 
-This release selectively includes upstream v1.6.5 pricing for MiMo-V2.6-Pro, MiMo-V2.6-Flash, and Kimi K3.1 Pro. Missing prices for internal Copilot search models and Unknown Model no longer produce warnings; token counts and cost handling are preserved. Profiles, all-agent reports, and models.dev pricing priority are unchanged.
+This release adds Devin CLI imports, session details, prompt search, and all-agent reporting from its local SQLite database. Imports keep per-call model and effort metadata, deduplicate saved snapshots, and separate sources that share a session ID. No Devin cloud API call is required.
+
+Published Devin prices cover SWE 1.6/1.7, SWE 2 Lightning, and Muse Wonder 1.0. SWE 2 and SWE 2 Flash have no numeric USD rate in the CLI catalog, so their unpriced calls are excluded from cost estimates. This does not mean those calls were free. Claude Fable 5.2 standard, Fast, and Batch rates are also included.
+
+Rust dependencies are updated within their existing version requirements. Cargo and npm package versions are synchronized at `10.0.28`; this release publishes macOS packages only.
 
 Remote transfers run only when explicitly requested:
 
@@ -82,11 +86,11 @@ token-usage-insights import --url "$USAGE_JSON_HTTPS_URL"
 
 Exports contain usage records, including session names and paths. Share them only with trusted recipients. Use a short-lived, least-privilege SAS token; URLs passed as arguments can be visible in the process list even though the CLI does not print their signatures.
 
-For separate imported-data dashboards from a source checkout, see [optional Docker support](https://github.com/fun-ed/TokenUsageInsights/blob/v10.0.27/docker/README.md). To compare packaged prices with official documents manually, run `mise exec -- node scripts/pricing-check.mjs`. The check only reports differences; it does not modify prices or create issues.
+For separate imported-data dashboards from a source checkout, see [optional Docker support](https://github.com/fun-ed/TokenUsageInsights/blob/v10.0.28/docker/README.md). To compare packaged prices with official documents manually, run `mise exec -- node scripts/pricing-check.mjs`. The check only reports differences; it does not modify prices or create issues.
 
 ## What it reads
 
-The dashboard reads local data from Antigravity, Copilot, Codex, Claude Code, Cursor, Grok Build, Pi, OMP, Muse Code, and MiniMax Code. It supports macOS and Linux.
+The dashboard reads local data from Antigravity, Copilot, Codex, Claude Code, Cursor, Grok Build, Pi, OMP, Muse Code, MiniMax Code, and Devin CLI. It supports macOS and Linux.
 
 ### Antigravity CLI
 
@@ -104,6 +108,10 @@ OMP usage is read from source root `~/.omp` (sessions at `~/.omp/agent/sessions`
 
 The default source keeps the backward-compatible `source_kind` `omp-session`; profiles use `omp-profile:<name>`, and [additional OMP roots](#additional-sources-multiple-homes-and-computers) use `omp-source:<hex path>`. Each source retains independent database identity. Token usage (including per-turn `usage.cost`) comes from session JSONL files, not binary blobs or SQLite usage extraction.
 
+### Devin CLI
+
+By default, Devin CLI usage is read from `~/.local/share/devin/cli/sessions.db`; `XDG_DATA_HOME` changes the base directory, while `DEVIN_DIR` overrides the source root. The reader opens the `sessions` and `message_nodes` tables read-only. It uses local per-call usage and per-call model and effort metadata, deduplicates requests/messages within each source, and keeps source identities separate. It makes no cloud API calls and does not infer cost from source USD or ACU values. Models without a known price remain unpriced.
+
 ### Additional sources: multiple homes and computers
 
 Add `additional_sources` to `config.yaml` to scan extra data roots for any tool, such as a second `CODEX_HOME` or folders that a cloud drive syncs from other computers:
@@ -114,9 +122,10 @@ additional_sources:
   claude: ['~/Cloud Drive/laptop/.claude']
   omp: ['~/Cloud Drive/laptop/.omp']
   copilot: ['~/Cloud Drive/laptop/.copilot']
+  devin: ['~/Cloud Drive/laptop/.local/share/devin/cli']
 ```
 
-- Keys: `antigravity`, `copilot`, `copilot_app`, `vscode`, `codex`, `claude`, `cursor`, `grok`, `pi`, `omp`, `muse`, `mcode`. Each path is a tool root with its usual layout: `antigravity` → `brain/` and `conversations/` (legacy `usage/` also works); `codex` → `sessions/` and `archived_sessions/`; `claude`, `cursor` → `projects/`; `pi`, `omp` → `agent/sessions/`; `grok`, `muse`, `mcode` → `sessions/`; `vscode` → a VS Code user data root containing `User/workspaceStorage/`.
+- Keys: `antigravity`, `copilot`, `copilot_app`, `vscode`, `codex`, `claude`, `cursor`, `grok`, `pi`, `omp`, `muse`, `mcode`, `devin`. Each path is a tool root with its usual layout: `antigravity` → `brain/` and `conversations/` (legacy `usage/` also works); `codex` → `sessions/` and `archived_sessions/`; `claude`, `cursor` → `projects/`; `pi`, `omp` → `agent/sessions/`; `grok`, `muse`, `mcode` → `sessions/`; `devin` → `sessions.db`; `vscode` → a VS Code user data root containing `User/workspaceStorage/`.
 - Extra roots **extend** the default sources, Claude Code profiles, and OMP profiles. `*_DIR` variables still choose the primary root.
 - Each extra Claude Code or OMP root is a separate source. The dashboard labels its sessions with the last two path components, for example `laptop/.claude`.
 - Paths accept absolute paths, `~`, and `$HOME`. Relative paths resolve against the config file's directory. Repeated paths and symlinks to the same directory are scanned once; missing directories are skipped until they appear.

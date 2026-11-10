@@ -428,7 +428,10 @@ fn rule_applies_to_context(
         return false;
     }
 
-    let base_matches = if contains_match {
+    let base_matches = if contains_match && rule_base.starts_with("swe") {
+        // Unpriced SWE variants must not inherit a different version or Lightning rate.
+        model_base.ends_with(rule_base)
+    } else if contains_match {
         model_base.contains(rule_base) || rule_base.contains(model_base)
     } else {
         rule_base == model_base
@@ -855,6 +858,31 @@ mod tests {
     }
 
     #[test]
+    fn devin_models_use_published_rates_without_pricing_free_tiers_as_lightning() {
+        let rules: Vec<_> = load_pricing_rules()
+            .into_iter()
+            .filter(|rule| !rule.model_name.starts_with(MODELS_DEV_RULE_PREFIX))
+            .collect();
+        for (model, expected) in [
+            ("swe-1.6", 3.20),
+            ("swe-1.7", 3.20),
+            ("swe-2-lightning", 6.10),
+            ("muse-wonder-1.0", 24.20),
+        ] {
+            let cost =
+                calculate_usage_cost(&rules, Some(model), 1_000_000, 1_000_000, 1_000_000, 0, 0)
+                    .unwrap();
+            assert!((cost - expected).abs() < 1e-9, "{model}: {cost}");
+        }
+        for model in ["swe-2", "swe-2-flash", "swe-3"] {
+            assert!(
+                calculate_usage_cost(&rules, Some(model), 1_000_000, 0, 0, 0, 0).is_err(),
+                "{model}"
+            );
+        }
+    }
+
+    #[test]
     fn current_cache_pricing_uses_model_specific_rates() {
         let rules: Vec<_> = load_pricing_rules()
             .into_iter()
@@ -893,6 +921,30 @@ mod tests {
                 10.0,
                 0.25,
                 50.0,
+                true,
+            ),
+            (
+                vec![
+                    "fable-5.2",
+                    "claude-fable-5-2",
+                    "Claude Fable 5.2",
+                    "anthropic/claude-fable-5-2",
+                ],
+                8.0,
+                0.20,
+                40.0,
+                true,
+            ),
+            (
+                vec![
+                    "fable-5.2-fast",
+                    "claude-fable-5-2-fast",
+                    "Claude Fable 5.2-fast",
+                    "anthropic/claude-fable-5-2-fast",
+                ],
+                16.0,
+                0.40,
+                80.0,
                 true,
             ),
             (

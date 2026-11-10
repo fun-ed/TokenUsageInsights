@@ -143,15 +143,22 @@ pub(crate) fn search_user_prompts(
             }
         };
         let db_entries = HashMap::new();
-        let (timeline, _) = match parse_session_timeline_file(
-            &session.assistant_type,
-            &session.source_kind,
-            &filepath,
-            &db_entries,
-            &HashMap::new(),
-            session.agent_nickname.as_deref(),
-            session.model.as_deref(),
-        ) {
+        let parsed = if session.assistant_type == "devin" {
+            crate::devin::read_session(&filepath, &session.session_id)
+                .map(|session| (session.timeline, session.metadata))
+                .map_err(|error| (axum::http::StatusCode::BAD_REQUEST, error))
+        } else {
+            parse_session_timeline_file(
+                &session.assistant_type,
+                &session.source_kind,
+                &filepath,
+                &db_entries,
+                &HashMap::new(),
+                session.agent_nickname.as_deref(),
+                session.model.as_deref(),
+            )
+        };
+        let (timeline, _) = match parsed {
             Ok(result) => result,
             Err(_) => {
                 unavailable_sessions += 1;

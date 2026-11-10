@@ -21,6 +21,7 @@ mod cli;
 mod config;
 mod copilot;
 mod db;
+mod devin;
 mod grok;
 mod handlers;
 mod integrations;

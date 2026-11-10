@@ -187,6 +187,23 @@ pub(crate) fn latest_usage_entry<'a>(
     })
 }
 
+pub(crate) fn session_turn_count(entries: &[UsageEntry]) -> u32 {
+    if entries
+        .first()
+        .is_some_and(|entry| entry.source_kind.as_deref() == Some(crate::devin::SOURCE_KIND))
+    {
+        // Devin node IDs include prompts and tools, so their maximum is not a call count.
+        entries
+            .iter()
+            .map(|entry| entry.turn_no)
+            .collect::<HashSet<_>>()
+            .len()
+            .min(u32::MAX as usize) as u32
+    } else {
+        entries.iter().map(|entry| entry.turn_no).max().unwrap_or(1)
+    }
+}
+
 static WARNED_PRICING_MODELS: LazyLock<Mutex<HashSet<String>>> =
     LazyLock::new(|| Mutex::new(HashSet::new()));
 
@@ -694,6 +711,20 @@ mod tests {
             reasoning_effort: None,
             session_pricing: None,
         }
+    }
+
+    #[test]
+    fn devin_turn_count_counts_calls_instead_of_sparse_node_ids() {
+        let mut entries = vec![
+            summary_entry(7, "swe-2", token_stats(1, 2, 3), true),
+            summary_entry(20, "swe-2", token_stats(4, 5, 6), true),
+        ];
+        assert_eq!(session_turn_count(&entries), 20);
+        for entry in &mut entries {
+            entry.source_kind = Some(crate::devin::SOURCE_KIND.to_string());
+        }
+        entries.push(entries[0].clone());
+        assert_eq!(session_turn_count(&entries), 2);
     }
 
     fn usage_entry(source_dir_key: &str, model: &str, total_tokens: u64) -> UsageEntry {

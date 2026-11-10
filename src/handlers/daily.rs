@@ -88,7 +88,7 @@ fn aggregate_usage_details(
             total_cache_read_tokens: session_usage.usage.cache_read_tokens,
             total_cache_write_tokens: session_usage.usage.cache_write_tokens,
             total_reasoning_tokens: session_usage.usage.reasoning_tokens,
-            max_turn_no: s_entries.iter().map(|e| e.turn_no).max().unwrap_or(1),
+            max_turn_no: crate::reporting::session_turn_count(s_entries),
             timestamp: s_entries[0].timestamp.clone(),
             duration_ms: session_duration,
             total_requests: session_requests,
@@ -252,6 +252,8 @@ pub async fn get_setup_info(Path(assistant): Path<String>) -> impl IntoResponse 
 
     let mcode_dir = source_root(Harness::Mcode, &["sessions"]);
     let mcode_exists = mcode_dir.join("sessions").exists();
+    let devin_dir = source_root(Harness::Devin, &["sessions.db"]);
+    let devin_database = devin_dir.join("sessions.db");
 
     Json(SetupInfoResponse {
         platform: std::env::consts::OS.to_string(),
@@ -358,6 +360,14 @@ pub async fn get_setup_info(Path(assistant): Path<String>) -> impl IntoResponse 
             script_path: "".to_string(),
             source_script_path: "".to_string(),
             settings_path: "".to_string(),
+        },
+        devin: AssistantSetupStatus {
+            dir_path: devin_dir.to_string_lossy().into_owned(),
+            data_path: devin_database.to_string_lossy().into_owned(),
+            exists: devin_database.is_file(),
+            script_path: String::new(),
+            source_script_path: String::new(),
+            settings_path: String::new(),
         },
         claude_sources: claude_sources
             .into_iter()

@@ -93,6 +93,10 @@
             <img class="assistant-logo" src="/static/mcode-logo.svg" alt="MiniMax Code" />
             <span class="agent-name-tooltip">MiniMax Code</span>
           </button>
+          <button class="assistant-badge-btn" data-value="devin" data-i18n-title="agent_devin" title="Devin CLI" aria-label="Devin CLI">
+            <img class="assistant-logo" src="/static/favicon-v2.png" alt="Devin CLI" />
+            <span class="agent-name-tooltip" data-i18n="agent_devin">Devin CLI</span>
+          </button>
         </div>
       </div>
 
@@ -1544,6 +1548,18 @@ cd TokenUsageInsights</code></pre>
           <p class="modal-text" data-i18n="mcode_setup_step_3_desc">MiniMax Code 的本地日誌未提供費用欄位，本看板會依 session 回報的 Token 數量，對照 <code>pricing.csv</code> 的模型單價估算費用；工作目錄與 Session 名稱則取自 MiniMax Code 的 runtime 資料庫。</p>
         </div>
       </div>
+      <!-- Devin CLI Setup Content -->
+      <div class="modal-body" id="setup-body-devin" style="display: none;">
+        <p class="modal-text" data-i18n="devin_setup_modal_intro">This dashboard reads locally recorded per-call token usage from Devin CLI's SQLite database. It opens the database read-only and requires no extra hooks.</p>
+        <div class="modal-section">
+          <h3 data-i18n="devin_source_title">Local usage database</h3>
+          <p class="modal-text"><span data-i18n="devin_source_path">Detected SQLite file:</span> <code id="lbl-detected-home-devin">~/.local/share/devin/cli/sessions.db</code></p>
+        </div>
+        <div class="modal-section">
+          <h3 data-i18n="devin_cost_title">Usage and estimated cost</h3>
+          <p class="modal-text" data-i18n="devin_cost_desc">Only per-call usage recorded locally by Devin CLI is read. Cost uses available model prices; calls without a matching price remain unpriced rather than free. These estimates are not an actual bill.</p>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -1625,6 +1641,7 @@ cd TokenUsageInsights</code></pre>
             <option value="pi">Pi Coding Agent</option>
             <option value="omp">OMP</option>
             <option value="mcode">MiniMax Code</option>
+            <option value="devin" data-i18n="agent_devin">Devin CLI</option>
           </select>
         </label>
         <div id="usage-import-validation" class="usage-import-validation" role="status"></div>

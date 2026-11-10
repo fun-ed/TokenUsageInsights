@@ -4,6 +4,19 @@
 
 ## [未發行]
 
+## [10.0.28] - 2026-11-10
+
+### 新增
+
+- 新增 Devin CLI 本機用量來源，唯讀 `~/.local/share/devin/cli/sessions.db` 的 `sessions` 與 `message_nodes`；遵循 `XDG_DATA_HOME`，`DEVIN_DIR` 可覆寫來源 root。只採用本機逐次呼叫用量、metadata 中的模型與 effort，不呼叫雲端 API、不重複計入 ATIF，並依來源隔離 identity 與 request/message 去重。
+- 依 Devin 官方 `devin models list --format json` 牌價新增 SWE 1.6／1.7、SWE 2 Lightning 與 Muse Wonder 1.0 定價。SWE 2 與 SWE 2 Flash 只公布 Free tier，沒有數值 USD 費率；未公布的模型維持未定價，不從來源 USD 或 ACU 推算費用。
+- 依 [Anthropic 官方定價](https://platform.claude.com/docs/en/about-claude/pricing) 新增 Fable 5.2：每百萬 Token 輸入／快取讀取／輸出為 US$8／0.20／40，Fast 為 US$16／0.40／80；標準模式 Batch 欄位為 US$4／0.10／20。沿用既有模型比對與快取寫入計價規則。
+
+### 相容性與發行
+
+- Devin 沿用既有資料庫 schema，新增助理類型、來源設定與設定 API 欄位。更新現有版本範圍內的 Rust 相依，包括 Tokio 1.54.1、Serde 1.0.229 與 serde_json 1.0.154，未新增直接相依套件。
+- 發行範圍為 Apple Silicon／Intel macOS `.tar.gz`、DMG 與 `SHA256SUMS`；不發布 Linux 二進位或 npm Registry 套件。費用為估算，不代表實際帳單。
+
 ## [10.0.27] - 2026-11-06
 
 ### 修正與改善
@@ -1169,7 +1182,9 @@
 - 修正行動版側邊欄遮擋、黑畫面、標題擠壓、圖表導覽索引與年度版面問題。
 - 修正並補齊多個 Gemini、Claude、GPT 與 GPT-OSS 模型的定價規則。
 
-[未發行]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.26...HEAD
+[未發行]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.28...HEAD
+[10.0.28]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.27...v10.0.28
+[10.0.27]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.26...v10.0.27
 [10.0.26]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.25...v10.0.26
 [10.0.21]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.20...v10.0.21
 [10.0.20]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.19...v10.0.20

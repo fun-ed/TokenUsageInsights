@@ -164,7 +164,7 @@ check_environment() {
 begin_scenario "情境 1：一般安裝目錄"
 home_one="$(new_home one)"
 install_one="${tmp_root}/app"
-install_into "$install_one" "$home_one"
+DEVIN_DIR="${tmp_root}/Devin data" install_into "$install_one" "$home_one"
 unit_one="$(unit_file_for "$home_one")"
 
 if require_unit_file "$unit_one" "一般安裝目錄"; then
@@ -172,6 +172,7 @@ if require_unit_file "$unit_one" "一般安裝目錄"; then
   check_exec_start "$unit_one" "${install_one}/${app_name}" "一般安裝目錄"
   check_environment "$unit_one" "TOKEN_USAGE_INSIGHTS_INSTALL_DIR" "$install_one" "一般安裝目錄"
   check_environment "$unit_one" "PORT" "3003" "一般安裝目錄"
+  check_environment "$unit_one" "DEVIN_DIR" "${tmp_root}/Devin data" "一般安裝目錄"
 fi
 
 begin_scenario "情境 2：安裝目錄含空白與規格符（%）"
@@ -207,6 +208,7 @@ Restart=always
 RestartSec=2
 Environment="PORT=3999"
 Environment="HOST=127.0.0.1"
+Environment="DEVIN_DIR=${tmp_root}/legacy-devin"
 Environment="TOKEN_USAGE_INSIGHTS_SERVICE=1"
 Environment="TOKEN_USAGE_INSIGHTS_INSTALL_DIR=${tmp_root}/app-legacy"
 
@@ -222,6 +224,7 @@ if require_unit_file "$unit_three" "升級既有單元"; then
   check_exec_start "$unit_three" "${install_three}/${app_name}" "升級既有單元"
   check_environment "$unit_three" "PORT" "3999" "升級既有單元"
   check_environment "$unit_three" "HOST" "127.0.0.1" "升級既有單元"
+  check_environment "$unit_three" "DEVIN_DIR" "${tmp_root}/legacy-devin" "升級既有單元"
 fi
 
 begin_scenario "情境 4：shell/token-usage-insights.service 範本"

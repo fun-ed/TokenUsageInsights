@@ -27,6 +27,26 @@ fn write_jsonl(path: &Path, entries: &[Value]) {
     fs::write(path, content).unwrap();
 }
 
+fn devin_session(root: &Path, input: u64) {
+    fs::create_dir_all(root).unwrap();
+    let conn = rusqlite::Connection::open(root.join("sessions.db")).unwrap();
+    conn.execute_batch("CREATE TABLE sessions (id TEXT PRIMARY KEY, working_directory TEXT, backend_type TEXT, model TEXT, title TEXT, created_at INTEGER, last_activity_at INTEGER, main_chain_id INTEGER);
+        CREATE TABLE message_nodes (row_id INTEGER PRIMARY KEY, session_id TEXT, node_id INTEGER, parent_node_id INTEGER, chat_message TEXT, created_at INTEGER, metadata TEXT);
+        INSERT INTO sessions VALUES ('devin-shared', '/example/devin', 'local', 'swe-1-7-medium', 'Synthetic Devin session', 1789120800, 1789120802, 2);").unwrap();
+    for (node, message) in [
+        (
+            1,
+            json!({"message_id":"prompt-1","role":"user","content":"Find synthetic Devin prompt","metadata":{"created_at":"2026-09-11T10:00:00Z"}}),
+        ),
+        (
+            2,
+            json!({"message_id":"reply-1","role":"assistant","content":"Synthetic Devin reply","metadata":{"request_id":"call-1","generation_model":"swe-1-7-medium","created_at":"2026-09-11T10:00:02Z","metrics":{"input_tokens":input,"output_tokens":10,"cache_read_tokens":50}}}),
+        ),
+    ] {
+        conn.execute("INSERT INTO message_nodes (session_id, node_id, parent_node_id, chat_message, created_at) VALUES ('devin-shared', ?1, ?2, ?3, 1789120800000)", rusqlite::params![node, if node == 1 { None } else { Some(1) }, message.to_string()]).unwrap();
+    }
+}
+
 fn codex_session(path: &Path, session: &str, input: u64) {
     write_jsonl(
         path,
@@ -151,8 +171,10 @@ async fn startup_and_manual_sync_reload_extra_homes_without_losing_defaults() {
         ],
     );
     antigravity_session(&remote.join("antigravity"), "native-only", 100);
+    devin_session(&primary.join("devin"), 100);
+    devin_session(&remote.join("devin"), 200);
     let config_path = root.join("insights/config.yaml");
-    fs::write(&config_path, "auto_update: false\nadditional_sources:\n  codex: ['../cloud/laptop/codex']\n  copilot: ['../cloud/laptop/copilot']\n  pi: ['../cloud/laptop/pi']\n  claude: ['../cloud/laptop/claude']\n  omp: ['../cloud/laptop/omp']\n  antigravity: ['../cloud/laptop/antigravity']\n").unwrap();
+    fs::write(&config_path, "auto_update: false\nadditional_sources:\n  codex: ['../cloud/laptop/codex']\n  copilot: ['../cloud/laptop/copilot']\n  pi: ['../cloud/laptop/pi']\n  claude: ['../cloud/laptop/claude']\n  omp: ['../cloud/laptop/omp']\n  antigravity: ['../cloud/laptop/antigravity']\n  devin: ['../cloud/laptop/devin']\n").unwrap();
 
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
@@ -189,6 +211,7 @@ async fn startup_and_manual_sync_reload_extra_homes_without_losing_defaults() {
         "omp",
         "muse",
         "mcode",
+        "devin",
     ] {
         command.env(format!("{}_DIR", tool.to_uppercase()), primary.join(tool));
     }
@@ -239,7 +262,7 @@ async fn startup_and_manual_sync_reload_extra_homes_without_losing_defaults() {
         later.join("codex/sessions").join(rollout),
     )
     .unwrap();
-    fs::write(&config_path, "auto_update: false\nadditional_sources:\n  codex:\n    - '../cloud/laptop/codex'\n    - '../cloud/desktop/codex'\n    - '../cloud/desktop/codex'\n    - '../offline/codex'\n  copilot: ['../cloud/laptop/copilot']\n  pi: ['../cloud/laptop/pi']\n  claude: ['../cloud/laptop/claude']\n  omp: ['../cloud/laptop/omp']\n  antigravity: ['../cloud/laptop/antigravity']\n").unwrap();
+    fs::write(&config_path, "auto_update: false\nadditional_sources:\n  codex:\n    - '../cloud/laptop/codex'\n    - '../cloud/desktop/codex'\n    - '../cloud/desktop/codex'\n    - '../offline/codex'\n  copilot: ['../cloud/laptop/copilot']\n  pi: ['../cloud/laptop/pi']\n  claude: ['../cloud/laptop/claude']\n  omp: ['../cloud/laptop/omp']\n  antigravity: ['../cloud/laptop/antigravity']\n  devin: ['../cloud/laptop/devin']\n").unwrap();
     for _ in 0..2 {
         client
             .get(format!("{}/api/codex/sync", server.url))
@@ -260,6 +283,36 @@ async fn startup_and_manual_sync_reload_extra_homes_without_losing_defaults() {
         assert_eq!(records(&client, &server, "pi").await.len(), 2);
         assert_eq!(records(&client, &server, "omp").await.len(), 2);
     }
+    let devin_rows = records(&client, &server, "devin").await;
+    assert_eq!(devin_rows.len(), 2);
+    assert_eq!(
+        devin_rows
+            .iter()
+            .map(|row| row["tokens"]["input"].as_u64().unwrap())
+            .sum::<u64>(),
+        300
+    );
+    for row in &devin_rows {
+        let source_key = row["source_dir_key"].as_str().unwrap();
+        let details = client.get(format!("{}/api/devin/session/devin-shared?source_kind=devin-cli&source_dir_key={source_key}", server.url)).send().await.unwrap().error_for_status().unwrap().json::<Value>().await.unwrap();
+        assert_eq!(details["metadata"]["cwd"], "/example/devin");
+        assert!(!details["timeline"].as_array().unwrap().is_empty());
+    }
+    let search = client
+        .get(format!(
+            "{}/api/devin/usage/2026-09-11/session-search?q=synthetic%20Devin%20prompt",
+            server.url
+        ))
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json::<Value>()
+        .await
+        .unwrap();
+    assert_eq!(search["matches"].as_array().unwrap().len(), 2);
+    assert_eq!(search["unavailable_sessions"], 0);
     for (assistant, session) in [
         ("codex", "remote"),
         ("codex", "later"),

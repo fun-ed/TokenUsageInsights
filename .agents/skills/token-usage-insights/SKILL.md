@@ -56,6 +56,9 @@ GitHub Actions workflows are intentionally absent. Build, verify, and upload rel
 - Only surviving transcripts can be imported. Each Claude root needs `cleanupPeriodDays` of at least 365 to avoid the 30-day default deletion.
 - The sidebar **總覽** uses the pseudo-assistant `all` to combine daily, monthly, and yearly reports across every assistant and profile. `all` is not an `assistantMeta` entry; use `isAllAssistantsScope()` / `getAssistantMeta('all')` in the frontend and `is_supported_report_assistant()` in handlers. Import, export, import history, rollback, session detail, and rate-limit stay single-assistant only.
 - In total overview mode, preserve per-session assistant/profile badges. Each view shows the Harness ranking and share table sorted by total tokens (with cost share and click-through to the same period of one agent); monthly and yearly also show per-agent stacked charts backed by the `agents` field of each breakdown bucket. The setup guide lists every data source, including each Claude profile from `claude_sources`; manual sync syncs all sources.
+- Before changing Devin CLI import, API, dashboard, or pricing behavior, read `.agents/skills/devin-cli/SKILL.md` for its implementation plan, architecture, data contracts, model rules, and verification/release details.
+- Devin CLI reads `~/.local/share/devin/cli/sessions.db` read-only (`XDG_DATA_HOME` is respected; `DEVIN_DIR` overrides the root). Use local per-call usage and model/effort metadata, preserve source identity and request/message deduplication, and never call Devin cloud APIs or infer cost from source USD/ACU; unknown models remain unpriced.
+
 
 ## Verification and delivery
 

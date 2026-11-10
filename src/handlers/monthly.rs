@@ -190,7 +190,7 @@ fn collect_model_session_details(
             total_cache_read_tokens: model_usage.usage.cache_read_tokens,
             total_cache_write_tokens: model_usage.usage.cache_write_tokens,
             total_reasoning_tokens: model_usage.usage.reasoning_tokens,
-            max_turn_no: entries.iter().map(|entry| entry.turn_no).max().unwrap_or(1),
+            max_turn_no: crate::reporting::session_turn_count(&entries),
             duration_ms,
             total_requests,
             cost_usd: model_usage.usage.cost_usd,

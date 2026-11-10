@@ -129,6 +129,9 @@ const assistantAliasMap = {
   'minimaxcode': 'mcode',
   'mini-max-code': 'mcode',
   'mini_max_code': 'mcode',
+  'devin-cli': 'devin',
+  'devin_cli': 'devin',
+  'devincli': 'devin',
 };
 
 const assistantMeta = {
@@ -231,6 +234,16 @@ const assistantMeta = {
     senderName: 'MINIMAX CODE AGENT',
     highlightColor: '#ff8a6b',
     nameHighlights: ['MiniMax Code'],
+  },
+  devin: {
+    logo: '/static/favicon-v2.png',
+    label: 'Devin CLI',
+    shortLabel: 'Devin',
+    alt: 'Devin CLI',
+    badgeStyle: 'background: rgba(100, 116, 139, 0.15); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.3); display: inline-flex; align-items: center;',
+    senderName: 'DEVIN CLI',
+    highlightColor: '#94a3b8',
+    nameHighlights: ['Devin CLI'],
   },
 };
 
@@ -1135,6 +1148,7 @@ const setupModalTitleKeys = {
   pi: 'pi_setup_modal_title',
   omp: 'omp_setup_modal_title',
   mcode: 'mcode_setup_modal_title',
+  devin: 'devin_setup_modal_title',
 };
 
 function getSetupModalTitleKey(assistant) {
@@ -1162,6 +1176,7 @@ function setSetupModalBody(assistant) {
     pi: 'setup-body-pi',
     omp: 'setup-body-omp',
     mcode: 'setup-body-mcode',
+    devin: 'setup-body-devin',
   };
   const bodyElements = Object.values(bodyIds)
     .filter((bodyId, index, ids) => ids.indexOf(bodyId) === index)
@@ -5310,6 +5325,9 @@ function getSessionSourceBadge(session) {
   if (ompBadge) {
     return ompBadge;
   }
+  if (session.source_kind === 'devin-cli') {
+    return `<span class="badge source-badge" title="Devin CLI">${escapeHtml(t('source_devin_cli'))}</span>`;
+  }
   if (session.source_kind === 'claude-default') {
     return '<span class="badge source-badge" title="Claude Code default profile">Default</span>';
   }
@@ -8367,6 +8385,9 @@ async function loadSetupInfo(assistant = currentAssistant) {
     } else if (resolvedAssistant === 'mcode') {
       const homeLabelMcode = document.getElementById('lbl-detected-home-mcode');
       if (homeLabelMcode) homeLabelMcode.textContent = abbreviateHomePath(data.mcode?.data_path || '');
+    } else if (resolvedAssistant === 'devin') {
+      const homeLabelDevin = document.getElementById('lbl-detected-home-devin');
+      if (homeLabelDevin) homeLabelDevin.textContent = abbreviateHomePath(data.devin?.data_path || '');
     }
 
     // Apply updated language translations
