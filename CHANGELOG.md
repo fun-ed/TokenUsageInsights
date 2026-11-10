@@ -4,6 +4,13 @@
 
 ## [未發行]
 
+## [10.0.29] - 2026-11-10
+
+### 修正
+
+- 修正 Devin 失敗呼叫將 `input_tokens` 記為 `null`、其餘 Token 為零或缺值時，整個來源停止匯入的問題。略過沒有任何用量的呼叫，正常呼叫繼續匯入；非空的無效數值仍回報錯誤並保留既有資料。
+- 新增對應 SQLite fixture，並以隔離資料目錄對真實 Devin 來源執行唯讀匯入驗證。保留 v10.0.28 的功能、模型費率與相依更新。
+
 ## [10.0.28] - 2026-11-10
 
 ### 新增
@@ -1182,7 +1189,8 @@
 - 修正行動版側邊欄遮擋、黑畫面、標題擠壓、圖表導覽索引與年度版面問題。
 - 修正並補齊多個 Gemini、Claude、GPT 與 GPT-OSS 模型的定價規則。
 
-[未發行]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.28...HEAD
+[未發行]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.29...HEAD
+[10.0.29]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.28...v10.0.29
 [10.0.28]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.27...v10.0.28
 [10.0.27]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.26...v10.0.27
 [10.0.26]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.25...v10.0.26

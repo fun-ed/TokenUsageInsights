@@ -221,6 +221,18 @@ fn parse_usage(message: &Value) -> Result<Option<ParsedUsage>, String> {
     let Some(metrics) = metrics_value.as_object() else {
         return Err("Devin message metrics are invalid".to_string());
     };
+    if [
+        "input_tokens",
+        "output_tokens",
+        "cache_read_tokens",
+        "cache_creation_tokens",
+        "cache_write_tokens",
+    ]
+    .iter()
+    .all(|key| token_value(metrics.get(*key)) == Some(0))
+    {
+        return Ok(None);
+    }
     let input = metrics
         .get("input_tokens")
         .and_then(Value::as_u64)
@@ -997,6 +1009,31 @@ mod tests {
             .err()
             .unwrap()
             .contains("input token count is invalid"));
+    }
+
+    #[test]
+    fn failed_generation_with_null_input_does_not_block_other_usage() {
+        let database = TestDatabase::new();
+        database.insert_session("failed-call", "/synthetic", None, "Failed generation");
+        database.insert_message("failed-call", "1", 1_735_689_600,
+            r#"{"message_id":"failed-message","role":"assistant","content":"","metadata":{"generation_model":"glm-5-2","metrics":{"ttft_ms":null,"total_time_ms":26521,"input_tokens":null,"output_tokens":0,"cache_read_tokens":null,"cache_creation_tokens":null}}}"#);
+        database.insert_message(
+            "failed-call",
+            "2",
+            1_735_689_601,
+            &assistant_message(
+                "valid-message",
+                "valid-call",
+                Some("swe-2-high"),
+                10,
+                2,
+                0,
+                None,
+            ),
+        );
+        let sessions = read_sessions(&database.0, &no_cancel).unwrap();
+        assert_eq!(sessions[0].entries.len(), 1);
+        assert_eq!(sessions[0].entries[0].tokens.as_ref().unwrap().total, 12);
     }
 
     #[test]

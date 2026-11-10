@@ -129,10 +129,15 @@
 - Claude Fable 5.2 依 [Anthropic 官方定價](https://platform.claude.com/docs/en/about-claude/pricing) 使用每百萬 Token 輸入／快取讀取／輸出標準 US$8／0.20／40、Fast US$16／0.40／80、Batch US$4／0.10／20；依既有模型比對與快取寫入規則計價。
 - 不新增 SQLite schema migration 或直接相依；新增 Devin 助理類型、來源設定與設定 API 欄位。更新現有版本範圍內的 Rust 相依鎖定版本。
 
+### 2.17 Devin 空用量失敗呼叫（v10.0.29）
+
+- 失敗呼叫可能具有 metrics 物件，但 `input_tokens` 為 `null`，其餘 Token 為零、`null` 或缺值。所有 Token 都沒有用量時略過該呼叫，不阻擋同一來源的正常紀錄；非空的無效數值仍視為損毀資料。
+
+
 ## 3. 版本與發行
 
 - Cargo 與 npm 版本為 `10.x.y`；release tag 為對應的 `v10.x.y`。不可重用 upstream 的 `v1.x.y`。
-- 目前 fork 版本為 `v10.0.28`；原始碼選擇性同步基準仍為 upstream `v1.6.5`，最新變更見 §2.16。Windows statusline 命令、verbatim 路徑、Windows workspace URI、PowerShell 測試及 workflow 均未移植；本次未新增直接相依。
+- 目前 fork 版本為 `v10.0.29`；原始碼選擇性同步基準仍為 upstream `v1.6.5`，最新變更見 §2.17。Windows statusline 命令、verbatim 路徑、Windows workspace URI、PowerShell 測試及 workflow 均未移植；本次未新增直接相依。
 - 本次發行資產為 macOS `aarch64-apple-darwin` 與 `x86_64-apple-darwin` 的 `.tar.gz`、`.dmg` 及 `SHA256SUMS`；不建置或發布 Linux 二進位，也不發布 npm Registry 套件。
 - 發行包內容：執行檔、`static/`、`shell/`、`scripts/`、`pricing.csv`、`README.md`、`LICENSE`、`VERSION`。
 - `scripts/get.sh` 與 npm 安裝器從 `fun-ed/TokenUsageInsights` 下載。

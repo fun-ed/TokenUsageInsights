@@ -50,6 +50,7 @@ flowchart TD
 - `sessions` 提供會話 ID、標題與工作目錄；`message_nodes.chat_message` 保存 JSON 訊息。每次呼叫的用量取自 assistant 訊息的 `metadata.metrics`，模型取自 `metadata.generation_model`。
 - Devin 的 `input_tokens` 不含 `cache_read_tokens`。總 Token 為輸入、輸出、快取讀取及快取建立之和；`context_input_tokens` 是當下上下文，不是額外用量。
 - 同一個 request／message 可能有多個保存快照。以呼叫身份去重，保留完整用量；只有文字、沒有用量的 assistant 訊息不產生計費紀錄。Session 目前模型不能用來推測缺失的歷史模型。
+- 失敗呼叫可將 `input_tokens` 記為 `null`，其餘 Token 為零或空值。所有 Token 都沒有用量時略過該呼叫；非空的無效數值仍應回報錯誤，保留既有目的端資料。真實來源驗收要檢查是否確實新增用量，不能只看服務完成同步的旗標。
 - `metadata.created_at` 的 RFC3339 時間優先；SQLite `message_nodes.created_at` 為 Unix 秒。寫入前統一為 UTC。時間軸與用量使用相同的穩定回合識別。
 - 來源身份包含 `assistant_type=devin`、`source_kind=devin-cli`、正規化根目錄的 `source_dir_key` 與 Session ID。同步只替換該來源、該 Session 的原生紀錄，保留手動匯入及其他來源。
 - 使用唯讀 SQLite 交易取得一致快照。資料庫或查詢損毀時保留目的端資料；來源暫時離線或會話已刪除時也保留歷史。主 DB 與 WAL 的變更都要讓增量指紋失效。
