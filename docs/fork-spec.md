@@ -181,3 +181,19 @@ rg -n 'doggy8088' scripts npm README*.md package.json   # 應無輸出
 - v10.0.8 已移除 Rust 與看板中所有 Windows 分支，包括 `cfg(windows)`、`cfg!(windows)`、Windows 行程查詢、PowerShell 服務 runner、ZIP 發行包、`.exe` 命名、`%USERPROFILE%` 展開、WSL `cmd.exe` 開啟瀏覽器、Windows 路徑正規化與相關測試，也移除了 `zip` 相依套件。
 - v10.0.8 起 `src/updater.rs` 的 `GITHUB_OWNER` 為 `fun-ed`，`update` 與背景 auto-update 只查詢本 fork 的 release。
 - 之後不得重新引入上述任何項目；同步 upstream 時依 §4 檢查。
+
+## 6. 待改善項目
+
+### 6.1 Devin 模型定價與 models.dev 對應
+
+狀態：待實作。2026-11-10 於 v10.0.30 核對，使用者要求保留作為後續改善，不在本次發行修改計價。
+
+目前 `src/reporting.rs::record_usage` 只有 OMP 使用 `calculate_omp_usage_cost`，能依模型 ID 查找 models.dev。Devin 使用一般名稱比對，尚未完整對應 models.dev 的 `provider/model`，主要依賴 `pricing.csv`。models.dev 收錄某模型，不代表 Devin 已使用該筆價格。
+
+- 當日 `https://models.dev/api.json` 未收錄 SWE 1.6／1.7、SWE 2 Lightning、SWE 2／Flash 或 Adaptive。SWE 1.6／1.7、SWE 2 Lightning 已有內建官方牌價；Muse Wonder 1.0 在 models.dev 有收錄，目前 Devin 仍使用內建牌價。
+- `devin models list --format json` 已公布 Adaptive 每百萬 Token 輸入／快取讀取／輸出為 US$0.50／0.10／2，內建牌價尚未補上。SWE 2／Flash 僅列 `Free`，繼續維持未定價，不推論歷史呼叫為零元。
+- 後續先重新取得 Devin CLI 清單與 models.dev 目錄，逐項核對正規化名稱、provider、數值費率與價格來源。釐清 Devin 費率與其他 provider 的差異，再決定映射及備援順序；不可直接沿用 OMP 的來源回報費用 fallback。
+- 涵蓋 `fast`、`lightning`、`priority`、Fusion 等變體，保存思考強度並避免誤套其他型號或速度的價格。缺少可靠費率時維持未定價，避免讓費用合計看起來完整。
+- 驗收須列出當前模型清單的已對應、內建備援與未定價項目，並測試別名、速度變體、provider 費率差異、models.dev 離線與未知模型；維持本機來源唯讀及來源隔離，不改寫歷史原始用量。
+
+主要修改範圍為 `src/devin.rs`、`src/pricing.rs`、`src/reporting.rs`、`pricing.csv` 及對應測試。實作時更新本規格與 `.agents/skills/devin-cli/SKILL.md` 的計價契約。
