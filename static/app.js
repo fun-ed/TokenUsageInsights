@@ -236,7 +236,7 @@ const assistantMeta = {
     nameHighlights: ['MiniMax Code'],
   },
   devin: {
-    logo: '/static/favicon-v2.png',
+    logo: '/static/devin-logo.svg',
     label: 'Devin CLI',
     shortLabel: 'Devin',
     alt: 'Devin CLI',

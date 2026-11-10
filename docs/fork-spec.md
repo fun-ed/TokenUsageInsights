@@ -137,7 +137,7 @@
 ## 3. 版本與發行
 
 - Cargo 與 npm 版本為 `10.x.y`；release tag 為對應的 `v10.x.y`。不可重用 upstream 的 `v1.x.y`。
-- 目前 fork 版本為 `v10.0.29`；原始碼選擇性同步基準仍為 upstream `v1.6.5`，最新變更見 §2.17。Windows statusline 命令、verbatim 路徑、Windows workspace URI、PowerShell 測試及 workflow 均未移植；本次未新增直接相依。
+- 目前 fork 版本為 `v10.0.30`；原始碼選擇性同步基準仍為 upstream `v1.6.5`。本版改用本機保存的官方 Devin 標誌，統一側欄與共用助理圖示；保留 §2.17 的匯入修正，不變更資料庫、API、環境變數或相依套件。
 - 本次發行資產為 macOS `aarch64-apple-darwin` 與 `x86_64-apple-darwin` 的 `.tar.gz`、`.dmg` 及 `SHA256SUMS`；不建置或發布 Linux 二進位，也不發布 npm Registry 套件。
 - 發行包內容：執行檔、`static/`、`shell/`、`scripts/`、`pricing.csv`、`README.md`、`LICENSE`、`VERSION`。
 - `scripts/get.sh` 與 npm 安裝器從 `fun-ed/TokenUsageInsights` 下載。

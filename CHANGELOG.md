@@ -4,6 +4,12 @@
 
 ## [未發行]
 
+## [10.0.30] - 2026-11-10
+
+### 修正
+
+- Devin CLI 改用本機保存的官方 Devin 標誌，統一側欄與共用助理圖示，並以白底確保深色介面清楚可見。
+
 ## [10.0.29] - 2026-11-10
 
 ### 修正
@@ -1189,7 +1195,8 @@
 - 修正行動版側邊欄遮擋、黑畫面、標題擠壓、圖表導覽索引與年度版面問題。
 - 修正並補齊多個 Gemini、Claude、GPT 與 GPT-OSS 模型的定價規則。
 
-[未發行]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.29...HEAD
+[未發行]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.30...HEAD
+[10.0.30]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.29...v10.0.30
 [10.0.29]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.28...v10.0.29
 [10.0.28]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.27...v10.0.28
 [10.0.27]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.26...v10.0.27

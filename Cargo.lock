@@ -1474,7 +1474,7 @@ checksum = "fd3ca314f692efd6c868f8408f53fe444634a845f96c028b97d35f6a1f79f0ee"
 
 [[package]]
 name = "token-usage-insights"
-version = "10.0.29"
+version = "10.0.30"
 dependencies = [
  "axum",
  "chrono",
