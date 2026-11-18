@@ -541,19 +541,38 @@ fn read_response_models(conn: &Connection) -> rusqlite::Result<HashMap<u32, Stri
     Ok(result)
 }
 
-fn model_label(uid: &str) -> &str {
+pub(crate) fn model_label(model_id: &str) -> &str {
     // Verified with `agy models`; keep aliases explicit so unknown future models
     // cannot silently inherit an unrelated model's price.
-    match uid {
+    match model_id {
+        "gemini-4-carbon-medium" => "Gemini 4 Carbon (Medium)",
+        "gemini-4-carbon-high" => "Gemini 4 Carbon (High)",
+        "gemini-4-carbon-low" => "Gemini 4 Carbon (Low)",
         "agy-demo-medium" | "gemini-4-argon-medium" => "Gemini 4 Argon (Medium)",
         "agy-demo-high" | "gemini-4-argon-high" => "Gemini 4 Argon (High)",
         "agy-demo-low" | "gemini-4-argon-low" => "Gemini 4 Argon (Low)",
+        "gemini-4-hydrogen-high" => "Gemini 4 Hydrogen (High)",
+        "gemini-4-hydrogen-xhigh" => "Gemini 4 Hydrogen (XHigh)",
+        "gemini-4-hydrogen-medium" => "Gemini 4 Hydrogen (Medium)",
+        "gemini-4-hydrogen-low" => "Gemini 4 Hydrogen (Low)",
+        "gemini-pro-orchestrator" => "Orchestrator (Carbon)",
+        "gemini-pro-orchestrator-argon" => "Orchestrator (Argon)",
+        // Verified from Antigravity Orchestrator session `gen_metadata` and
+        // https://antigravity.google/docs/models#orchestrator (execution runs on Gemini 4 Hydrogen).
+        "gemini-flash-worker-agy" => "Gemini 4 Hydrogen",
         "gemini-3.8-flash-high" => "Gemini 3.8 Flash (High)",
         "gemini-3.8-flash-medium" => "Gemini 3.8 Flash (Medium)",
         "gemini-3.8-flash-low" => "Gemini 3.8 Flash (Low)",
         "gemini-flash-demo" => "Gemini 3.7 Flash",
         "gemini-3.8-flash-demo" => "Gemini 3.8 Flash",
-        _ => uid,
+        "claude-opus-5-5-low" => "Claude Opus 5.5 (Low)",
+        "claude-opus-5-5-medium" => "Claude Opus 5.5 (Medium)",
+        "claude-opus-5-5-high" => "Claude Opus 5.5 (High)",
+        "claude-sonnet-5-5-low" => "Claude Sonnet 5.5 (Low)",
+        "claude-sonnet-5-5-medium" => "Claude Sonnet 5.5 (Medium)",
+        "claude-sonnet-5-5-high" => "Claude Sonnet 5.5 (High)",
+        "gpt-oss-120b-medium" => "GPT-OSS 120B (Medium)",
+        _ => model_id,
     }
 }
 
@@ -660,6 +679,43 @@ mod tests {
         assert_eq!(models[&10], "Gemini 4 Argon (Medium)");
         assert_eq!(models[&20], "new-unknown-model");
         assert!(!models.contains_key(&1));
+    }
+
+    #[test]
+    fn gemini_4_carbon_agy_model_ids_map_to_display_names() {
+        // IDs verified with `agy models` on 2026-11-12.
+        assert_eq!(
+            model_label("gemini-4-carbon-medium"),
+            "Gemini 4 Carbon (Medium)"
+        );
+        assert_eq!(
+            model_label("gemini-4-carbon-high"),
+            "Gemini 4 Carbon (High)"
+        );
+        assert_eq!(model_label("gemini-4-carbon-low"), "Gemini 4 Carbon (Low)");
+    }
+
+    #[test]
+    fn antigravity_2026_11_agy_model_ids_map_to_display_names() {
+        // IDs verified with `agy models` on 2026-11-15.
+        for (model_id, expected) in [
+            ("gemini-4-hydrogen-high", "Gemini 4 Hydrogen (High)"),
+            ("gemini-4-hydrogen-xhigh", "Gemini 4 Hydrogen (XHigh)"),
+            ("gemini-4-hydrogen-medium", "Gemini 4 Hydrogen (Medium)"),
+            ("gemini-4-hydrogen-low", "Gemini 4 Hydrogen (Low)"),
+            ("gemini-pro-orchestrator", "Orchestrator (Carbon)"),
+            ("gemini-pro-orchestrator-argon", "Orchestrator (Argon)"),
+            ("gemini-flash-worker-agy", "Gemini 4 Hydrogen"),
+            ("claude-opus-5-5-low", "Claude Opus 5.5 (Low)"),
+            ("claude-opus-5-5-medium", "Claude Opus 5.5 (Medium)"),
+            ("claude-opus-5-5-high", "Claude Opus 5.5 (High)"),
+            ("claude-sonnet-5-5-low", "Claude Sonnet 5.5 (Low)"),
+            ("claude-sonnet-5-5-medium", "Claude Sonnet 5.5 (Medium)"),
+            ("claude-sonnet-5-5-high", "Claude Sonnet 5.5 (High)"),
+            ("gpt-oss-120b-medium", "GPT-OSS 120B (Medium)"),
+        ] {
+            assert_eq!(model_label(model_id), expected);
+        }
     }
 
     #[test]

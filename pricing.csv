@@ -56,10 +56,21 @@ Grok 4.7 Fast (Extra High),xAI API,1M Tokens,4.00,1.00,12.00,N/A
 Grok Build 0.1 (<200k),xAI API,1M Tokens,1.00,0.20,2.00,N/A
 Grok Build 0.1 (>200k),xAI API,1M Tokens,2.00,0.40,4.00,N/A
 Grok Build 0.1,xAI API,1M Tokens,1.00,0.20,2.00,N/A
+Gemini 4 Hydrogen,Google AI,1M Tokens,1.50,0.075,7.50,0.75/0.0375/3.75
+Gemini 4 Hydrogen (Low),Google AI,1M Tokens,1.50,0.075,7.50,0.75/0.0375/3.75
+Gemini 4 Hydrogen (Medium),Google AI,1M Tokens,1.50,0.075,7.50,0.75/0.0375/3.75
+Gemini 4 Hydrogen (High),Google AI,1M Tokens,1.50,0.075,7.50,0.75/0.0375/3.75
+Gemini 4 Hydrogen (Extra),Google AI,1M Tokens,1.50,0.075,7.50,0.75/0.0375/3.75
+Gemini 4 Carbon,Google AI,1M Tokens,4.00,0.20,20.00,2.00/0.10/10.00
+Gemini 4 Carbon (Medium),Google AI,1M Tokens,4.00,0.20,20.00,2.00/0.10/10.00
+Gemini 4 Carbon (High),Google AI,1M Tokens,4.00,0.20,20.00,2.00/0.10/10.00
+Gemini 4 Carbon (Low),Google AI,1M Tokens,4.00,0.20,20.00,2.00/0.10/10.00
 Gemini 4 Argon,Google AI,1M Tokens,2.00,0.10,10.00,1.00/0.05/5.00
 Gemini 4 Argon (Medium),Google AI,1M Tokens,2.00,0.10,10.00,1.00/0.05/5.00
 Gemini 4 Argon (High),Google AI,1M Tokens,2.00,0.10,10.00,1.00/0.05/5.00
 Gemini 4 Argon (Low),Google AI,1M Tokens,2.00,0.10,10.00,1.00/0.05/5.00
+Orchestrator (Carbon),Google AI,1M Tokens,4.00,0.20,20.00,2.00/0.10/10.00
+Orchestrator (Argon),Google AI,1M Tokens,4.00,0.20,20.00,2.00/0.10/10.00
 Gemini 3.8 Flash,Google AI,1M Tokens,1.50,0.15,7.50,0.75/0.075/3.75
 Gemini 3.8 Flash (Medium),Google AI,1M Tokens,1.50,0.15,7.50,0.75/0.075/3.75
 Gemini 3.8 Flash (High),Google AI,1M Tokens,1.50,0.15,7.50,0.75/0.075/3.75
@@ -136,6 +147,7 @@ Claude Fable 5.2,Global,1M Tokens,8.00,0.20,40.00,4.00/0.10/20.00
 Claude Fable 5.2-fast,Global,1M Tokens,16.00,0.40,80.00,N/A
 Claude Mythos 5,Global,1M Tokens,10.00,1.00,50.00,N/A
 Claude Mythos 5.1,Global,1M Tokens,10.00,0.25,50.00,N/A
+Claude Mythos 5.2,Global,1M Tokens,8.00,0.20,40.00,N/A
 Claude Opus 5.5-fast,Global,1M Tokens,8.00,0.40,40.00,N/A
 Claude Opus 5,Global,1M Tokens,5.00,0.50,25.00,N/A
 Claude Opus 4.8-fast,Global,1M Tokens,10.00,1.00,50.00,N/A
@@ -243,6 +255,8 @@ claude-4-sonnet,Cursor,1M Tokens,3.00,0.30,15.00,N/A
 claude-4-sonnet-1m,Cursor,1M Tokens,3.00,0.30,15.00,N/A
 claude-haiku-5-5,Cursor,1M Tokens,0.10,0.01,0.50,N/A
 claude-4-5-haiku,Cursor,1M Tokens,1.00,0.10,5.00,N/A
+claude-fable-5-2,Cursor,1M Tokens,8.00,0.20,40.00,N/A
+claude-mythos-5-2,Cursor,1M Tokens,8.00,0.20,40.00,N/A
 claude-fable-5,Cursor,1M Tokens,10.00,1.00,50.00,N/A
 claude-opus-5-5-fast,Cursor,1M Tokens,8.00,0.40,40.00,N/A
 claude-opus-5-5,Cursor,1M Tokens,4.00,0.20,20.00,N/A

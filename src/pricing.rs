@@ -829,6 +829,59 @@ mod tests {
     }
 
     #[test]
+    fn antigravity_v1_7_models_use_packaged_standard_pricing() {
+        let rules: Vec<_> = load_pricing_rules()
+            .into_iter()
+            .filter(|rule| !rule.model_name.starts_with(MODELS_DEV_RULE_PREFIX))
+            .collect();
+        for (models, input_price, cache_price, output_price) in [
+            (
+                &[
+                    "Gemini 4 Carbon",
+                    "Gemini 4 Carbon (Medium)",
+                    "Gemini 4 Carbon (High)",
+                    "Gemini 4 Carbon (Low)",
+                    "gemini-4-carbon",
+                    "Orchestrator (Carbon)",
+                    "Orchestrator (Argon)",
+                ][..],
+                4.0,
+                0.20,
+                20.0,
+            ),
+            (
+                &[
+                    "Gemini 4 Hydrogen",
+                    "Gemini 4 Hydrogen (Low)",
+                    "Gemini 4 Hydrogen (Medium)",
+                    "Gemini 4 Hydrogen (High)",
+                    "Gemini 4 Hydrogen (Extra)",
+                    "Gemini 4 Hydrogen (XHigh)",
+                    "gemini-4-hydrogen",
+                    "gemini-4-hydrogen-xhigh",
+                ][..],
+                1.50,
+                0.075,
+                7.50,
+            ),
+        ] {
+            for &model in models {
+                for (input, output, cache, expected) in [
+                    (1_000_000, 0, 0, input_price),
+                    (0, 1_000_000, 0, output_price),
+                    (0, 0, 1_000_000, cache_price),
+                ] {
+                    let cost = calculate_cost(&rules, model, input, output, cache, 0, 0).unwrap();
+                    assert!(
+                        (cost - expected).abs() < 1e-9,
+                        "{model}: {cost}, expected {expected}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn gemini_4_argon_thinking_levels_use_packaged_pricing() {
         let rules: Vec<_> = load_pricing_rules()
             .into_iter()
@@ -929,6 +982,9 @@ mod tests {
                     "claude-fable-5-2",
                     "Claude Fable 5.2",
                     "anthropic/claude-fable-5-2",
+                    "claude-mythos-5-2",
+                    "Claude Mythos 5.2",
+                    "anthropic/claude-mythos-5-2",
                 ],
                 8.0,
                 0.20,
