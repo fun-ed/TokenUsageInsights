@@ -56,14 +56,20 @@ impl From<SessionFileError> for SessionDetailsError {
     }
 }
 
+#[derive(Default)]
+pub(crate) struct CopilotTimelineContext<'a> {
+    pub turn_reasoning_efforts: Option<&'a db::SessionTurnReasoningEfforts>,
+    pub turn_call_checkpoints: Option<&'a crate::timeline::TurnCallCheckpoints>,
+    pub agent_filter: Option<&'a str>,
+    pub session_model: Option<&'a str>,
+}
+
 pub(crate) fn parse_session_timeline_file(
     assistant: &str,
     source_kind: &str,
     filepath: &Path,
     db_entries: &HashMap<u32, (TokenStats, String)>,
-    turn_reasoning_efforts: &db::SessionTurnReasoningEfforts,
-    copilot_agent_filter: Option<&str>,
-    copilot_session_model: Option<&str>,
+    copilot: CopilotTimelineContext<'_>,
 ) -> SessionTimelineResult {
     let mut timeline = Vec::new();
     let mut metadata = HashMap::new();
@@ -107,10 +113,11 @@ pub(crate) fn parse_session_timeline_file(
         "copilot" => parse_copilot_timeline_filtered(
             reader,
             db_entries,
+            copilot.turn_call_checkpoints,
             &mut timeline,
             &mut metadata,
-            copilot_agent_filter,
-            copilot_session_model,
+            copilot.agent_filter,
+            copilot.session_model,
         ),
         "codex" => parse_codex_timeline(reader, db_entries, &mut timeline, &mut metadata),
         "claude" => parse_claude_timeline(reader, db_entries, &mut timeline, &mut metadata),
@@ -121,8 +128,11 @@ pub(crate) fn parse_session_timeline_file(
         "muse" => parse_muse_timeline(reader, db_entries, &mut timeline, &mut metadata),
         _ => return Err((StatusCode::BAD_REQUEST, "不支援的助理類型".to_string())),
     }
-    if assistant == "copilot" && source_kind == "copilot-app" {
-        enrich_copilot_app_timeline_efforts(&mut timeline, turn_reasoning_efforts);
+    if let Some(efforts) = copilot
+        .turn_reasoning_efforts
+        .filter(|_| assistant == "copilot" && source_kind == "copilot-app")
+    {
+        enrich_copilot_app_timeline_efforts(&mut timeline, efforts);
     }
     let display_effort = metadata
         .get("selected_model")
@@ -305,20 +315,39 @@ fn legacy_timeline(timeline: Vec<TimelineItem>) -> Vec<LegacyEventWrapper> {
         .collect()
 }
 
+/// `parent_session_id` disambiguates a Copilot App / CLI synthetic sub-agent
+/// session (`<parent>__<agent>`, stored with `parent_session_id = <parent>`)
+/// from a standalone session that shares the same `session_id` (review
+/// comment 4403291365, thread PRRT_kwDOTOgsec6xOCAC):
+///
+/// * `None` — the caller did not pass a parent;
+///   [`db::ParentSessionScope::Unfiltered`] keeps the existing API behaviour
+///   (main-session lookups are unaffected).
+/// * `Some(p)` with empty `p` — explicitly select the parentless
+///   (main / standalone) rows.
+/// * `Some(p)` — select only session `p`'s sub-agent rows, so the detail page
+///   can open the sub-agent alone.
 pub(crate) fn load_session_details(
     assistant: String,
     session_id: String,
     requested_source_kind: Option<String>,
     source_dir_key: Option<String>,
+    parent_session_id: Option<String>,
 ) -> Result<serde_json::Value, SessionDetailsError> {
+    let parent_scope = match parent_session_id.as_deref() {
+        None => db::ParentSessionScope::Unfiltered,
+        Some("") => db::ParentSessionScope::RootOnly,
+        Some(parent) => db::ParentSessionScope::ChildOf(parent),
+    };
     let conn = db::get_db_conn()
         .map_err(|error| SessionDetailsError::new(StatusCode::INTERNAL_SERVER_ERROR, error))?;
-    let lookup = db::get_session_assistant_and_transcript(
+    let lookup = db::get_session_assistant_and_transcript_in_parent_scope(
         &conn,
         &assistant,
         &session_id,
         requested_source_kind.as_deref(),
         source_dir_key.as_deref(),
+        parent_scope,
     )
     .map_err(|error| SessionDetailsError::new(StatusCode::NOT_FOUND, error))?;
     if lookup.assistant_type != assistant {
@@ -399,7 +428,7 @@ pub(crate) fn load_session_details(
     }
 
     let session_data = lookup
-        .load_data(&conn, &session_id)
+        .load_data_in_parent_scope(&conn, &session_id, parent_scope)
         .map_err(|error| SessionDetailsError::new(StatusCode::INTERNAL_SERVER_ERROR, error))?;
     let session_cwd = session_data.cwd;
     let session_model = session_data.model;
@@ -420,9 +449,12 @@ pub(crate) fn load_session_details(
             &lookup.source_kind,
             &filepath,
             &db_entries,
-            &turn_reasoning_efforts,
-            agent_filter,
-            session_model.as_deref(),
+            CopilotTimelineContext {
+                turn_reasoning_efforts: Some(&turn_reasoning_efforts),
+                turn_call_checkpoints: Some(&session_data.turn_call_checkpoints),
+                agent_filter,
+                session_model: session_model.as_deref(),
+            },
         )
         .map_err(|(status, error)| SessionDetailsError::new(status, error))?
     };
@@ -603,6 +635,7 @@ mod tests {
         crate::timeline::parse_copilot_timeline_filtered(
             reader,
             &db_entries,
+            None,
             &mut timeline,
             &mut metadata,
             Some(agent),
@@ -716,9 +749,11 @@ mod tests {
             "copilot-cli",
             &resolved,
             &db_entries,
-            &HashMap::new(),
-            Some(agent),
-            Some("gpt-5.4-mini"),
+            CopilotTimelineContext {
+                agent_filter: Some(agent),
+                session_model: Some("gpt-5.4-mini"),
+                ..Default::default()
+            },
         )
         .unwrap();
 
@@ -794,9 +829,10 @@ mod tests {
             "copilot-app",
             &filepath,
             &db_entries,
-            &turn_efforts,
-            None,
-            None,
+            CopilotTimelineContext {
+                turn_reasoning_efforts: Some(&turn_efforts),
+                ..Default::default()
+            },
         )
         .unwrap();
         let main_effort = main_timeline.iter().find_map(|item| match item {
@@ -814,9 +850,12 @@ mod tests {
             "copilot-app",
             &filepath,
             &db_entries,
-            &turn_efforts,
-            Some("child-agent"),
-            Some("child-model"),
+            CopilotTimelineContext {
+                turn_reasoning_efforts: Some(&turn_efforts),
+                agent_filter: Some("child-agent"),
+                session_model: Some("child-model"),
+                ..Default::default()
+            },
         )
         .unwrap();
         let child_effort = child_timeline.iter().find_map(|item| match item {

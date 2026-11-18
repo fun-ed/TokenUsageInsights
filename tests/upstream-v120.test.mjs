@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { runInNewContext } from 'node:vm';
-import { compareSessionRows, sessionIdentityKey, parentSessionIdentityKey } from '../static/session-utils.js';
+import { buildSessionParentIndex, compareSessionRows, sessionIdentityKey } from '../static/session-utils.js';
 
 const appSource = readFileSync(new URL('../static/app.js', import.meta.url), 'utf8');
 const indexSource = readFileSync(new URL('../static/index.html', import.meta.url), 'utf8');
@@ -57,8 +57,13 @@ for (const period of ['Monthly', 'Yearly']) {
 }
 
 test('orphan Claude subagents keep their badge and do not attach to another source', () => {
+  const sessionParentIndexFor = appFunction('sessionParentIndexFor', {
+    buildSessionParentIndex,
+    sessionParentIndexSource: null,
+    sessionParentIndexValue: null,
+  });
   const flatten = appFunction('sortAndGetFlatSessions', {
-    compareSessionRows, sessionIdentityKey, parentSessionIdentityKey,
+    compareSessionRows, sessionIdentityKey, sessionParentIndexFor,
   });
   const rows = flatten([
     { assistant_type: 'claude', source_kind: 'claude-default', source_dir_key: 'default', session_id: 'parent', session_name: 'Main' },
