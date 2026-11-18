@@ -4,6 +4,19 @@
 
 ## [未發行]
 
+## [10.0.31] - 2026-11-18
+
+### 新增與修正
+
+- 選擇性移植 upstream v1.7.0。Copilot App 對帳本機事件檔與 SQLite 的逐次呼叫，補匯只有事件檔的新會話，保留父子身分與推理強度，並修正快取寫入及推理 Token 被重複計入總量的問題。
+- 匯入依回合涵蓋範圍判斷重複與衝突，看板顯示略過的衝突筆數，Prompt 搜尋可在資料刷新時延續查詢。
+- 更新 Antigravity 模型別名及 Gemini 4 Carbon／Hydrogen、Orchestrator 和 Claude Mythos 5.2 隨附定價，保留 fork 既有 Fable 5.2 Fast 定價。手動定價檢查依 Antigravity 官方模型清單核對。
+
+### 資料與發行
+
+- SQLite 啟動時正規化會話與父層 ID，更新用量唯一索引，並新增 `import_batches.skipped_conflicts`。既有 Claude／OMP 多來源與 Devin CLI 行為保留。
+- 發行 Apple Silicon 與 Intel 的 macOS 壓縮檔、DMG 與 `SHA256SUMS`。
+
 ## [10.0.30] - 2026-11-10
 
 ### 修正
@@ -1195,7 +1208,8 @@
 - 修正行動版側邊欄遮擋、黑畫面、標題擠壓、圖表導覽索引與年度版面問題。
 - 修正並補齊多個 Gemini、Claude、GPT 與 GPT-OSS 模型的定價規則。
 
-[未發行]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.30...HEAD
+[未發行]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.31...HEAD
+[10.0.31]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.30...v10.0.31
 [10.0.30]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.29...v10.0.30
 [10.0.29]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.28...v10.0.29
 [10.0.28]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.27...v10.0.28
