@@ -829,7 +829,7 @@ mod tests {
     }
 
     #[test]
-    fn antigravity_v1_7_models_use_packaged_standard_pricing() {
+    fn antigravity_gemini_4_models_use_packaged_standard_pricing() {
         let rules: Vec<_> = load_pricing_rules()
             .into_iter()
             .filter(|rule| !rule.model_name.starts_with(MODELS_DEV_RULE_PREFIX))
@@ -863,6 +863,20 @@ mod tests {
                 1.50,
                 0.075,
                 7.50,
+            ),
+            (
+                &[
+                    "Gemini 4 Neon",
+                    "Gemini 4 Neon (Low)",
+                    "Gemini 4 Neon (Medium)",
+                    "Gemini 4 Neon (High)",
+                    "Gemini 4 Neon (Extra)",
+                    "google/gemini-4-neon",
+                    "gemini-4-neon-extra",
+                ][..],
+                3.00,
+                0.15,
+                15.00,
             ),
         ] {
             for &model in models {
