@@ -5,7 +5,6 @@ import { runInNewContext } from 'node:vm';
 
 const appSource = readFileSync(new URL('../static/app.js', import.meta.url), 'utf8');
 const indexSource = readFileSync(new URL('../static/index.html', import.meta.url), 'utf8');
-const cssSource = readFileSync(new URL('../static/css/components.css', import.meta.url), 'utf8');
 
 function appFunction(name, globals = {}) {
   const source = appSource.match(new RegExp(`^(?:async )?function ${name}\\([^]*?^}`, 'm'))?.[0];
@@ -21,34 +20,19 @@ const isValidRange = appFunction('isValidRange', { parseUtcDate, RANGE_MAX_DAYS:
 const getIsoWeekRange = appFunction('getIsoWeekRange', { addUtcDays, getUtcDateString });
 const getRecentWeeksRange = appFunction('getRecentWeeksRange', { addUtcDays, getUtcDateString });
 
-test('daily, monthly, and yearly selectors stack tab dropdowns over full-width period inputs', () => {
-  for (const [sectionId, inputId] of [
-    ['daily-selector-section', 'date-select'],
-    ['monthly-selector-section', 'month-select'],
-    ['yearly-selector-section', 'year-select'],
-  ]) {
-    const sectionStart = indexSource.indexOf(`id="${sectionId}"`);
-    const inputStart = indexSource.indexOf(`id="${inputId}"`, sectionStart);
-    assert.ok(sectionStart >= 0 && inputStart > sectionStart, `missing ${inputId}`);
-    const rowStart = indexSource.lastIndexOf(
-      '<div style="display: flex; flex-direction: column; gap: 8px; width: 100%;">',
-      inputStart,
-    );
-    assert.ok(rowStart > sectionStart, `${inputId} does not have its own selector row`);
-    assert.match(
-      indexSource.slice(rowStart, inputStart),
-      /class="hover-dropdown tab-hover-dropdown range-tab-dropdown"/,
-    );
-    const inputTag = indexSource.slice(inputStart, indexSource.indexOf('>', inputStart) + 1);
-    assert.match(inputTag, /width: 100%/);
-    assert.doesNotMatch(inputTag, /flex: 1\.5|min-width: 120px/);
+test('the period switcher offers four accessible buttons and keeps all date selectors', () => {
+  const switcher = indexSource.match(/<div\b[^>]*id="period-switcher"[^>]*>([^]*?)<\/div>/);
+  assert.ok(switcher);
+  assert.match(switcher[0], /role="group"/);
+  const buttons = [...switcher[1].matchAll(/<button\b[^>]*data-period="([^"]+)"[^>]*aria-pressed="([^"]+)"/g)];
+  assert.deepEqual(buttons.map(([, period, pressed]) => [period, pressed]), [
+    ['daily', 'true'], ['monthly', 'false'], ['yearly', 'false'], ['range', 'false'],
+  ]);
+  for (const inputId of ['date-select', 'month-select', 'year-select']) {
+    const input = indexSource.match(new RegExp(`<[^>]+id="${inputId}"[^>]*>`));
+    assert.ok(input, `missing ${inputId}`);
+    assert.match(input[0], /width: 100%/);
   }
-
-  const styles = cssSource.match(/\.app-sidebar \.range-tab-dropdown\s*\{([^}]*)\}/)?.[1];
-  assert.ok(styles);
-  assert.match(styles, /flex: 0 0 auto !important;/);
-  assert.match(styles, /width: 100%;/);
-  assert.match(styles, /min-width: 0 !important;/);
 });
 
 test('ISO week presets stay Monday-to-Sunday across the calendar-year boundary', () => {

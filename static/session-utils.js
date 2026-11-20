@@ -84,6 +84,47 @@ export function sessionSearchMatchKey(session) {
   return sessionIdentityKey(session);
 }
 
+export function readSessionChatReply(data) {
+  const reasoning = typeof data.reasoning === 'string' ? data.reasoning : null;
+  if (typeof data.reply_text === 'string') {
+    return { text: data.reply_text, reasoning: reasoning ?? '' };
+  }
+
+  // Older session APIs prepend reasoning to reply using this exact wrapper.
+  const reply = typeof data.reply === 'string' ? data.reply : '';
+  const prefix = '<details><summary>🧠 LLM Reasoning Process</summary>\n';
+  const separator = '\n</details>\n\n';
+  const reasoningEnd = reply.startsWith(prefix) ? reply.indexOf(separator, prefix.length) : -1;
+  if (reasoningEnd === -1) return { text: reply, reasoning: reasoning ?? '' };
+
+  return {
+    text: reply.slice(reasoningEnd + separator.length),
+    reasoning: reasoning ?? reply.slice(prefix.length, reasoningEnd),
+  };
+}
+
+export function normalizeSessionChatText(text) {
+  return text.normalize('NFKC').replace(/\s+/gu, ' ').trim();
+}
+
+export function createSessionChatSearch(query) {
+  const text = normalizeSessionChatText(query);
+  return text ? new RegExp(text.replace(/[.*+?^$()[\]{}|\\]/g, '\\$&'), 'iu') : null;
+}
+
+export function sessionChatSearchExcerpt(text, match) {
+  const contextLength = 48;
+  const contextWindow = contextLength * 2;
+  const matchEnd = match.index + match[0].length;
+  const before = [...text.slice(Math.max(0, match.index - contextWindow), match.index)];
+  const after = [...text.slice(matchEnd, matchEnd + contextWindow)];
+  return {
+    before: (before.length > contextLength ? '…' : '') + before.slice(-contextLength).join(''),
+    match: match[0],
+    after: after.slice(0, contextLength).join('') + (after.length > contextLength ? '…' : ''),
+  };
+}
+
 // 搜尋重跑門檻的資料指紋：必須涵蓋 sessionSearchMatchKey 的完整鍵空間
 // （含 parent_session_id），否則父層單獨變更時指紋不變、搜尋不重跑，
 // 舊命中鍵無法匹配新列。既有 5 元維持裸欄位（parity）；父層正規化

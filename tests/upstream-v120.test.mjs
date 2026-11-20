@@ -84,26 +84,21 @@ test('timeline metadata prefers API values and falls back to the selected subage
       return elements.get(id);
     } },
     abbreviateHomePath: value => value, formatToken: value => String(value),
-    renderReasoningEffortBadge: () => '', t: key => key,
-    currentSessionCwd: '/fixture', currentSessionModel: 'model',
-    currentSessionAgentNickname: 'lead', currentSessionAgentRole: 'verify',
-    currentSessionTotalTokens: 0, currentSessionCacheTokens: 0,
-    currentSessionInputTokens: 0, currentSessionOutputTokens: 0,
-    currentSessionReasoningTokens: 0,
+    formatSessionModelDisplay: value => value,
+    renderReasoningEffortBadge: () => '', t: key => key, formatNumber, formatCost,
   };
-  const render = appFunction('renderTimeline', globals);
-  render({ timeline: [] });
+  const render = appFunction('updateSessionChatSummary', globals);
+  const selected = { cwd: '/fixture', model: 'model', agent_nickname: 'lead', agent_role: 'verify' };
+  render(selected);
   assert.equal(elements.get('meta-nickname').textContent, 'lead');
   assert.equal(elements.get('meta-role').textContent, 'verify');
-  assert.equal(elements.get('drawer-meta-role-container').style.display, 'flex');
-  render({ metadata: { agent_nickname: 'api-name', agent_role: 'api-role' }, timeline: [] });
+  assert.equal(elements.get('drawer-meta-role-container').hidden, false);
+  render(selected, { agent_nickname: 'api-name', agent_role: 'api-role' });
   assert.equal(elements.get('meta-nickname').textContent, 'api-name');
   assert.equal(elements.get('meta-role').textContent, 'api-role');
-  globals.currentSessionAgentNickname = '';
-  globals.currentSessionAgentRole = '';
-  render({ timeline: [] });
-  assert.equal(elements.get('drawer-meta-nickname-container').style.display, 'none');
-  assert.equal(elements.get('drawer-meta-role-container').style.display, 'none');
+  render({});
+  assert.equal(elements.get('drawer-meta-nickname-container').hidden, true);
+  assert.equal(elements.get('drawer-meta-role-container').hidden, true);
 });
 
 for (const assistant of ['antigravity', 'copilot']) {

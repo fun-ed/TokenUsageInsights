@@ -16,6 +16,10 @@ import {
   rootSessionIdentityKey,
   sessionIdentityKey,
   sessionSearchDataFingerprint,
+  createSessionChatSearch,
+  normalizeSessionChatText,
+  readSessionChatReply,
+  sessionChatSearchExcerpt,
   sessionSearchMatchKey,
 } from '../static/session-utils.js';
 
@@ -38,6 +42,52 @@ test('reminder titles are labeled Magpie only for Magpie working directories', (
   assert.equal(formatSessionNameDisplay(title, '/work/project'), title);
   assert.equal(formatSessionNameDisplay(title), title);
   assert.equal(formatSessionNameDisplay('VPA install', '/tmp/magpie-work'), 'VPA install');
+});
+
+test('session chat reads replies and separates reasoning from older session APIs', () => {
+  const wrapReasoning = (reasoning, reply) =>
+    '<details><summary>🧠 LLM Reasoning Process</summary>\n'
+    + reasoning + '\n</details>\n\n' + reply;
+
+  assert.deepEqual(readSessionChatReply({ reply: '**Legacy reply**' }), {
+    text: '**Legacy reply**',
+    reasoning: '',
+  });
+  assert.deepEqual(readSessionChatReply({ reply: wrapReasoning('Recorded reasoning', 'Visible reply') }), {
+    text: 'Visible reply',
+    reasoning: 'Recorded reasoning',
+  });
+  assert.deepEqual(readSessionChatReply({ reply: wrapReasoning('Reasoning-only event', '') }), {
+    text: '',
+    reasoning: 'Reasoning-only event',
+  });
+  assert.deepEqual(
+    readSessionChatReply({ reply_text: '', reasoning: 'Structured reasoning', reply: 'Old content' }),
+    { text: '', reasoning: 'Structured reasoning' },
+  );
+  assert.deepEqual(readSessionChatReply({ reply: '<details><summary>Example</summary>Reply</details>' }), {
+    text: '<details><summary>Example</summary>Reply</details>',
+    reasoning: '',
+  });
+});
+
+test('session chat search finds literal, case-insensitive phrases across whitespace and Unicode variants', () => {
+  const text = normalizeSessionChatText('訊息：ＦＩＸ\n\tCafe\u0301 [v2.0]?');
+  const search = createSessionChatSearch('  fix  CAFÉ [v2.0]?  ');
+
+  assert.equal(search.exec(text)?.[0], 'FIX Café [v2.0]?');
+  assert.equal(search.test('fix café v2x0'), false);
+  assert.equal(createSessionChatSearch(' \n\t '), null);
+});
+
+test('session chat search returns a bounded excerpt around a match beyond the message preview', () => {
+  const text = normalizeSessionChatText('👋'.repeat(1800) + ' 最後一段 ' + '界'.repeat(1800));
+  const match = createSessionChatSearch('最後一段').exec(text);
+  const excerpt = sessionChatSearchExcerpt(text, match);
+
+  assert.equal(excerpt.before, '…' + '👋'.repeat(47) + ' ');
+  assert.equal(excerpt.match, '最後一段');
+  assert.equal(excerpt.after, ' ' + '界'.repeat(47) + '…');
 });
 
 const mixedTimestampSessions = [
