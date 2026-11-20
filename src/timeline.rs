@@ -46,6 +46,10 @@ pub enum TimelineItem {
         status_type: String, // 'session_start', 'session_end', 'compaction', etc.
         message: String,
     },
+    Reasoning {
+        timestamp: String,
+        reasoning: String,
+    },
 }
 
 pub fn parse_antigravity_timeline(
@@ -101,13 +105,15 @@ pub fn parse_antigravity_timeline(
                 if let Some(content) = step.get("content").and_then(|content| content.as_str()) {
                     match crate::antigravity::parse_system_message(content) {
                         Some(crate::antigravity::AntigravitySystemMessage::AgentMessage {
+                            sender,
                             content: prompt,
-                            ..
                         }) => {
                             timeline.push(TimelineItem::UserPrompt {
                                 timestamp,
                                 prompt,
-                                context: None,
+                                context: Some(serde_json::json!({
+                                    "antigravity_agent_sender": sender,
+                                })),
                                 turn_no,
                             });
                         }
@@ -1165,7 +1171,7 @@ fn codex_tool_arguments(payload: &serde_json::Value) -> serde_json::Value {
 }
 
 pub fn parse_codex_timeline(
-    reader: BufReader<File>,
+    reader: impl BufRead,
     db_entries: &HashMap<u32, (TokenStats, String)>,
     timeline: &mut Vec<TimelineItem>,
     metadata: &mut HashMap<String, serde_json::Value>,
@@ -1233,10 +1239,26 @@ pub fn parse_codex_timeline(
                     current_context_model = Some(model.to_string());
                 }
                 timeline.push(TimelineItem::SystemStatus {
-                    timestamp,
+                    timestamp: timestamp.clone(),
                     status_type: "session_start".to_string(),
                     message: "會話開始 (Session Started)".to_string(),
                 });
+                if let Some(instructions) = payload
+                    .get("base_instructions")
+                    .and_then(|value| {
+                        value
+                            .get("text")
+                            .and_then(Value::as_str)
+                            .or_else(|| value.as_str())
+                    })
+                    .filter(|text| !text.trim().is_empty())
+                {
+                    timeline.push(TimelineItem::SystemStatus {
+                        timestamp,
+                        status_type: "system_prompt".to_string(),
+                        message: instructions.to_string(),
+                    });
+                }
             }
             "turn_context" => {
                 if let Some(cwd) = payload.get("cwd") {
@@ -1334,56 +1356,88 @@ pub fn parse_codex_timeline(
                         .get("role")
                         .and_then(|role| role.as_str())
                         .unwrap_or("");
-                    if role == "user" {
-                        if let Some(content) = payload.get("content") {
-                            let prompt = codex_text_from_content(content);
-                            if !prompt.trim().is_empty()
-                                && seen_user_messages.insert(format!("{}:{}", timestamp, prompt))
-                            {
-                                current_turn_no += 1;
-                                next_agent_turn_no = current_turn_no;
-                                timeline.push(TimelineItem::UserPrompt {
-                                    timestamp,
-                                    prompt,
-                                    context: None,
-                                    turn_no: current_turn_no,
-                                });
-                            }
+                    let Some(content) = payload.get("content") else {
+                        continue;
+                    };
+                    let message = codex_text_from_content(content);
+                    if message.trim().is_empty() {
+                        continue;
+                    }
+
+                    match role {
+                        "user" if seen_user_messages.insert(format!("{timestamp}:{message}")) => {
+                            current_turn_no += 1;
+                            next_agent_turn_no = current_turn_no;
+                            timeline.push(TimelineItem::UserPrompt {
+                                timestamp,
+                                prompt: message,
+                                context: None,
+                                turn_no: current_turn_no,
+                            });
                         }
-                    } else if role == "assistant" {
-                        if let Some(content) = payload.get("content") {
-                            let reply = codex_text_from_content(content);
-                            if !reply.trim().is_empty()
-                                && seen_agent_messages.insert(format!("{}:{}", timestamp, reply))
+                        "assistant"
+                            if seen_agent_messages.insert(format!("{timestamp}:{message}")) =>
+                        {
+                            let turn_no = next_agent_turn_no.max(1);
+                            let tokens = if emitted_turn_tokens.insert(turn_no) {
+                                db_entries.get(&turn_no).map(|(stats, model)| {
+                                    current_model = model.clone();
+                                    stats.clone()
+                                })
+                            } else {
+                                None
+                            };
+                            let reply_effort = if current_context_model.as_deref()
+                                == Some(current_model.as_str())
                             {
-                                let turn_no = next_agent_turn_no.max(1);
-                                let tokens = if emitted_turn_tokens.insert(turn_no) {
-                                    db_entries.get(&turn_no).map(|(stats, model)| {
-                                        current_model = model.clone();
-                                        stats.clone()
-                                    })
-                                } else {
-                                    None
-                                };
-                                let reply_effort = if current_context_model.as_deref()
-                                    == Some(current_model.as_str())
-                                {
-                                    reasoning_effort.clone()
-                                } else {
-                                    None
-                                };
-                                timeline.push(TimelineItem::AgentReply {
-                                    timestamp,
-                                    reply,
-                                    reasoning: None,
-                                    turn_no,
-                                    model: current_model.clone(),
-                                    tokens,
-                                    duration_ms: None,
-                                    reasoning_effort: reply_effort,
-                                });
-                            }
+                                reasoning_effort.clone()
+                            } else {
+                                None
+                            };
+                            timeline.push(TimelineItem::AgentReply {
+                                timestamp,
+                                reply: message,
+                                reasoning: None,
+                                turn_no,
+                                model: current_model.clone(),
+                                tokens,
+                                duration_ms: None,
+                                reasoning_effort: reply_effort,
+                            });
                         }
+                        "system" | "developer" => {
+                            let status_type = if role == "system" {
+                                "system_prompt"
+                            } else {
+                                "developer_instruction"
+                            };
+                            timeline.push(TimelineItem::SystemStatus {
+                                timestamp,
+                                status_type: status_type.to_string(),
+                                message,
+                            });
+                        }
+                        _ => {}
+                    }
+                }
+                "reasoning" => {
+                    let reasoning = payload
+                        .get("summary")
+                        .and_then(Value::as_array)
+                        .into_iter()
+                        .flatten()
+                        .filter(|part| {
+                            part.get("type").and_then(Value::as_str) == Some("summary_text")
+                        })
+                        .filter_map(|part| part.get("text").and_then(Value::as_str))
+                        .filter(|text| !text.trim().is_empty())
+                        .collect::<Vec<_>>()
+                        .join("\n\n");
+                    if !reasoning.is_empty() {
+                        timeline.push(TimelineItem::Reasoning {
+                            timestamp,
+                            reasoning,
+                        });
                     }
                 }
                 "function_call" => {
@@ -1496,6 +1550,11 @@ pub fn parse_claude_timeline(
             Ok(value) => value,
             Err(_) => continue,
         };
+
+        // Request snapshots can replay earlier messages and tool calls.
+        if event.get("type").and_then(Value::as_str) == Some("api-request-blob") {
+            continue;
+        }
 
         let timestamp = event
             .get("timestamp")
@@ -1954,6 +2013,39 @@ mod tests {
                 _ => None,
             })
             .collect()
+    }
+
+    #[test]
+    fn claude_timeline_ignores_request_context_replays() {
+        let (reader, path) = reader_for_events(&[
+            r#"{"type":"user","message":{"role":"user","content":"Run the check"}}"#,
+            r#"{"type":"assistant","timestamp":"2026-11-18T09:00:00Z","requestId":"req1","message":{"role":"assistant","model":"Claude","content":[{"type":"text","text":"Checking now."},{"type":"tool_use","id":"tool1","name":"check"}]}}"#,
+            r#"{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tool1","content":"Real result"}]}}"#,
+            r#"{"type":"api-request-blob","message":{"role":"user","content":"Run the check"}}"#,
+            r#"{"type":"api-request-blob","message":{"role":"assistant","content":[{"type":"text","text":"Checking now."},{"type":"tool_use","id":"tool1","name":"check"}]}}"#,
+            r#"{"type":"api-request-blob","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tool1","content":"Replayed result"}]}}"#,
+            r#"{"type":"assistant","timestamp":"2026-11-18T09:01:00Z","requestId":"req2","message":{"role":"assistant","model":"Claude","content":[{"type":"text","text":"Checking now."}]}}"#,
+        ]);
+        let mut timeline = Vec::new();
+        parse_claude_timeline(reader, &HashMap::new(), &mut timeline, &mut HashMap::new());
+        fs::remove_file(path).unwrap();
+
+        assert_eq!(
+            extract_replies(&timeline),
+            ["Checking now.", "Checking now."]
+        );
+        assert!(matches!(
+            timeline.as_slice(),
+            [
+                TimelineItem::UserPrompt { .. },
+                TimelineItem::AgentReply { timestamp: first, .. },
+                TimelineItem::ToolStep { stdout, status, .. },
+                TimelineItem::AgentReply { timestamp: second, .. },
+            ] if first == "2026-11-18T09:00:00Z"
+                && second == "2026-11-18T09:01:00Z"
+                && stdout == "Real result"
+                && status == "success"
+        ));
     }
 
     /// A shared events.jsonl containing a main agent turn, a subagent
@@ -2883,13 +2975,13 @@ mod tests {
             r#"{"type":"event_msg","timestamp":"a1","payload":{"type":"agent_message","message":"first reply"}}"#,
             r#"{"type":"turn_context","payload":{"model":"gpt-5.2","reasoning_effort":"low"}}"#,
             r#"{"type":"event_msg","timestamp":"u2","payload":{"type":"user_message","message":"second prompt"}}"#,
-            r#"{"type":"event_msg","timestamp":"a2","payload":{"type":"agent_message","message":"second reply"}}"#,
+            r#"{"type":"response_item","timestamp":"a2","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"second reply"}]}}"#,
             r#"{"type":"turn_context","payload":{"model":"gpt-5.1","effort":null}}"#,
             r#"{"type":"event_msg","timestamp":"u3","payload":{"type":"user_message","message":"third prompt"}}"#,
             r#"{"type":"event_msg","timestamp":"a3","payload":{"type":"agent_message","message":"third reply"}}"#,
             r#"{"type":"turn_context","payload":{"model":"gpt-5.0","effort":"high"}}"#,
             r#"{"type":"event_msg","timestamp":"u4","payload":{"type":"user_message","message":"fourth prompt"}}"#,
-            r#"{"type":"event_msg","timestamp":"a4","payload":{"type":"agent_message","message":"fourth reply"}}"#,
+            r#"{"type":"response_item","timestamp":"a4","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"fourth reply"}]}}"#,
             r#"{"type":"turn_context","payload":{"model":"gpt-4.9"}}"#,
             r#"{"type":"event_msg","timestamp":"u5","payload":{"type":"user_message","message":"fifth prompt"}}"#,
             r#"{"type":"event_msg","timestamp":"a5","payload":{"type":"agent_message","message":"fifth reply"}}"#,
@@ -4361,8 +4453,9 @@ mod antigravity_tests {
 
         assert!(matches!(
             &timeline[0],
-            TimelineItem::UserPrompt { prompt, turn_no: 1, .. }
+            TimelineItem::UserPrompt { prompt, context: Some(context), turn_no: 1, .. }
                 if prompt == "Audit the Antigravity hierarchy."
+                    && context["antigravity_agent_sender"] == parent_id
         ));
         assert!(matches!(
             &timeline[1],
