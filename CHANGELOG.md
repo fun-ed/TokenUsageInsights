@@ -4,6 +4,18 @@
 
 ## [未發行]
 
+## [10.0.32] - 2026-11-20
+
+### 新增與修正
+
+- 會話詳情新增可搜尋的對話檢視，並顯示助理回覆。Claude 載入請求快照時略過歷史對話的重複副本。
+- 看板新增日、月、年、區間快速切換按鈕，區間提供週預設與自訂起訖日。
+- 新增 Gemini 4 Neon 和 Low、Medium、High、Extra 的標準與 Batch 隨附牌價。
+
+### 發行
+
+- 選擇性同步 upstream v1.8.1，發行 Apple Silicon 與 Intel 的 macOS 壓縮檔、DMG 與 `SHA256SUMS`。
+
 ## [10.0.31] - 2026-11-18
 
 ### 新增與修正
@@ -1208,7 +1220,8 @@
 - 修正行動版側邊欄遮擋、黑畫面、標題擠壓、圖表導覽索引與年度版面問題。
 - 修正並補齊多個 Gemini、Claude、GPT 與 GPT-OSS 模型的定價規則。
 
-[未發行]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.31...HEAD
+[未發行]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.32...HEAD
+[10.0.32]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.31...v10.0.32
 [10.0.31]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.30...v10.0.31
 [10.0.30]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.29...v10.0.30
 [10.0.29]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.28...v10.0.29

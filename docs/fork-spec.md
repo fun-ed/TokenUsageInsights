@@ -140,10 +140,16 @@
 - Copilot App 以既有註冊來源隔離事件檔、`session-store.db` 與 `data.db.sessions`，逐筆對帳並保留父子歸屬及推理強度。已匯入但來源不完整的資料保留並待重試。SQLite 使用正規化的父層身分區隔同名會話，批次匯入依回合覆蓋判斷衝突並記錄 `skipped_conflicts`。
 - Antigravity 同步正規化官方模型別名，更新內建牌價與手動定價檢查的模型清單。保留 fork 的 models.dev 比對及既有 Fable 5.2 Fast 定價。
 
+### 2.19 選擇性同步 upstream v1.8.1（v10.0.32）
+
+- 同步範圍為 `v1.7.0...v1.8.1`。移植可搜尋的會話對話檢視、舊回覆呈現相容性、Claude 快照去重、期間切換按鈕與助理名稱標籤。會話詳情繼續從各來源的本機逐字稿讀取。
+- `b591292` 新增 Gemini 4 Neon 與 Low、Medium、High、Extra 隨附定價。每百萬 Token 輸入／快取讀取／輸出標準費率為 US$3／0.15／15，Batch 費率為 US$1.50／0.075／7.50。
+- `b64eff85` 修正的兩張 Codex 文件截圖未收錄於 fork，沿用現有的看板截圖。
+
 ## 3. 版本與發行
 
 - Cargo 與 npm 版本為 `10.x.y`；release tag 為對應的 `v10.x.y`。不可重用 upstream 的 `v1.x.y`。
-- 目前 fork 版本為 `v10.0.31`，原始碼選擇性同步基準為 upstream `v1.7.0`。
+- 目前 fork 版本為 `v10.0.32`，原始碼選擇性同步基準為 upstream `v1.8.1`。
 - 本次發行資產為 macOS `aarch64-apple-darwin` 與 `x86_64-apple-darwin` 的 `.tar.gz`、`.dmg` 及 `SHA256SUMS`；不建置或發布 Linux 二進位，也不發布 npm Registry 套件。
 - 發行包內容：執行檔、`static/`、`shell/`、`scripts/`、`pricing.csv`、`README.md`、`LICENSE`、`VERSION`。
 - `scripts/get.sh` 與 npm 安裝器從 `fun-ed/TokenUsageInsights` 下載。
