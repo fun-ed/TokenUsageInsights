@@ -146,10 +146,16 @@
 - `b591292` 新增 Gemini 4 Neon 與 Low、Medium、High、Extra 隨附定價。每百萬 Token 輸入／快取讀取／輸出標準費率為 US$3／0.15／15，Batch 費率為 US$1.50／0.075／7.50。
 - `b64eff85` 修正的兩張 Codex 文件截圖未收錄於 fork，沿用現有的看板截圖。
 
+### 2.20 選擇性同步 upstream v1.8.2（v10.0.33）
+
+- 同步範圍為 `v1.8.1...v1.8.2`。隨附定價新增 GPT-6.2 Sol／Astra 的標準、長上下文、Batch 與 Cursor 費率。
+- Antigravity CLI 辨識 `gemini-pro-orchestrator-neon` 並以 Orchestrator (Neon) 計價。既有 SQLite 紀錄透過版本化遷移重新正規化模型名稱。手動定價檢查同時支援新舊 Planner 表格。
+- 定價檢查維持手動產生報告。日期驗證與自動更新的布林判斷已有等效實作。
+
 ## 3. 版本與發行
 
 - Cargo 與 npm 版本為 `10.x.y`；release tag 為對應的 `v10.x.y`。不可重用 upstream 的 `v1.x.y`。
-- 目前 fork 版本為 `v10.0.32`，原始碼選擇性同步基準為 upstream `v1.8.1`。
+- 目前 fork 版本為 `v10.0.33`，原始碼選擇性同步基準為 upstream `v1.8.2`。
 - 本次發行資產為 macOS `aarch64-apple-darwin` 與 `x86_64-apple-darwin` 的 `.tar.gz`、`.dmg` 及 `SHA256SUMS`；不建置或發布 Linux 二進位，也不發布 npm Registry 套件。
 - 發行包內容：執行檔、`static/`、`shell/`、`scripts/`、`pricing.csv`、`README.md`、`LICENSE`、`VERSION`。
 - `scripts/get.sh` 與 npm 安裝器從 `fun-ed/TokenUsageInsights` 下載。

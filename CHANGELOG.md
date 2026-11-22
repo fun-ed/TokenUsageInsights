@@ -4,6 +4,18 @@
 
 ## [未發行]
 
+## [10.0.33] - 2026-11-22
+
+### 新增與修正
+
+- 補上 GPT-6.2 Sol 與 GPT-6.2 Astra 的標準、長上下文、Batch 與 Cursor 隨附定價。提示 Token 超過 272,000 時採用長上下文費率。
+- 將 Antigravity CLI 的 `gemini-pro-orchestrator-neon` 顯示為 Orchestrator (Neon)，補上標準與 Batch 費率，並更新既有 SQLite 紀錄中的模型別名。
+- 手動定價檢查支援 Antigravity 官方文件新版 Planner 表格。
+
+### 發行
+
+- 選擇性同步 upstream v1.8.2，發行 Apple Silicon 與 Intel 的 macOS 壓縮檔、DMG 與 `SHA256SUMS`。
+
 ## [10.0.32] - 2026-11-20
 
 ### 新增與修正
@@ -1220,7 +1232,8 @@
 - 修正行動版側邊欄遮擋、黑畫面、標題擠壓、圖表導覽索引與年度版面問題。
 - 修正並補齊多個 Gemini、Claude、GPT 與 GPT-OSS 模型的定價規則。
 
-[未發行]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.32...HEAD
+[未發行]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.33...HEAD
+[10.0.33]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.32...v10.0.33
 [10.0.32]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.31...v10.0.32
 [10.0.31]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.30...v10.0.31
 [10.0.30]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.29...v10.0.30
