@@ -1320,6 +1320,31 @@ mod tests {
     }
 
     #[test]
+    fn gpt_6_2_models_use_packaged_pricing_at_prompt_threshold() {
+        let rules: Vec<_> = load_pricing_rules()
+            .into_iter()
+            .filter(|rule| !rule.model_name.starts_with(MODELS_DEV_RULE_PREFIX))
+            .collect();
+        for (model, short, long) in [
+            ("gpt-6.2-sol", (2.0, 0.10, 10.0), (4.0, 0.20, 15.0)),
+            ("gpt-6.2-astra", (8.0, 0.40, 40.0), (16.0, 0.80, 60.0)),
+        ] {
+            for (cache, (input_rate, cache_rate, output_rate)) in
+                [(172_000, short), (172_001, long)]
+            {
+                let cost = calculate_cost(&rules, model, 100_000, 50_000, cache, 0, 0).unwrap();
+                let expected =
+                    (100_000.0 * input_rate + cache as f64 * cache_rate + 50_000.0 * output_rate)
+                        / 1_000_000.0;
+                assert!(
+                    (cost - expected).abs() < 1e-9,
+                    "{model}: {cost} != {expected}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn gpt_6_1_models_use_packaged_pricing_at_prompt_boundaries() {
         let rules: Vec<_> = load_pricing_rules()
             .into_iter()
