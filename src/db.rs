@@ -444,7 +444,7 @@ const COPILOT_CWD_BACKFILL_MIGRATION_KEY: &str = "migration:copilot_cwd_backfill
 /// One-time normalization of existing Antigravity `model` and `model_id`
 /// values (including unchanged `legacy` hook rows and imported rows bypassed by
 /// native `PARSER_VERSION` re-imports) via `antigravity_metadata::model_label`.
-const ANTIGRAVITY_MODEL_LABEL_MIGRATION_KEY: &str = "migration:antigravity_model_labels_v1";
+const ANTIGRAVITY_MODEL_LABEL_MIGRATION_KEY: &str = "migration:antigravity_model_labels_v2";
 
 #[derive(Default)]
 enum InitialUserPromptState {
@@ -1679,7 +1679,7 @@ pub fn init_db(conn: &Connection) -> Result<(), String> {
     run_copilot_parent_collision_recovery_migration(conn)?;
     run_parent_session_id_normalization_migration_v2(conn)?;
     run_parent_session_id_normalization_migration_v3(conn)?;
-    run_antigravity_model_label_migration_v1(conn)?;
+    run_antigravity_model_label_migration_v2(conn)?;
 
     Ok(())
 }
@@ -3141,7 +3141,7 @@ fn run_parent_session_id_normalization_migration_v3(conn: &Connection) -> Result
     Ok(())
 }
 
-fn apply_antigravity_model_label_migration_v1(conn: &Connection) -> Result<usize, String> {
+fn apply_antigravity_model_label_migration_v2(conn: &Connection) -> Result<usize, String> {
     let mut updates: Vec<(i64, Option<String>, Option<String>)> = Vec::new();
     {
         let mut stmt = conn
@@ -3199,7 +3199,7 @@ fn apply_antigravity_model_label_migration_v1(conn: &Connection) -> Result<usize
 ///
 /// 涵蓋既有未變動 `usage-*.jsonl` hook（`legacy`）與曾匯入的既有紀錄，
 /// 避免 native `PARSER_VERSION` 升級重匯入路徑遺漏這些列的 `model` / `model_id` 別名轉換。
-fn run_antigravity_model_label_migration_v1(conn: &Connection) -> Result<(), String> {
+fn run_antigravity_model_label_migration_v2(conn: &Connection) -> Result<(), String> {
     let migration_done: bool = conn
         .query_row(
             "SELECT EXISTS(SELECT 1 FROM sync_state WHERE filename = ?)",
@@ -3212,12 +3212,12 @@ fn run_antigravity_model_label_migration_v1(conn: &Connection) -> Result<(), Str
         return Ok(());
     }
 
-    conn.execute_batch("SAVEPOINT antigravity_model_labels_v1;")
+    conn.execute_batch("SAVEPOINT antigravity_model_labels_v2;")
         .map_err(|error| format!("開啟 Antigravity 模型名稱遷移 SAVEPOINT 失敗: {error}"))?;
 
-    let updated_rows = match apply_antigravity_model_label_migration_v1(conn) {
+    let updated_rows = match apply_antigravity_model_label_migration_v2(conn) {
         Ok(count) => {
-            conn.execute_batch("RELEASE SAVEPOINT antigravity_model_labels_v1;")
+            conn.execute_batch("RELEASE SAVEPOINT antigravity_model_labels_v2;")
                 .map_err(|error| {
                     format!("提交 Antigravity 模型名稱遷移 SAVEPOINT 失敗: {error}")
                 })?;
@@ -3225,8 +3225,8 @@ fn run_antigravity_model_label_migration_v1(conn: &Connection) -> Result<(), Str
         }
         Err(error) => {
             let _ = conn.execute_batch(
-                "ROLLBACK TO SAVEPOINT antigravity_model_labels_v1;
-                 RELEASE SAVEPOINT antigravity_model_labels_v1;",
+                "ROLLBACK TO SAVEPOINT antigravity_model_labels_v2;
+                 RELEASE SAVEPOINT antigravity_model_labels_v2;",
             );
             return Err(error);
         }
@@ -11550,8 +11550,8 @@ mod tests {
         let mut orch_entry = sample_import_record().entry;
         orch_entry.session_id = "hook-orch".to_owned();
         orch_entry.turn_no = 1;
-        orch_entry.model = Some("gemini-pro-orchestrator".to_owned());
-        orch_entry.model_id = Some("gemini-pro-orchestrator".to_owned());
+        orch_entry.model = Some("gemini-pro-orchestrator-neon".to_owned());
+        orch_entry.model_id = Some("gemini-pro-orchestrator-neon".to_owned());
 
         let mut worker_entry = sample_import_record().entry;
         worker_entry.session_id = "hook-worker".to_owned();
@@ -11568,10 +11568,9 @@ mod tests {
 
         sync_antigravity_usage_logs_with_cancel(&mut conn, &root, &|| false).unwrap();
 
-        // Simulate pre-upgrade DB rows written before model alias normalization
-        // and before ANTIGRAVITY_MODEL_LABEL_MIGRATION_KEY existed.
+        // Simulate an upgrade from a database that already ran the v1 migration.
         conn.execute(
-            "UPDATE usage_entries SET model = 'gemini-pro-orchestrator', model_id = 'gemini-pro-orchestrator' WHERE session_id = 'hook-orch'",
+            "UPDATE usage_entries SET model = 'gemini-pro-orchestrator-neon', model_id = 'gemini-pro-orchestrator-neon' WHERE session_id = 'hook-orch'",
             [],
         )
         .unwrap();
@@ -11583,6 +11582,12 @@ mod tests {
         conn.execute(
             "DELETE FROM sync_state WHERE filename = ?",
             params![ANTIGRAVITY_MODEL_LABEL_MIGRATION_KEY],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO sync_state (filename, last_synced_size, last_synced_time) VALUES (?, 1, 0)",
+            ["migration:antigravity_model_labels_v1"],
         )
         .unwrap();
 
@@ -11613,8 +11618,8 @@ mod tests {
 
         let (orch_model, orch_model_id) = fetch_models(&conn, "hook-orch");
         let (worker_model, worker_model_id) = fetch_models(&conn, "hook-worker");
-        assert_eq!(orch_model, "Orchestrator (Carbon)");
-        assert_eq!(orch_model_id.as_deref(), Some("Orchestrator (Carbon)"));
+        assert_eq!(orch_model, "Orchestrator (Neon)");
+        assert_eq!(orch_model_id.as_deref(), Some("Orchestrator (Neon)"));
         assert_eq!(worker_model, "Gemini 4 Hydrogen");
         assert_eq!(worker_model_id.as_deref(), Some("Gemini 4 Hydrogen"));
 
@@ -11653,7 +11658,7 @@ mod tests {
         let worker_cost = pricing
             .calculate_usage_cost(Some(&worker_model), 1_000_000, 1_000_000, 1_000_000, 0, 0)
             .unwrap();
-        assert!((orch_cost - 24.20).abs() < 1e-6, "orch_cost={orch_cost}");
+        assert!((orch_cost - 18.15).abs() < 1e-6, "orch_cost={orch_cost}");
         assert!(
             (worker_cost - 9.075).abs() < 1e-6,
             "worker_cost={worker_cost}"

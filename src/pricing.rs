@@ -871,6 +871,7 @@ mod tests {
                     "Gemini 4 Neon (Medium)",
                     "Gemini 4 Neon (High)",
                     "Gemini 4 Neon (Extra)",
+                    "Orchestrator (Neon)",
                     "google/gemini-4-neon",
                     "gemini-4-neon-extra",
                 ][..],
