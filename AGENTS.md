@@ -29,6 +29,8 @@ TokenUsageInsights is a local-first Rust application for macOS and Linux that im
 - `public/` — independently deployed GitHub Pages landing site; `docs/npm-publishing.md` is the npm release runbook.
 
 ## Development Commands
+- Use the existing checkout for development. Do not create sibling `TokenUsageInsights-*` directories for Git worktrees, clones, or release staging. If isolation is needed, use a system temporary directory and clean it up when the task ends. Remove temporary Git worktrees with `git worktree remove`.
+
 Run from the repository root:
 
 ```sh
