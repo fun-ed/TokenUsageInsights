@@ -29,6 +29,8 @@ pub struct PricingEntry {
     pub cache_input_price: f64,
     pub output_price: f64,
     pub batch_api_price: String,
+    #[serde(skip)]
+    context_tiers: Vec<(u64, PricingRule)>,
 }
 
 const MODELS_DEV_URL: &str = "https://models.dev/api.json";
@@ -137,41 +139,68 @@ fn models_dev_pricing_entries(value: &Value) -> Vec<PricingEntry> {
             let Some(cost) = model.get("cost") else {
                 continue;
             };
-            let Some(input_price) = cost.get("input").and_then(Value::as_f64) else {
+            let Some((input_price, cache_input_price, output_price)) =
+                models_dev_token_prices(cost)
+            else {
                 continue;
             };
-            let Some(output_price) = cost.get("output").and_then(Value::as_f64) else {
-                continue;
-            };
-            if !input_price.is_finite()
-                || !output_price.is_finite()
-                || input_price < 0.0
-                || output_price < 0.0
-            {
-                continue;
-            }
             let model_id = model
                 .get("id")
                 .and_then(Value::as_str)
                 .filter(|id| !id.trim().is_empty())
                 .unwrap_or(model_key);
-            let cache_input_price = cost
-                .get("cache_read")
-                .and_then(Value::as_f64)
-                .filter(|price| price.is_finite() && *price >= 0.0)
-                .unwrap_or(input_price);
+            let model_name = format!("{provider_id}/{model_id}");
+            let context_tiers = cost
+                .get("tiers")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(|cost| {
+                    let tier = cost.get("tier")?;
+                    if tier.get("type")?.as_str()? != "context" {
+                        return None;
+                    }
+                    let threshold = tier.get("size")?.as_u64()?;
+                    let (input_price, cache_input_price, output_price) =
+                        models_dev_token_prices(cost)?;
+                    Some((
+                        threshold,
+                        PricingRule {
+                            model_name: model_name.clone(),
+                            input_price,
+                            cache_input_price,
+                            output_price,
+                        },
+                    ))
+                })
+                .collect();
             entries.push(PricingEntry {
-                model_name: format!("{provider_id}/{model_id}"),
+                model_name,
                 deployment_type: format!("models.dev ({provider_id})"),
                 unit: "1M Tokens".to_string(),
                 input_price,
                 cache_input_price,
                 output_price,
                 batch_api_price: "N/A".to_string(),
+                context_tiers,
             });
         }
     }
     entries
+}
+
+fn models_dev_token_prices(cost: &Value) -> Option<(f64, f64, f64)> {
+    let price = |key| {
+        cost.get(key)
+            .and_then(Value::as_f64)
+            .filter(|price| price.is_finite() && *price >= 0.0)
+    };
+    let input = price("input")?;
+    Some((
+        input,
+        price("cache_read").unwrap_or(input),
+        price("output")?,
+    ))
 }
 
 fn load_models_dev_pricing_entries() -> Vec<PricingEntry> {
@@ -206,6 +235,7 @@ fn fallback_pricing_entries() -> Vec<PricingEntry> {
             cache_input_price: 0.375,
             output_price: 9.00,
             batch_api_price: "0.75/0.1875/4.50".to_string(),
+            context_tiers: Vec::new(),
         },
         PricingEntry {
             model_name: "Gemini 1.5 Flash".to_string(),
@@ -215,6 +245,7 @@ fn fallback_pricing_entries() -> Vec<PricingEntry> {
             cache_input_price: 0.01875,
             output_price: 0.30,
             batch_api_price: "0.0375/0.009375/0.15".to_string(),
+            context_tiers: Vec::new(),
         },
         PricingEntry {
             model_name: "Gemini 1.5 Pro".to_string(),
@@ -224,6 +255,7 @@ fn fallback_pricing_entries() -> Vec<PricingEntry> {
             cache_input_price: 0.3125,
             output_price: 5.00,
             batch_api_price: "0.625/0.15625/2.50".to_string(),
+            context_tiers: Vec::new(),
         },
         PricingEntry {
             model_name: "Gemini 2.0 Flash".to_string(),
@@ -233,6 +265,7 @@ fn fallback_pricing_entries() -> Vec<PricingEntry> {
             cache_input_price: 0.025,
             output_price: 0.40,
             batch_api_price: "0.05/0.0125/0.20".to_string(),
+            context_tiers: Vec::new(),
         },
         PricingEntry {
             model_name: "glm-5.3".to_string(),
@@ -242,6 +275,7 @@ fn fallback_pricing_entries() -> Vec<PricingEntry> {
             cache_input_price: 0.26,
             output_price: 4.40,
             batch_api_price: "N/A".to_string(),
+            context_tiers: Vec::new(),
         },
         PricingEntry {
             model_name: "deepseek-v4.1-flash".to_string(),
@@ -251,6 +285,7 @@ fn fallback_pricing_entries() -> Vec<PricingEntry> {
             cache_input_price: 0.006,
             output_price: 1.20,
             batch_api_price: "N/A".to_string(),
+            context_tiers: Vec::new(),
         },
         PricingEntry {
             model_name: "glm-5.3-flash".to_string(),
@@ -260,6 +295,7 @@ fn fallback_pricing_entries() -> Vec<PricingEntry> {
             cache_input_price: 0.03,
             output_price: 0.50,
             batch_api_price: "N/A".to_string(),
+            context_tiers: Vec::new(),
         },
     ]
 }
@@ -291,6 +327,7 @@ pub fn load_pricing_entries() -> Vec<PricingEntry> {
                         batch_api_price: parts
                             .get(6)
                             .map_or_else(|| "N/A".to_string(), |value| value.trim().to_string()),
+                        context_tiers: Vec::new(),
                     });
                 }
             }
@@ -314,25 +351,14 @@ pub fn load_pricing_entries() -> Vec<PricingEntry> {
     entries
 }
 
-pub fn load_pricing_rules() -> Vec<PricingRule> {
-    load_pricing_entries()
-        .into_iter()
-        .map(|entry| PricingRule {
-            model_name: if entry.deployment_type.starts_with("models.dev ") {
-                format!("{MODELS_DEV_RULE_PREFIX}{}", entry.model_name)
-            } else {
-                entry.model_name
-            },
-            input_price: entry.input_price,
-            cache_input_price: entry.cache_input_price,
-            output_price: entry.output_price,
-        })
-        .collect()
+#[cfg(test)]
+fn load_pricing_rules() -> Vec<PricingRule> {
+    load_prepared_pricing_rules().rules
 }
 
 /// 載入價格規則並完成一次性的標籤解析，供大量聚合的 API 重複使用。
 pub fn load_prepared_pricing_rules() -> PreparedPricingRules {
-    PreparedPricingRules::from_rules(load_pricing_rules())
+    PreparedPricingRules::from_entries(load_pricing_entries())
 }
 
 /// Parsed long-context threshold marker from a pricing rule label.
@@ -462,6 +488,7 @@ struct PreparedRule {
     threshold: Option<ThresholdRule>,
     is_claude: bool,
     is_models_dev: bool,
+    context_tiers: Vec<(u64, PricingRule)>,
 }
 
 /// 預先解析完成的價格規則集。
@@ -476,6 +503,30 @@ pub struct PreparedPricingRules {
 }
 
 impl PreparedPricingRules {
+    fn from_entries(entries: Vec<PricingEntry>) -> Self {
+        let (rules, context_tiers): (Vec<_>, Vec<_>) = entries
+            .into_iter()
+            .map(|entry| {
+                let rule = PricingRule {
+                    model_name: if entry.deployment_type.starts_with("models.dev ") {
+                        format!("{MODELS_DEV_RULE_PREFIX}{}", entry.model_name)
+                    } else {
+                        entry.model_name
+                    },
+                    input_price: entry.input_price,
+                    cache_input_price: entry.cache_input_price,
+                    output_price: entry.output_price,
+                };
+                (rule, entry.context_tiers)
+            })
+            .unzip();
+        let mut prepared = Self::from_rules(rules);
+        for (rule, tiers) in prepared.parsed.iter_mut().zip(context_tiers) {
+            rule.context_tiers = tiers;
+        }
+        prepared
+    }
+
     pub fn from_rules(rules: Vec<PricingRule>) -> Self {
         let parsed = rules
             .iter()
@@ -495,6 +546,7 @@ impl PreparedPricingRules {
                     threshold,
                     is_claude,
                     is_models_dev,
+                    context_tiers: Vec::new(),
                 }
             })
             .collect();
@@ -604,15 +656,13 @@ impl PreparedPricingRules {
     }
 
     fn calculate_rule_cost(
-        &self,
-        index: usize,
+        rule: &PricingRule,
         input: u64,
         output: u64,
         cache_read: u64,
         cache_write_5m: u64,
         cache_write_1h: u64,
     ) -> f64 {
-        let rule = &self.rules[index];
         let input_cost = (input as f64 / 1_000_000.0) * rule.input_price;
         let cache_cost = (cache_read as f64 / 1_000_000.0) * rule.cache_input_price;
         let cache_write_5m_cost = (cache_write_5m as f64 / 1_000_000.0) * rule.input_price * 1.25;
@@ -650,7 +700,15 @@ impl PreparedPricingRules {
         );
         let prompt_tokens = input.saturating_add(cache_read);
         if let Some(index) = self.find_models_dev_rule_index(&model_id_base, prompt_tokens) {
-            return Ok(self.calculate_rule_cost(index, input, output, cache_read, 0, 0));
+            let rule = self.parsed[index]
+                .context_tiers
+                .iter()
+                .filter(|(threshold, _)| prompt_tokens > *threshold)
+                .max_by_key(|(threshold, _)| *threshold)
+                .map_or(&self.rules[index], |(_, rule)| rule);
+            return Ok(Self::calculate_rule_cost(
+                rule, input, output, cache_read, 0, 0,
+            ));
         }
         self.calculate_cost(
             model_name,
@@ -716,8 +774,8 @@ impl PreparedPricingRules {
 
         matched_index
             .map(|index| {
-                self.calculate_rule_cost(
-                    index,
+                Self::calculate_rule_cost(
+                    &self.rules[index],
                     input,
                     output,
                     cache_read,
@@ -1212,27 +1270,54 @@ mod tests {
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].model_name, "vivgrid/gpt-5.6-terra");
 
-        let cost = PreparedPricingRules::from_rules(
-            entries
-                .into_iter()
-                .map(|entry| PricingRule {
-                    model_name: format!("{MODELS_DEV_RULE_PREFIX}{}", entry.model_name),
-                    input_price: entry.input_price,
-                    cache_input_price: entry.cache_input_price,
-                    output_price: entry.output_price,
-                })
-                .collect(),
-        )
-        .calculate_omp_usage_cost(
-            Some("openai-codex/gpt-5.6-terra"),
-            1_000_000,
-            1_000_000,
-            1_000_000,
-            0,
-            0,
-        )
-        .unwrap();
+        let cost = PreparedPricingRules::from_entries(entries)
+            .calculate_omp_usage_cost(
+                Some("openai-codex/gpt-5.6-terra"),
+                1_000_000,
+                1_000_000,
+                1_000_000,
+                0,
+                0,
+            )
+            .unwrap();
         assert!((cost - 14.2).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn models_dev_context_tiers_price_omp_usage_above_each_threshold() {
+        let source = serde_json::json!({
+            "openai": {"models": {"test-model": {"cost": {
+                "input": 2.5, "output": 15.0, "cache_read": 0.25,
+                "tiers": [
+                    {"tier": {"type": "context", "size": 400_001}, "input": 8.0, "output": 30.0},
+                    {"tier": {"type": "context", "size": 272_000}, "input": 5.0, "output": 22.5, "cache_read": 0.5},
+                    {"tier": {"type": "context", "size": 300_000}, "input": -1.0, "output": 100.0},
+                    {"tier": {"type": "other", "size": 300_000}, "input": 100.0, "output": 100.0}
+                ]
+            }}}}
+        });
+        let rules = PreparedPricingRules::from_entries(models_dev_pricing_entries(&source));
+        let model = Some("openai/test-model");
+        let input = 200_000;
+        let output = 500_000;
+        for (cache_read, expected) in [
+            (72_000, 8.018),
+            (72_001, 12.286_000_5),
+            (200_001, 12.350_000_5),
+            (200_002, 18.200_016),
+        ] {
+            let cost = rules
+                .calculate_omp_usage_cost(model, input, output, cache_read, 0, 0)
+                .unwrap();
+            assert!(
+                (cost - expected).abs() < 1e-10,
+                "cache_read={cache_read}: {cost} != {expected}"
+            );
+        }
+        let cost = rules
+            .calculate_usage_cost(model, input, output, 200_002, 0, 0)
+            .unwrap();
+        assert!((cost - 8.050_000_5).abs() < 1e-10);
     }
 
     #[test]
