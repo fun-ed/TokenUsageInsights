@@ -28,12 +28,17 @@ test('native guide translations exist in every locale and preserve Copilot setup
   const keys = [...nativeGuide.matchAll(/data-i18n="([^"]+)"/g)].map(([, key]) => key);
   assert.match(nativeGuide, /transcript_full\.jsonl/);
   assert.match(nativeGuide, /conversations\//);
+  assert.match(nativeGuide, /id="lbl-detected-home-antigravity">~\/\.gemini\/antigravity-cli\/brain/);
+  assert.match(nativeGuide, /id="lbl-detected-home-antigravity-app">~\/\.gemini\/antigravity\/brain/);
   assert.doesNotMatch(nativeGuide, /settings\.json|statusline-token/);
   for (const [locale, translations] of Object.entries(i18n)) {
     for (const key of keys) assert.ok(translations[key], `${locale}: ${key}`);
     assert.match(translations.copilot_setup_modal_intro, /Copilot CLI/);
     assert.match(translations.copilot_setup_modal_intro, /statusline-token/);
     assert.doesNotMatch(translations.antigravity_setup_modal_intro, /statusline-token/);
+    assert.match(translations.antigravity_source_path, /Antigravity CLI/);
+    assert.match(translations.antigravity_app_source_path, /Antigravity App/);
+    assert.doesNotMatch(translations.assistant_antigravity, /Antigravity CLI/);
     assert.doesNotMatch(translations.antigravity_empty_desc, /settings\.json|statusline-token/);
   }
 });

@@ -87,6 +87,7 @@ if [[ "$install_service" == true ]]; then
   runtime_vars=(
     INSIGHTS_DIR
     ANTIGRAVITY_DIR
+    ANTIGRAVITY_APP_DIR
     COPILOT_DIR
     COPILOT_APP_DIR
     CODEX_DIR

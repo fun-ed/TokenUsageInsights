@@ -540,6 +540,7 @@ fn resolve_hook_transcript(
     assistant: &str,
     session_id: &str,
     stored_path: Option<&str>,
+    source_dir_key: Option<&str>,
 ) -> Result<PathBuf, SessionFileError> {
     let roots = config::configured_roots(harness)
         .map_err(|error| SessionFileError::new(StatusCode::BAD_REQUEST, error))?;
@@ -551,6 +552,7 @@ fn resolve_hook_transcript(
     }
     let mut candidates: Vec<_> = roots
         .iter()
+        .filter(|root| source_dir_key.is_none_or(|key| db::additional_source_key(root) == key))
         .filter_map(|root| {
             let path = db::hook_transcript_path(root, assistant, session_id)?;
             // Hook logs may have been copied from another computer. Construct the
@@ -594,10 +596,15 @@ pub(crate) fn resolve_session_file_path(
 ) -> Result<PathBuf, SessionFileError> {
     match assistant {
         "antigravity" => resolve_hook_transcript(
-            Harness::Antigravity,
+            if source_kind == crate::antigravity::APP_SOURCE_KIND {
+                Harness::AntigravityApp
+            } else {
+                Harness::Antigravity
+            },
             assistant,
             session_id,
             transcript_path_db,
+            context.source_dir_key,
         ),
         "copilot" if source_kind == crate::vscode::SOURCE_KIND => {
             let path = transcript_path_db.ok_or_else(|| {
@@ -653,9 +660,13 @@ pub(crate) fn resolve_session_file_path(
                 SessionFileError::new(StatusCode::NOT_FOUND, "找不到 Copilot 資料來源。")
             }))
         }
-        "copilot" => {
-            resolve_hook_transcript(Harness::Copilot, assistant, session_id, transcript_path_db)
-        }
+        "copilot" => resolve_hook_transcript(
+            Harness::Copilot,
+            assistant,
+            session_id,
+            transcript_path_db,
+            None,
+        ),
         "codex" => {
             let path = transcript_path_db.ok_or_else(|| {
                 SessionFileError::new(

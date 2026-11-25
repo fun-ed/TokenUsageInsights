@@ -3,11 +3,13 @@ use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
 /// Keys deliberately match dashboard assistant identifiers, with separate
-/// entries for the two Copilot desktop collectors.
+/// entries for the collectors that split one assistant across two data roots:
+/// Copilot CLI/App share a home, while Antigravity CLI/App use distinct homes.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Harness {
     Antigravity,
+    AntigravityApp,
     Copilot,
     CopilotApp,
     Vscode,
@@ -27,6 +29,7 @@ impl Harness {
         use crate::db;
         Some(match self {
             Self::Antigravity => db::get_antigravity_dir(),
+            Self::AntigravityApp => crate::paths::antigravity_app_dir(),
             Self::Copilot => db::get_copilot_dir(),
             Self::CopilotApp => crate::paths::copilot_app_dir(),
             Self::Vscode => return None, // VS Code discovers multiple platform defaults.
@@ -99,7 +102,35 @@ impl SourceConfig {
     }
 
     pub(crate) fn roots(&self, harness: Harness) -> Vec<PathBuf> {
-        let mut roots: Vec<_> = harness.primary_root().into_iter().collect();
+        if matches!(harness, Harness::Antigravity | Harness::AntigravityApp) {
+            return self.antigravity_roots(
+                harness,
+                &crate::db::get_antigravity_dir(),
+                &crate::paths::antigravity_app_dir(),
+            );
+        }
+        self.roots_with_primary(harness, harness.primary_root().as_deref())
+    }
+
+    fn antigravity_roots(&self, harness: Harness, cli: &Path, app: &Path) -> Vec<PathBuf> {
+        let cli = absolute_root(cli);
+        let app = absolute_root(app);
+        let mut app_roots = self.roots_with_primary(Harness::AntigravityApp, Some(&app));
+        // An explicit CLI primary takes precedence over App extras. The App
+        // owns its primary and any roots listed as extras for both collectors.
+        if cli != app {
+            app_roots.retain(|root| root != &cli);
+        }
+        if harness == Harness::AntigravityApp {
+            return app_roots;
+        }
+        let mut cli_roots = self.roots_with_primary(Harness::Antigravity, Some(&cli));
+        cli_roots.retain(|root| !app_roots.contains(root));
+        cli_roots
+    }
+
+    fn roots_with_primary(&self, harness: Harness, primary: Option<&Path>) -> Vec<PathBuf> {
+        let mut roots: Vec<_> = primary.into_iter().map(Path::to_path_buf).collect();
         if let Some(additional) = self.additional_sources.get(&harness) {
             roots.extend(additional.iter().cloned());
         }
@@ -192,6 +223,7 @@ mod tests {
     fn every_harness_accepts_multiple_roots_and_copilot_shares_app_homes() {
         let keys = [
             "antigravity",
+            "antigravity_app",
             "copilot",
             "copilot_app",
             "vscode",
@@ -256,5 +288,38 @@ mod tests {
             1
         );
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn antigravity_cli_and_app_homes_are_never_scanned_twice() {
+        let base = std::env::temp_dir().join("insights-antigravity-roots");
+        let cli = base.join("antigravity-cli");
+        let app = base.join("antigravity");
+        let cli_extra = base.join("laptop-cli");
+        let shared_extra = base.join("laptop-app");
+        let config = SourceConfig {
+            additional_sources: BTreeMap::from([
+                (
+                    Harness::Antigravity,
+                    vec![app.clone(), cli_extra.clone(), shared_extra.clone()],
+                ),
+                (
+                    Harness::AntigravityApp,
+                    vec![cli.clone(), shared_extra.clone()],
+                ),
+            ]),
+        };
+
+        assert_eq!(
+            config.antigravity_roots(Harness::Antigravity, &cli, &app),
+            vec![cli.clone(), cli_extra]
+        );
+        assert_eq!(
+            config.antigravity_roots(Harness::AntigravityApp, &cli, &app),
+            vec![app.clone(), shared_extra]
+        );
+        assert!(!config
+            .antigravity_roots(Harness::Antigravity, &app, &app)
+            .contains(&app));
     }
 }

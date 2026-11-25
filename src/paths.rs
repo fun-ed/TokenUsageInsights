@@ -88,6 +88,15 @@ pub fn copilot_app_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("."))
 }
 
+/// Resolve the desktop App home, whose native transcripts share the CLI layout.
+pub fn antigravity_app_dir() -> PathBuf {
+    env_path("ANTIGRAVITY_APP_DIR").unwrap_or_else(|| {
+        dirs::home_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join(".gemini/antigravity")
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
