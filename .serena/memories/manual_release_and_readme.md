@@ -1,8 +1,8 @@
 - Fork releases use matching `10.x.y` Cargo/npm versions and annotated `v10.x.y` tags; no GitHub Actions. Process: `.agents/skills/token-usage-insights/SKILL.md` "Manual releases"; policy: `mem:fork_spec`.
-- 2026-11-06 已查核公開正式版 `v10.0.27`：release commit `c972d46b72a88643f68341614f48cf7131acddc2`，附註標籤解參照後指向該提交，已推送 origin/main。Release 非草稿、非預發行，網址為 https://github.com/fun-ed/TokenUsageInsights/releases/tag/v10.0.27 。後續記憶提交會讓 main 領先 release tag；upstream 比較基準只記於 `mem:fork_spec`。
+- 最新驗證的正式版為 `v10.0.35`。公開 Release 與附註標籤指向 `a28b77d`，包含 VS Code Agent 功能提交 `7ba5830`。版本與上游比較基準以 `docs/fork-spec.md` §3 與 `mem:fork_spec` 為準。後續記憶提交可讓 `main` 領先正式標籤。
 - 建置、公開 Release、本機 CLI／資源及常駐服務是四個獨立驗證狀態。沒有 `local-cli` 或 `make-cli` target；`make install-local` 只裝 binary，BSD `install` 會替換目的 symlink。安全做法是先以 `LOCAL_BIN_DIR` 指向暫存目錄，再將新 binary 原子替換到 share 安裝目錄，另同步 static／shell／scripts／pricing.csv／README／LICENSE／VERSION。保留原 bin → share symlink；更新前逐檔核對安裝與 launchd 備份，SQLite 使用線上 backup API 並檢查完整性。暫存、舊資源與資料備份不得放入提交或發行包。
 - 常駐服務重啟需要使用者明確授權。先核對 launchd 的 program 指向預期安裝檔；SIGTERM 可讓同步協作中斷，KeepAlive 再啟動新程序，之後檢查新 PID、CLI／API 版本、`initial_sync_completed` 與 SQLite。保留原 HOST／PORT，不設定 CLAUDE_DIR 或 OMP_DIR，以免停用 profiles；不要用 Linux 的 Make service target 操作 macOS。
-- 2026-11-06 已以 `make -o build-release install-local` 安裝已建置的 Apple Silicon binary，`LOCAL_BIN` 指向 share 的真實檔案以保留 symlink，另從 staging 的 installer 同步資源；舊安裝逐檔備份核對通過。使用者明確授權後以 `launchctl kickstart -k` 重啟 `com.tokenusageinsights`，服務為 running；CLI 與 :3003 `/api/version` 都回報 10.0.27，最新回讀為 syncing=false、initial_sync_completed=true。未改 plist、HOST／PORT 或來源環境。本次未另做正式資料庫完整性檢查，SQLite integrity_check 僅對隔離安裝資料庫執行。
+- `v10.0.35` 已用從公開發行回讀並驗證的 Apple Silicon 執行檔更新 `com.tokenusageinsights`。新 PID、CLI 和 `/api/version` 版本均通過，`initial_sync_completed=true`，全庫初始全文索引完成。指定 VS Code Agent 會話的既有逐筆用量核對一致，日報及總覽無重複，詳情和搜尋均可用。保留通過 SQLite `quick_check` 的回滾備份；舊副本移至垃圾桶。
 - macOS 資產為 Apple Silicon／Intel 各一份 `.tar.gz` 與 `.dmg`，加上 `SHA256SUMS`。本版未發布 Linux 二進位或 npm Registry 套件；原始碼相容不等於已驗證 Linux 成品。
 - `VERSION` 不保證是否帶 `v`：v10.0.26 為 `10.0.26`，v10.0.27 成品與本機值為 `v10.0.27`。每次分別核對 Cargo／npm metadata、tag、包內 VERSION 與 CLI 輸出，不將舊格式假設寫死。
 - `install.sh --service` 會等待 launchctl bootout 完成並重試 bootstrap，需保留此行為。不能從安裝目的目錄內執行 installer。成品 smoke test 必須使用隔離 HOME、INSIGHTS_DIR、來源根目錄與埠號，不安裝真實服務；等待初始同步完成，不能只以某一來源較早就緒判定全部成功。
@@ -11,6 +11,6 @@
 - `scripts/get.sh`, `npm/install.cjs`, and `src/updater.rs` download from fun-ed/TokenUsageInsights; keep them off upstream. gh calls require --repo fun-ed/TokenUsageInsights.
 - 英文 README.md 為正式說明，保留 README.zh-TW.md 與 README.zh-CN.md；發行時同步版本範例、CHANGELOG、docs/fork-spec.md §3 與 docs/npm-publishing.md。專案技能改引用 canonical spec，不再複製易過期的目前版本；獨立網站的部署狀態不可隨套件升版宣稱已更新。
 - `npm test` lists test files explicitly in package.json; add new `tests/*.test.mjs` files there.
-- v10.0.27 驗證：497 個 Rust 單元／4 個整合測試與 npm Node 測試通過；fmt、Clippy `-D warnings`、fork 邊界與雙架構 release build 通過。兩個 tarball 均已解壓隔離安裝，核對 CLI／API、SQLite integrity_check 與新增牌價；DMG 完整性、唯讀掛載、四個遠端成品 SHA-256 及公開 get.sh 安裝通過。Intel 僅透過 Rosetta，未在實體 Intel Mac 驗證。
+- `v10.0.35` 通過 670 項 Rust 測試、94 項 npm 測試、格式檢查、零警告 Clippy 與 Apple Silicon／Intel release 建置。雙架構成品通過隔離安裝、定價 API、SQLite 與 VS Code 看板入口檢查。四個公開資產重新下載後的 SHA-256 均符合 `SHA256SUMS`，兩種架構的一鍵安裝通過。
 - Docker daemon 未啟動，僅驗證腳本語法、mock 與 COPY 來源存在性，沒有建置映像或啟動容器；Azure 未做真實傳輸。fork 沒有 build.rs 或 APP_BUILD_DATE 讀取端，不能照搬 upstream Docker 建置假設。
-- 本次已篩選來源為 `projects/token-usage-insights/session-notes/2026-11-06-upstream-v1-6-5-v10-0-27-release.md`，外部鏡像狀態以同名 `.receipts.json` 為準；本地 Serena 更新不等於 Cognee、Hindsight 或 OpenViking 同步完成。歷史筆記及回條只證明各自版本，不得代替本次回讀。
+- VS Code Agent 功能規格、驗證及發行證據見 `projects/token-usage-insights/session-notes/2026-11-26-vscode-agent-host-v10-0-35.md`。Cognee、Hindsight 和 OpenViking 的回讀證據以同名 `.receipts.json` 為準。舊版筆記只證明各自版本。
