@@ -170,6 +170,7 @@ fn spawn_usage_sync_task() -> UsageSyncTask {
     let (shutdown_tx, mut shutdown_rx) = tokio::sync::watch::channel(false);
     let handle = tokio::spawn(async move {
         let mut migrate_legacy_databases = true;
+        let mut last_search_sync: Option<std::time::Instant> = None;
         loop {
             // 收到停機通知時不再排入新的同步，讓進行中的同步（若有的話）自然結束
             if *shutdown_rx.borrow() {
@@ -177,6 +178,8 @@ fn spawn_usage_sync_task() -> UsageSyncTask {
             }
 
             let should_migrate = migrate_legacy_databases;
+            let sync_search_index = last_search_sync
+                .is_none_or(|last| last.elapsed() >= std::time::Duration::from_secs(60));
             let cancel_rx = shutdown_rx.clone();
             db::set_sync_in_progress(true);
             let sync_res = tokio::task::spawn_blocking(move || {
@@ -184,10 +187,21 @@ fn spawn_usage_sync_task() -> UsageSyncTask {
                 if should_migrate {
                     db::migrate_old_databases(&mut conn)?;
                 }
-                db::sync_usage_logs_with_cancel(&mut conn, &|| *cancel_rx.borrow())
+                db::sync_usage_logs_with_cancel(&mut conn, &|| *cancel_rx.borrow())?;
+                if sync_search_index && !*cancel_rx.borrow() {
+                    if let Err(err) = session_search::sync_search_index_with_cancel(&conn, &|| {
+                        *cancel_rx.borrow()
+                    }) {
+                        eprintln!("⚠️ 背景搜尋索引同步失敗: {err}");
+                    }
+                }
+                Ok::<(), String>(())
             })
             .await;
             db::set_sync_in_progress(false);
+            if sync_search_index && matches!(sync_res, Ok(Ok(()))) {
+                last_search_sync = Some(std::time::Instant::now());
+            }
 
             match sync_res {
                 Ok(Ok(())) if *shutdown_rx.borrow() => {
@@ -366,6 +380,7 @@ async fn main() {
         .route("/api/:assistant/dates", get(get_available_dates))
         .route("/api/:assistant/setup-info", get(get_setup_info))
         .route("/api/:assistant/usage/:date", get(get_usage_details))
+        .route("/api/:assistant/search", get(search_global_content))
         .route(
             "/api/:assistant/usage/:date/session-search",
             get(search_sessions_by_user_prompt),
