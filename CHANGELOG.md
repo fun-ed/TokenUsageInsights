@@ -4,6 +4,13 @@
 
 ## [未發行]
 
+## [10.0.35] - 2026-11-26
+
+### 新增
+
+- 看板新增獨立的 VS Code Agent 分類。由本機 VS Code Agent Host 啟動的 Copilot SDK 會話會重新歸屬，沿用既有逐筆用量、逐字稿與搜尋索引流程，總覽只計算一次。
+- 一般 Copilot CLI、Copilot App、VS Code 擴充套件聊天與外部會話維持各自的分類。
+
 ## [10.0.34] - 2026-11-26
 
 ### 新增與修正
@@ -1244,7 +1251,8 @@
 - 修正行動版側邊欄遮擋、黑畫面、標題擠壓、圖表導覽索引與年度版面問題。
 - 修正並補齊多個 Gemini、Claude、GPT 與 GPT-OSS 模型的定價規則。
 
-[未發行]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.34...HEAD
+[未發行]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.35...HEAD
+[10.0.35]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.34...v10.0.35
 [10.0.34]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.33...v10.0.34
 [10.0.33]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.32...v10.0.33
 [10.0.32]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.31...v10.0.32
