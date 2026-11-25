@@ -630,7 +630,9 @@ pub(crate) fn resolve_session_file_path(
                 context.agent_nickname,
             )
         }
-        "copilot" if source_kind == "copilot-cli" && context.parent_session_id.is_some() => {
+        "copilot" | "vscode"
+            if source_kind == "copilot-cli" && context.parent_session_id.is_some() =>
+        {
             // CLI subagent synthetic session: locate the shared events.jsonl
             // under the parent session's directory, not the synthetic id's.
             let Some(parent_session_id) = context.parent_session_id else {
@@ -642,6 +644,11 @@ pub(crate) fn resolve_session_file_path(
             let mut roots = config::configured_roots(Harness::Copilot)
                 .map_err(|error| SessionFileError::new(StatusCode::BAD_REQUEST, error))?;
             let stored = transcript_path_db.and_then(|path| StdPath::new(path).canonicalize().ok());
+            if assistant == "vscode" {
+                roots.retain(|root| {
+                    context.source_dir_key == Some(db::additional_source_key(root).as_str())
+                });
+            }
             roots.sort_by_key(|root| !stored.as_ref().is_some_and(|path| path.starts_with(root)));
             let mut error = None;
             for root in &roots {
@@ -659,6 +666,15 @@ pub(crate) fn resolve_session_file_path(
             Err(error.unwrap_or_else(|| {
                 SessionFileError::new(StatusCode::NOT_FOUND, "找不到 Copilot 資料來源。")
             }))
+        }
+        "vscode" if source_kind == "copilot-cli" && context.source_dir_key.is_some() => {
+            resolve_hook_transcript(
+                Harness::Copilot,
+                "copilot",
+                session_id,
+                transcript_path_db,
+                context.source_dir_key,
+            )
         }
         "copilot" => resolve_hook_transcript(
             Harness::Copilot,

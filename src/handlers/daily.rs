@@ -291,6 +291,10 @@ pub async fn get_setup_info(Path(assistant): Path<String>) -> impl IntoResponse 
 
     let mcode_dir = source_root(Harness::Mcode, &["sessions"]);
     let mcode_exists = mcode_dir.join("sessions").exists();
+    let vscode_workspace_roots =
+        crate::vscode::workspace_storage_roots(&config.roots(Harness::Vscode));
+    let vscode_catalog =
+        crate::vscode::agent_host_catalogs(&vscode_workspace_roots).find(|path| path.is_file());
     let devin_dir = source_root(Harness::Devin, &["sessions.db"]);
     let devin_database = devin_dir.join("sessions.db");
 
@@ -407,6 +411,21 @@ pub async fn get_setup_info(Path(assistant): Path<String>) -> impl IntoResponse 
             script_path: "".to_string(),
             source_script_path: "".to_string(),
             settings_path: "".to_string(),
+        },
+        vscode: AssistantSetupStatus {
+            dir_path: vscode_catalog
+                .as_deref()
+                .and_then(std::path::Path::parent)
+                .map(|path| path.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+            data_path: vscode_catalog
+                .as_deref()
+                .map(|path| path.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+            exists: vscode_catalog.is_some(),
+            script_path: String::new(),
+            source_script_path: String::new(),
+            settings_path: String::new(),
         },
         devin: AssistantSetupStatus {
             dir_path: devin_dir.to_string_lossy().into_owned(),

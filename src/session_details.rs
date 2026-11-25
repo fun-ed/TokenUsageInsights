@@ -110,7 +110,7 @@ pub(crate) fn parse_session_timeline_file(
             &mut metadata,
             crate::antigravity::is_native_source_kind(source_kind),
         ),
-        "copilot" => parse_copilot_timeline_filtered(
+        "copilot" | "vscode" => parse_copilot_timeline_filtered(
             reader,
             db_entries,
             copilot.turn_call_checkpoints,
@@ -420,7 +420,7 @@ pub(crate) fn load_session_details(
         },
     )?;
     if !filepath.exists() {
-        let session_dir_exists = if lookup.assistant_type == "copilot" {
+        let session_dir_exists = if matches!(lookup.assistant_type.as_str(), "copilot" | "vscode") {
             let base_dir = if lookup.source_kind == "copilot-app" {
                 copilot_app_source_dir
                     .clone()
@@ -457,7 +457,7 @@ pub(crate) fn load_session_details(
     let db_entries = session_data.turn_stats;
     let turn_reasoning_efforts = session_data.turn_reasoning_efforts;
 
-    let agent_filter = (lookup.assistant_type == "copilot"
+    let agent_filter = (matches!(lookup.assistant_type.as_str(), "copilot" | "vscode")
         && matches!(lookup.source_kind.as_str(), "copilot-app" | "copilot-cli"))
     .then_some(lookup.agent_nickname.as_deref())
     .flatten();

@@ -38,7 +38,7 @@ const HELP_TEXT: &str = r#"Token 戰情室：看板、使用量匯入 / 匯出�
   -v, --target-version <TAG>  指定安裝特定版本標籤（例如 v1.0.0）
 
 共用參數:
-  --agent <name>      助理名稱: antigravity / copilot / codex / claude / cursor / grok / pi / omp / muse / mcode / devin
+  --agent <name>      助理名稱: antigravity / copilot / vscode / codex / claude / cursor / grok / pi / omp / muse / mcode / devin
                      亦可使用 claude-code / claude_code / claudecode（會正規化為 claude），
                      或以 minimax-code / minimax_code / mcode 指定 MiniMax Code
                      或以 devin-cli / devin_cli / devin 指定 Devin CLI
@@ -790,6 +790,7 @@ fn is_supported_assistant(assistant: &str) -> bool {
         normalize_assistant_name(assistant).as_str(),
         "antigravity"
             | "copilot"
+            | "vscode"
             | "codex"
             | "claude"
             | "cursor"
@@ -849,7 +850,7 @@ fn print_export_help() {
   token-usage-insights export --agent <name> --date YYYY[-MM[-DD]] --out <path>
 
 參數:
-  --agent <name>    助理名稱（antigravity/copilot/codex/claude/cursor/grok/pi/omp/muse/mcode/devin）
+  --agent <name>    助理名稱（antigravity/copilot/vscode/codex/claude/cursor/grok/pi/omp/muse/mcode/devin）
   --date <period>     匯出年份、月份或日期
   --out <path>      輸出檔案路徑，不指定則輸出到 stdout
   --help, -h        顯示此說明

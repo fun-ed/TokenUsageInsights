@@ -1,4 +1,4 @@
-import i18n from './i18n.js?v=44';
+import i18n from './i18n.js?v=45';
 import {
   aggregateDailyTokenCandles,
   calculateCandleViewport,
@@ -163,6 +163,16 @@ const assistantMeta = {
     senderName: 'COPILOT',
     highlightColor: '#b92b27',
     nameHighlights: ['GitHub Copilot'],
+  },
+  vscode: {
+    logo: '/static/vscode-logo.png',
+    label: 'VS Code Agent',
+    shortLabel: 'VS Code Agent',
+    alt: 'VS Code Agent',
+    badgeStyle: 'background: rgba(0, 122, 204, 0.15); color: #4db2ff; border: 1px solid rgba(77, 178, 255, 0.3); display: inline-flex; align-items: center;',
+    senderName: 'VS CODE AGENT',
+    highlightColor: '#4db2ff',
+    nameHighlights: ['VS Code Agent'],
   },
   codex: {
     logo: '/static/codex.webp',
@@ -1159,6 +1169,7 @@ const setupModalTitleKeys = {
   all: 'all_agents_setup_title',
   antigravity: 'setup_modal_title',
   copilot: 'copilot_setup_modal_title',
+  vscode: 'agent_vscode',
   codex: 'codex_setup_modal_title',
   claude: 'claude_setup_modal_title',
   cursor: 'cursor_setup_modal_title',
@@ -1187,6 +1198,7 @@ function setSetupModalBody(assistant) {
     all: 'setup-body-all',
     antigravity: 'setup-body-antigravity',
     copilot: 'setup-body-statusline',
+    vscode: 'setup-body-vscode',
     codex: 'setup-body-codex',
     claude: 'setup-body-claude',
     cursor: 'setup-body-cursor',
@@ -8305,6 +8317,9 @@ async function loadSetupInfo(assistant = currentAssistant) {
       if (pathLabel) pathLabel.textContent = abbreviateHomePath(data.antigravity?.data_path || '');
       const appPathLabel = document.getElementById('lbl-detected-home-antigravity-app');
       if (appPathLabel) appPathLabel.textContent = abbreviateHomePath(data.antigravity_app?.data_path || '');
+    } else if (resolvedAssistant === 'vscode') {
+      const catalog = document.getElementById('lbl-detected-vscode-agent-catalog');
+      if (catalog) catalog.textContent = abbreviateHomePath(data.vscode?.data_path || '');
     } else if (resolvedAssistant === 'copilot') {
       const assistantSetup = data[resolvedAssistant] || {};
       const targetScriptPath = assistantSetup.script_path || '';

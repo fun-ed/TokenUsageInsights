@@ -188,6 +188,89 @@ pub(crate) fn workspace_storage_roots(additional: &[PathBuf]) -> Vec<PathBuf> {
     crate::config::deduplicate_roots(roots)
 }
 
+pub(crate) fn agent_host_catalogs(
+    workspace_roots: &[PathBuf],
+) -> impl Iterator<Item = PathBuf> + '_ {
+    workspace_roots.iter().filter_map(|root| {
+        root.parent()
+            .map(|user| user.join("globalStorage/agent-host.db"))
+    })
+}
+
+/// The catalog identifies locally launched Copilot SDK sessions. External
+/// sessions are only displayed by VS Code and retain their original owner.
+pub(crate) fn agent_host_sdk_sessions(path: &Path) -> rusqlite::Result<Vec<String>> {
+    let conn = rusqlite::Connection::open_with_flags(
+        path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NOFOLLOW,
+    )?;
+    conn.busy_timeout(std::time::Duration::from_secs(2))?;
+    let has_catalog: bool = conn.query_row(
+        "SELECT count(*) = 2 FROM sqlite_schema WHERE type = 'table'
+         AND name IN ('sessions_v2', 'chats_v2')",
+        [],
+        |row| row.get(0),
+    )?;
+    if !has_catalog {
+        return Ok(Vec::new());
+    }
+    let mut stmt = conn.prepare(
+        "SELECT DISTINCT json_extract(c.provider_data, '$.sdkSessionId')
+         FROM sessions_v2 s JOIN chats_v2 c ON c.owner_session_uri = s.session_uri
+         WHERE s.provider = 'copilotcli' AND s.external = 0 AND s.is_chat_backing = 0
+           AND c.tombstoned = 0
+           AND CASE WHEN json_valid(c.provider_data)
+               THEN json_type(c.provider_data, '$.sdkSessionId') = 'text' ELSE 0 END",
+    )?;
+    let ids = stmt.query_map([], |row| row.get::<_, String>(0))?;
+    ids.filter(|id| {
+        id.as_ref()
+            .map_or(true, |id| crate::session_files::is_safe_session_id(id))
+    })
+    .collect()
+}
+
+#[cfg(test)]
+#[test]
+fn agent_host_catalog_selects_only_local_live_copilot_sdk_sessions() {
+    let path = std::env::temp_dir().join(format!(
+        "tui-vscode-agent-{}-{}.db",
+        std::process::id(),
+        Utc::now().timestamp_nanos_opt().unwrap(),
+    ));
+    let conn = rusqlite::Connection::open(&path).unwrap();
+    assert!(agent_host_sdk_sessions(&path).unwrap().is_empty());
+    conn.execute_batch(
+        "CREATE TABLE sessions_v2(session_uri, provider, external, is_chat_backing);
+         CREATE TABLE chats_v2(owner_session_uri, provider_data, tombstoned);
+         INSERT INTO sessions_v2 VALUES
+           ('local', 'copilotcli', 0, 0), ('external', 'copilotcli', 1, 0),
+           ('claude', 'claude', 0, 0), ('backing', 'copilotcli', 0, 1);",
+    )
+    .unwrap();
+    for (owner, id, removed) in [
+        ("local", "sdk-id", false),
+        ("local", "sdk-id", false),
+        ("local", "removed", true),
+        ("external", "external-id", false),
+        ("claude", "claude-id", false),
+        ("backing", "backing-id", false),
+        ("local", "../outside", false),
+    ] {
+        let provider_data = serde_json::json!({"sdkSessionId": id}).to_string();
+        conn.execute(
+            "INSERT INTO chats_v2 VALUES (?1, ?2, ?3)",
+            (owner, provider_data, removed),
+        )
+        .unwrap();
+    }
+    conn.execute("INSERT INTO chats_v2 VALUES ('local', 'malformed', 0)", [])
+        .unwrap();
+    assert_eq!(agent_host_sdk_sessions(&path).unwrap(), ["sdk-id"]);
+    drop(conn);
+    fs::remove_file(path).unwrap();
+}
+
 pub(crate) fn session_files_in(roots: &[PathBuf]) -> Vec<PathBuf> {
     let mut files = Vec::new();
 

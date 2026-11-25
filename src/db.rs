@@ -2563,6 +2563,34 @@ fn sync_vscode_chat_sessions_from_with_cancel(
     Ok(())
 }
 
+fn classify_vscode_agent_sessions(
+    conn: &mut Connection,
+    session_ids: &HashSet<String>,
+    copilot_roots: &[PathBuf],
+) -> rusqlite::Result<usize> {
+    if session_ids.is_empty() {
+        return Ok(0);
+    }
+    let tx = conn.transaction()?;
+    let mut changed = 0;
+    {
+        let mut update = tx.prepare_cached(
+            "UPDATE usage_entries SET assistant_type = 'vscode'
+             WHERE assistant_type = 'copilot' AND source_kind = 'copilot-cli'
+               AND source_dir_key = ?1 AND import_batch_id IS NULL
+               AND ((session_id = ?2 AND parent_session_id IS NULL) OR parent_session_id = ?2)",
+        )?;
+        for root in copilot_roots {
+            let key = additional_source_key(&crate::config::absolute_root(root));
+            for id in session_ids {
+                changed += update.execute(params![key, id])?;
+            }
+        }
+    }
+    tx.commit()?;
+    Ok(changed)
+}
+
 fn run_codex_parser_migration(conn: &mut Connection) -> Result<(), String> {
     let parser_migration_done: bool = conn
         .query_row(
@@ -5930,10 +5958,11 @@ fn replace_copilot_call_rows(
     let mut stmt = tx
         .prepare(
             "SELECT id, source_dir_key, transcript_path, import_source_id,
-                delta_total, tokens_total, reasoning_effort FROM usage_entries
-         WHERE assistant_type='copilot' AND source_kind=?2
+                delta_total, tokens_total, reasoning_effort, assistant_type FROM usage_entries
+         WHERE (assistant_type='copilot' OR (?3=0 AND assistant_type='vscode')) AND source_kind=?2
            AND ((session_id=?1 AND (?3=0 OR parent_session_id IS NULL)) OR parent_session_id=?1
-                OR (?3=0 AND substr(session_id,1,length(?1)+2)=?1 || '__'))
+                OR (?3=0 AND assistant_type='copilot' AND parent_session_id IS NULL
+                    AND substr(session_id,1,length(?1)+2)=?1 || '__'))
            AND import_batch_id IS NULL",
         )
         .map_err(|e| e.to_string())?;
@@ -5941,6 +5970,7 @@ fn replace_copilot_call_rows(
         .query(params![session_id, kind, app])
         .map_err(|e| e.to_string())?;
     let mut owned_ids = Vec::new();
+    let mut assistant = "copilot";
     let mut hook_sum = None;
     let mut hook_max = 0i64;
     let mut previous_total = 0i64;
@@ -5976,6 +6006,9 @@ fn replace_copilot_call_rows(
             if effort.is_some() || (id.contains(":call:") && !ids.contains(id)) {
                 return Err("Copilot SQLite 來源缺席，保留既有呼叫與 effort 待重試".into());
             }
+        }
+        if row.get::<_, String>(7).map_err(|error| error.to_string())? == "vscode" {
+            assistant = "vscode";
         }
         owned_ids.push(row.get::<_, i64>(0).map_err(|e| e.to_string())?);
         let delta: Option<i64> = row.get(4).map_err(|e| e.to_string())?;
@@ -6192,7 +6225,7 @@ fn replace_copilot_call_rows(
         delete.execute([id]).map_err(|e| e.to_string())?;
     }
     drop(delete);
-    register_usage_source_directory(tx, "copilot", kind, source_key, copilot_dir)?;
+    register_usage_source_directory(tx, assistant, kind, source_key, copilot_dir)?;
     let session_name = if let Some(context) = app_context {
         context.title.clone()
     } else {
@@ -6272,7 +6305,7 @@ fn replace_copilot_call_rows(
         );
 
         let insert_res = insert.execute(params![
-            "copilot",
+            assistant,
             kind,
             source_key,
             usage_identity,
@@ -8115,6 +8148,7 @@ fn sync_configured_sources_with_cancel(
     should_cancel: &(dyn Fn() -> bool + Sync),
 ) -> Result<(), String> {
     use crate::config::Harness;
+    let mut vscode_agent_sessions = HashSet::new();
     // Preserve collector order: Cursor metadata first; Copilot hook/App rows
     // before CLI reconciliation, and Antigravity CLI before its App so the
     // one-time hook migration stays on the CLI root. A failed or offline source
@@ -8140,12 +8174,19 @@ fn sync_configured_sources_with_cancel(
         }
         let roots = config.roots(harness);
         if harness == Harness::Vscode {
-            if let Err(error) = sync_vscode_chat_sessions_from_with_cancel(
-                conn,
-                &crate::vscode::workspace_storage_roots(&roots),
-                should_cancel,
-            ) {
+            let workspace_roots = crate::vscode::workspace_storage_roots(&roots);
+            if let Err(error) =
+                sync_vscode_chat_sessions_from_with_cancel(conn, &workspace_roots, should_cancel)
+            {
                 eprintln!("❌ 同步 VS Code Copilot 失敗: {error}");
+            }
+            for catalog in
+                crate::vscode::agent_host_catalogs(&workspace_roots).filter(|p| p.is_file())
+            {
+                match crate::vscode::agent_host_sdk_sessions(&catalog) {
+                    Ok(ids) => vscode_agent_sessions.extend(ids),
+                    Err(error) => eprintln!("❌ 無法讀取 VS Code Agent 會話目錄: {error}"),
+                }
             }
             continue;
         }
@@ -8235,13 +8276,14 @@ fn sync_configured_sources_with_cancel(
             }
         }
         if harness == Harness::CopilotApp {
-            for root in config.roots(Harness::Copilot) {
+            let copilot_roots = config.roots(Harness::Copilot);
+            for root in &copilot_roots {
                 if should_cancel() {
                     return Ok(());
                 }
                 let changes_before = sqlite_total_changes(conn);
                 if let Err(error) =
-                    sync_copilot_cli_agent_usage_logs_with_cancel(conn, &root, should_cancel)
+                    sync_copilot_cli_agent_usage_logs_with_cancel(conn, root, should_cancel)
                 {
                     eprintln!(
                         "❌ 同步 Copilot CLI agent ({}) 失敗: {error}",
@@ -8253,6 +8295,11 @@ fn sync_configured_sources_with_cancel(
             }
             if should_cancel() {
                 return Ok(());
+            }
+            match classify_vscode_agent_sessions(conn, &vscode_agent_sessions, &copilot_roots) {
+                Ok(changed) if changed > 0 => bump_sync_data_revision(),
+                Ok(_) => {}
+                Err(error) => eprintln!("❌ 無法重新歸屬 VS Code Agent 會話: {error}"),
             }
             let changes_before = sqlite_total_changes(conn);
             if let Err(error) = backfill_copilot_cwd(conn) {
@@ -9411,7 +9458,41 @@ pub fn import_usage_day_entries(
                 source_kind = local_source_kind;
             }
         }
-        if assistant == "copilot" && matches!(source_kind.as_str(), "copilot-cli" | "legacy") {
+        if matches!(assistant, "copilot" | "vscode") && source_kind == "copilot-cli" {
+            if let Some(id) = normalized_id
+                .as_deref()
+                .filter(|id| id.starts_with("copilot-cli-agents:") && id.contains(":call:"))
+            {
+                let other = if assistant == "copilot" {
+                    "vscode"
+                } else {
+                    "copilot"
+                };
+                let already_present: bool = tx
+                    .query_row(
+                        "SELECT EXISTS(SELECT 1 FROM usage_entries
+                     WHERE assistant_type = ?1 AND source_kind = 'copilot-cli'
+                       AND import_source_id = ?2 AND source_dir_key IS ?3
+                       AND session_id = ?4 AND parent_session_id IS ?5)",
+                        params![
+                            other,
+                            id,
+                            entry.source_dir_key,
+                            entry.session_id,
+                            entry.parent_session_id
+                        ],
+                        |row| row.get(0),
+                    )
+                    .map_err(|e| format!("檢查 VS Code 與 Copilot 重複呼叫失敗: {e}"))?;
+                if already_present {
+                    skipped_duplicates += 1;
+                    continue;
+                }
+            }
+        }
+        if matches!(assistant, "copilot" | "vscode")
+            && matches!(source_kind.as_str(), "copilot-cli" | "legacy")
+        {
             normalize_copilot_cli_usage_entry(&mut entry);
         } else if assistant == "claude" {
             normalize_legacy_claude_usage_entry(&mut entry);
@@ -11291,6 +11372,44 @@ mod tests {
             std::env::remove_var("COPILOT_DIR");
         }
         let _ = fs::remove_dir_all(base_dir);
+    }
+
+    #[test]
+    fn vscode_agent_reclassification_preserves_calls_and_other_sources() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        init_db(&conn).unwrap();
+        let root = PathBuf::from("/test/copilot");
+        let key = additional_source_key(&root);
+        for (id, parent, scope, kind, tokens) in [
+            ("sdk", None, key.as_str(), "copilot-cli", 10),
+            ("sdk__child", Some("sdk"), key.as_str(), "copilot-cli", 20),
+            ("sdk__child", None, key.as_str(), "copilot-cli", 30),
+            ("sdk", None, "other", "copilot-cli", 40),
+            ("sdk", None, key.as_str(), "copilot-app", 50),
+            ("sdk", None, key.as_str(), "vscode-chat", 60),
+        ] {
+            conn.execute(
+                "INSERT INTO usage_entries (assistant_type, source_kind, source_dir_key,
+                 session_id, parent_session_id, timestamp, date, turn_no, delta_total)
+                 VALUES ('copilot', ?1, ?2, ?3, ?4, '2026-11-26T10:00:00Z', '2026-11-26', 1, ?5)",
+                params![kind, scope, id, parent, tokens],
+            )
+            .unwrap();
+        }
+        let ids = HashSet::from(["sdk".to_string()]);
+        assert_eq!(
+            classify_vscode_agent_sessions(&mut conn, &ids, std::slice::from_ref(&root)).unwrap(),
+            2
+        );
+        assert_eq!(
+            classify_vscode_agent_sessions(&mut conn, &ids, &[root]).unwrap(),
+            0
+        );
+        let (calls, total, vscode): (i64, i64, i64) = conn.query_row(
+            "SELECT count(*), sum(delta_total), sum(CASE WHEN assistant_type='vscode' THEN delta_total ELSE 0 END) FROM usage_entries",
+            [], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        ).unwrap();
+        assert_eq!((calls, total, vscode), (6, 210, 30));
     }
 
     #[test]

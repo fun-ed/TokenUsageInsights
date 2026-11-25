@@ -61,6 +61,10 @@
             <img class="assistant-logo" src="/static/githubcopilot.webp" alt="Copilot" />
             <span class="agent-name-tooltip">GitHub Copilot</span>
           </button>
+          <button class="assistant-badge-btn" data-value="vscode" title="VS Code Agent" aria-label="VS Code Agent">
+            <img class="assistant-logo" src="/static/vscode-logo.png" alt="" />
+            <span class="agent-name-tooltip">VS Code Agent</span>
+          </button>
           <button class="assistant-badge-btn" data-value="codex" title="Codex" aria-label="Codex">
             <img class="assistant-logo" src="/static/codex.webp" alt="Codex" />
             <span class="agent-name-tooltip">Codex</span>
@@ -1614,6 +1618,10 @@ cd TokenUsageInsights</code></pre>
         </div>
       </div>
       <!-- Devin CLI Setup Content -->
+      <div class="modal-body" id="setup-body-vscode" style="display: none;">
+        <p class="modal-text" data-i18n="vscode_agent_setup">The dashboard reads the local VS Code Agent Host catalog and uses the corresponding Copilot SDK token records.</p>
+        <p class="modal-text"><code id="lbl-detected-vscode-agent-catalog"></code></p>
+      </div>
       <div class="modal-body" id="setup-body-devin" style="display: none;">
         <p class="modal-text" data-i18n="devin_setup_modal_intro">This dashboard reads locally recorded per-call token usage from Devin CLI's SQLite database. It opens the database read-only and requires no extra hooks.</p>
         <div class="modal-section">
@@ -1699,6 +1707,7 @@ cd TokenUsageInsights</code></pre>
             <option value="" data-i18n="import_target_placeholder">請明確選擇目標 Agent</option>
             <option value="antigravity">Antigravity</option>
             <option value="copilot">GitHub Copilot</option>
+            <option value="vscode">VS Code Agent</option>
             <option value="codex">Codex</option>
             <option value="claude">Claude Code</option>
             <option value="cursor">Cursor</option>
@@ -1788,6 +1797,7 @@ cd TokenUsageInsights</code></pre>
                 <option value="all" data-i18n="all_agents_label">全部 Agent</option>
                 <option value="antigravity">Antigravity</option>
                 <option value="copilot">GitHub Copilot</option>
+                <option value="vscode">VS Code Agent</option>
                 <option value="codex">Codex</option>
                 <option value="claude">Claude Code</option>
                 <option value="cursor">Cursor</option>
@@ -1840,6 +1850,6 @@ cd TokenUsageInsights</code></pre>
   <div class="sidebar-overlay" id="sidebar-overlay"></div>
 
   <!-- Frontend Javascript logic -->
-  <script type="module" src="/static/app.js?v=84"></script>
+  <script type="module" src="/static/app.js?v=85"></script>
 </body>
 </html>

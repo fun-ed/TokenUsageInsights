@@ -43,6 +43,7 @@ pub fn is_supported_assistant(assistant: &str) -> bool {
         normalize_assistant_name(assistant).as_str(),
         "antigravity"
             | "copilot"
+            | "vscode"
             | "codex"
             | "claude"
             | "cursor"
@@ -80,6 +81,7 @@ pub struct SetupInfoResponse {
     pub antigravity_app: AssistantSetupStatus,
     pub copilot: AssistantSetupStatus,
     pub copilot_app: AssistantSetupStatus,
+    pub vscode: AssistantSetupStatus,
     pub codex: AssistantSetupStatus,
     pub claude: AssistantSetupStatus,
     pub cursor: AssistantSetupStatus,

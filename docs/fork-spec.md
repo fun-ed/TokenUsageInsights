@@ -159,6 +159,11 @@
 - `ab1c6e35` 將 Antigravity CLI 與桌面 App 合併到同一個 Agent，各自保留來源、游標及會話路徑。App 預設讀取 `~/.gemini/antigravity`，可用 `ANTIGRAVITY_APP_DIR` 覆寫，或在 `additional_sources.antigravity_app` 追加來源。曾以 CLI 類型匯入的同根目錄 App 用量會遷移至 App 來源，包含已失去原始逐字稿的歷史紀錄。
 - OMP 採用 models.dev v1 `cost.tiers`。以每筆輸入與快取讀取 Token 的總和判斷門檻，套用已超過的最高級距。
 
+### 2.22 VS Code Agent Host
+
+- 看板以 `vscode` 顯示獨立的 VS Code Agent 用量。從 VS Code Stable、Insiders 與既有 VS Code 自訂資料根目錄唯讀查詢 `User/globalStorage/agent-host.db`。只依目前 catalog 中本機 `copilotcli` 會話的 `sdkSessionId` 重新歸屬對應的 Copilot SDK 用量與子代理，沿用原本的逐筆用量和逐字稿，不另計 Agent Host 的用量快照。
+- Agent Host 目錄中的外部會話、其他 provider 與現有 Copilot 擴充套件 `chatSessions` 維持各自收集規則。缺少 catalog 時保留已確認的來源歸屬。其他 Agent Host provider 需要各自可驗證的會話識別與本機用量來源。
+
 ## 3. 版本與發行
 
 - Cargo 與 npm 版本為 `10.x.y`；release tag 為對應的 `v10.x.y`。不可重用 upstream 的 `v1.x.y`。
