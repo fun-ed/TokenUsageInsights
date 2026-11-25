@@ -10,7 +10,7 @@ Claude Code 會讀取 `~/.claude` 與每個含 `projects/` 的 `~/.claude-profil
 
 OMP 同時讀取 `~/.omp/agent/sessions` 與 `~/.omp/profiles/<name>/agent/sessions`，保留各 profile 的獨立來源。設定 `OMP_DIR` 時停用自動 profile 探索。
 
-Antigravity CLI 不需設定 Status Line 或收集腳本：看板直接讀取 `~/.gemini/antigravity-cli/brain/` 的原生會話記錄，並唯讀查詢 `conversations/<session-id>.db` 取得每次回應的模型。舊版 `usage/` 收集檔仍可匯入，同一會話不會重複計算。費用為依 `pricing.csv` 的估算；模型或價格不明時無法估算，不代表免費。
+Antigravity CLI 與桌面 App 都可直接讀取原生會話。看板預設讀取 `~/.gemini/antigravity-cli/brain/` 與 `~/.gemini/antigravity/brain/` 的原生會話記錄，並唯讀查詢 `conversations/<session-id>.db` 取得每次回應的模型。舊版 `usage/` 收集檔仍可匯入，同一會話不會重複計算。費用為依 `pricing.csv` 的估算；模型或價格不明時無法估算，不代表免費。
 
 目前版本為 [v10.0.27](https://github.com/fun-ed/TokenUsageInsights/releases/tag/v10.0.27)，選擇性移植 upstream v1.6.5：新增 MiMo-V2.6-Pro／Flash 與 Kimi K3.1 Pro 隨附定價，並略過內部 Copilot 搜尋模型與 Unknown Model 缺少定價的警告。保留 Token 統計、費用處理、models.dev 優先規則、多 profile 與總覽來源隔離。完整功能與安裝方式見英文 README。
 

@@ -152,10 +152,17 @@
 - Antigravity CLI 辨識 `gemini-pro-orchestrator-neon` 並以 Orchestrator (Neon) 計價。既有 SQLite 紀錄透過版本化遷移重新正規化模型名稱。手動定價檢查同時支援新舊 Planner 表格。
 - 定價檢查維持手動產生報告。日期驗證與自動更新的布林判斷已有等效實作。
 
+### 2.21 選擇性同步 upstream v1.10.0（v10.0.34）
+
+- 同步範圍為 `v1.8.2...v1.10.0`。`071909ae` 新增跨歷史搜尋，可依助理、日期與內容類型篩選，從結果開啟對應的會話訊息。搜尋保留 Claude、OMP 等多來源識別，並支援 Devin CLI。更多選單保留 fork 的選用整合入口。
+- `/api/:assistant/search` 僅接受本機連線。搜尋索引存放於 `INSIGHTS_DIR/search-index/transcripts.db`，所在目錄限擁有者存取。索引包含對話與工具內容片段，獨立於用量資料庫。背景及手動同步會更新索引，逐字稿不存在時清除對應索引並保留用量。
+- `ab1c6e35` 將 Antigravity CLI 與桌面 App 合併到同一個 Agent，各自保留來源、游標及會話路徑。App 預設讀取 `~/.gemini/antigravity`，可用 `ANTIGRAVITY_APP_DIR` 覆寫，或在 `additional_sources.antigravity_app` 追加來源。曾以 CLI 類型匯入的同根目錄 App 用量會遷移至 App 來源，包含已失去原始逐字稿的歷史紀錄。
+- OMP 採用 models.dev v1 `cost.tiers`。以每筆輸入與快取讀取 Token 的總和判斷門檻，套用已超過的最高級距。
+
 ## 3. 版本與發行
 
 - Cargo 與 npm 版本為 `10.x.y`；release tag 為對應的 `v10.x.y`。不可重用 upstream 的 `v1.x.y`。
-- 目前 fork 版本為 `v10.0.33`，原始碼選擇性同步基準為 upstream `v1.8.2`。
+- 目前 fork 版本為 `v10.0.34`，原始碼選擇性同步基準為 upstream `v1.10.0`。
 - 本次發行資產為 macOS `aarch64-apple-darwin` 與 `x86_64-apple-darwin` 的 `.tar.gz`、`.dmg` 及 `SHA256SUMS`；不建置或發布 Linux 二進位，也不發布 npm Registry 套件。
 - 發行包內容：執行檔、`static/`、`shell/`、`scripts/`、`pricing.csv`、`README.md`、`LICENSE`、`VERSION`。
 - `scripts/get.sh` 與 npm 安裝器從 `fun-ed/TokenUsageInsights` 下載。

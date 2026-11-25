@@ -4,6 +4,18 @@
 
 ## [未發行]
 
+## [10.0.34] - 2026-11-26
+
+### 新增與修正
+
+- 可搜尋歷史提示詞、助理回覆、工具請求與工具回應，依 Agent 與日期篩選，並跳到命中的會話訊息。全文索引限本機查詢，獨立存放於擁有者專用目錄。
+- Antigravity 同時收集 CLI 與桌面 App 原生會話，以來源徽章區隔同名會話。舊版已匯入同一 App 來源的歷史用量會保留並重新標記。
+- OMP 以 models.dev v1 `cost.tiers` 支援長上下文分級計價。
+
+### 發行
+
+- 選擇性同步 upstream v1.10.0，發行 Apple Silicon 與 Intel 的 macOS 壓縮檔、DMG 與 `SHA256SUMS`。
+
 ## [10.0.33] - 2026-11-22
 
 ### 新增與修正
@@ -1232,7 +1244,8 @@
 - 修正行動版側邊欄遮擋、黑畫面、標題擠壓、圖表導覽索引與年度版面問題。
 - 修正並補齊多個 Gemini、Claude、GPT 與 GPT-OSS 模型的定價規則。
 
-[未發行]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.33...HEAD
+[未發行]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.34...HEAD
+[10.0.34]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.33...v10.0.34
 [10.0.33]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.32...v10.0.33
 [10.0.32]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.31...v10.0.32
 [10.0.31]: https://github.com/fun-ed/TokenUsageInsights/compare/v10.0.30...v10.0.31

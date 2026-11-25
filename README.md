@@ -20,7 +20,7 @@ Single-agent monthly reports for OMP and Claude Code:
 
 ## Install a precompiled CLI on macOS
 
-The [v10.0.33 release](https://github.com/fun-ed/TokenUsageInsights/releases/tag/v10.0.33) provides CLI packages for Apple Silicon (`aarch64-apple-darwin`) and Intel (`x86_64-apple-darwin`) Macs. No Rust toolchain is needed.
+The [v10.0.34 release](https://github.com/fun-ed/TokenUsageInsights/releases/tag/v10.0.34) provides CLI packages for Apple Silicon (`aarch64-apple-darwin`) and Intel (`x86_64-apple-darwin`) Macs. No Rust toolchain is needed.
 
 For a quick local install from this fork's latest release (not the upstream repository), run:
 
@@ -33,7 +33,7 @@ The installer selects the matching macOS CLI, copies the dashboard into `~/.loca
 To verify the checksum before installing, download the release package manually (set `target=x86_64-apple-darwin` on an Intel Mac):
 
 ```bash
-version=v10.0.33
+version=v10.0.34
 target=aarch64-apple-darwin
 archive="token-usage-insights-${version}-${target}.tar.gz"
 mkdir -p "$HOME/Downloads/token-usage-insights"
@@ -47,7 +47,7 @@ bash "token-usage-insights-${version}-${target}/scripts/install.sh"
 "$HOME/.local/bin/token-usage-insights"
 ```
 
-To invoke the CLI by name from zsh, add `export PATH="$HOME/.local/bin:$PATH"` to `~/.zshrc` and start a new terminal. Run the quick installer again to upgrade. Both architectures are also available as [Apple Silicon DMG](https://github.com/fun-ed/TokenUsageInsights/releases/download/v10.0.33/token-usage-insights-v10.0.33-aarch64-apple-darwin.dmg) and [Intel DMG](https://github.com/fun-ed/TokenUsageInsights/releases/download/v10.0.33/token-usage-insights-v10.0.33-x86_64-apple-darwin.dmg). For Linux, build from source unless a matching Linux asset is listed in the release.
+To invoke the CLI by name from zsh, add `export PATH="$HOME/.local/bin:$PATH"` to `~/.zshrc` and start a new terminal. Run the quick installer again to upgrade. Both architectures are also available as [Apple Silicon DMG](https://github.com/fun-ed/TokenUsageInsights/releases/download/v10.0.34/token-usage-insights-v10.0.34-aarch64-apple-darwin.dmg) and [Intel DMG](https://github.com/fun-ed/TokenUsageInsights/releases/download/v10.0.34/token-usage-insights-v10.0.34-x86_64-apple-darwin.dmg). For Linux, build from source unless a matching Linux asset is listed in the release.
 
 ## Import automatically in the background
 
@@ -69,15 +69,19 @@ cargo run --release
 
 Open <http://localhost:3003>.
 
-### v10.0.33 changes
+### v10.0.34 changes
 
-Bundled pricing includes GPT-6.2 Sol and Astra with standard, long-context, Batch, and Cursor rates. Antigravity CLI usage labeled `gemini-pro-orchestrator-neon` is shown and priced as Orchestrator (Neon). The manual pricing check supports the current Antigravity planner table.
+Use `⌘K` or `Ctrl+K` to search local conversation history by agent, date, or content type. Search results link to the matching message. The search API accepts loopback connections only. The transcript index lives in an owner-only `search-index` directory under the Insights data directory.
+
+Antigravity imports native sessions from both the CLI and the desktop App. The dashboard labels each source separately. The App defaults to `~/.gemini/antigravity` and can be configured with `ANTIGRAVITY_APP_DIR`.
+
+OMP estimates apply models.dev v1 long-context tiers based on input plus cache-read tokens.
 
 The dashboard includes Devin CLI imports, session details, prompt search, and all-agent reporting from its local SQLite database. Imports keep per-call model and effort metadata, deduplicate saved snapshots, and separate sources that share a session ID. No Devin cloud API call is required.
 
 Published Devin prices cover SWE 1.6/1.7, SWE 2 Lightning, and Muse Wonder 1.0. SWE 2 and SWE 2 Flash have no numeric USD rate in the CLI catalog, so their unpriced calls are excluded from cost estimates. This does not mean those calls were free. Claude Fable 5.2 standard, Fast, and Batch rates are also included.
 
-Cargo and npm package versions are synchronized at `10.0.33`; this release publishes macOS packages only and keeps the existing dependency versions.
+Cargo and npm package versions are synchronized at `10.0.34`; this release publishes macOS packages only and keeps the existing dependency versions.
 
 Remote transfers run only when explicitly requested:
 
@@ -88,7 +92,7 @@ token-usage-insights import --url "$USAGE_JSON_HTTPS_URL"
 
 Exports contain usage records, including session names and paths. Share them only with trusted recipients. Use a short-lived, least-privilege SAS token; URLs passed as arguments can be visible in the process list even though the CLI does not print their signatures.
 
-For separate imported-data dashboards from a source checkout, see [optional Docker support](https://github.com/fun-ed/TokenUsageInsights/blob/v10.0.33/docker/README.md). To compare packaged prices with official documents manually, run `mise exec -- node scripts/pricing-check.mjs`. The check only reports differences; it does not modify prices or create issues.
+For separate imported-data dashboards from a source checkout, see [optional Docker support](https://github.com/fun-ed/TokenUsageInsights/blob/v10.0.34/docker/README.md). To compare packaged prices with official documents manually, run `mise exec -- node scripts/pricing-check.mjs`. The check only reports differences; it does not modify prices or create issues.
 
 ## What it reads
 
