@@ -5743,7 +5743,7 @@ function initSessionDrawer(drawer) {
 }
 
 async function openSessionTimeline(session, trigger = document.activeElement, options = null) {
-  if (isAllAssistantsScope()) return;
+  if (isAllAssistantsScope() && !options) return;
   const drawer = document.getElementById('timeline-drawer');
   const search = document.getElementById('timeline-search-input');
   const timeline = document.getElementById('timeline-items');
